@@ -27,7 +27,7 @@ jobs:
           # macOS
           - os: darwin
             arch: amd64
-            runner: macos-13
+            runner: ubuntu-latest
           - os: darwin
             arch: arm64
             runner: macos-latest
