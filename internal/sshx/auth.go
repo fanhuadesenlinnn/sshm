@@ -116,16 +116,72 @@ func ExecCommand(h config.Host, store *secret.FileStore, command string) (string
 func CheckPing(h config.Host, store *secret.FileStore) (bool, string) {
 	strategy := GetAuthStrategy(h.Auth)
 
-	if strategy == AuthKey || (strategy == AuthAuto && HasIdentity(h)) {
-		return Ping(h)
-	}
-
-	if h.PasswordRef != "" && store != nil {
-		pass, err := store.GetPassword(h.PasswordRef)
-		if err == nil {
-			return NativePing(h, pass)
+	switch strategy {
+	case AuthKey:
+		ok, msg := Ping(h)
+		if !ok {
+			return false, "[密钥] " + msg
 		}
-	}
+		return ok, msg
+	case AuthPassword:
+		if h.PasswordRef != "" && store != nil {
+			pass, err := store.GetPassword(h.PasswordRef)
+			if err != nil {
+				return false, "[密码] 读取密码失败: " + err.Error()
+			}
+			ok, msg := NativePing(h, pass)
+			if !ok {
+				return false, "[密码] " + msg
+			}
+			return ok, msg
+		}
+		return false, "[密码] 未配置密码"
+	case AuthSystem, AuthAsk:
+		ok, msg := Ping(h)
+		if !ok {
+			return false, "[系统] " + msg
+		}
+		return ok, msg
+	default: // AuthAuto
+		hasKey := HasIdentity(h)
+		hasPassword := h.PasswordRef != "" && store != nil
 
-	return Ping(h)
+		if hasKey {
+			ok, msg := Ping(h)
+			if ok {
+				return true, msg
+			}
+			if hasPassword {
+				// Key failed, try password
+				pass, err := store.GetPassword(h.PasswordRef)
+				if err != nil {
+					return false, "[密钥] " + msg + " | [密码] 读取失败"
+				}
+				ok2, msg2 := NativePing(h, pass)
+				if !ok2 {
+					return false, "[密钥] " + msg + " | [密码] " + msg2
+				}
+				return ok2, msg2
+			}
+			return false, "[密钥] " + msg
+		}
+
+		if hasPassword {
+			pass, err := store.GetPassword(h.PasswordRef)
+			if err != nil {
+				return false, "[密码] 读取密码失败: " + err.Error()
+			}
+			ok, msg := NativePing(h, pass)
+			if !ok {
+				return false, "[密码] " + msg
+			}
+			return ok, msg
+		}
+
+		ok, msg := Ping(h)
+		if !ok {
+			return false, "[系统] " + msg
+		}
+		return ok, msg
+	}
 }

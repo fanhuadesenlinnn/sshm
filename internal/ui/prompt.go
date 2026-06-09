@@ -51,3 +51,8 @@ func ReadPassword(prompt string) (string, error) {
 	fmt.Println()
 	return pass, nil
 }
+
+// IsTerminal returns true if stdin is a terminal.
+func IsTerminal() bool {
+	return isTerminal()
+}

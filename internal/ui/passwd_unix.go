@@ -14,3 +14,7 @@ func readPasswordFromTTY() (string, error) {
 	}
 	return string(pass), nil
 }
+
+func isTerminal() bool {
+	return term.IsTerminal(int(os.Stdin.Fd()))
+}

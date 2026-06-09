@@ -4,6 +4,8 @@ package ui
 
 import (
 	"fmt"
+	"golang.org/x/term"
+	"os"
 )
 
 func readPasswordFromTTY() (string, error) {
@@ -11,4 +13,8 @@ func readPasswordFromTTY() (string, error) {
 	var pass string
 	fmt.Scanln(&pass)
 	return pass, nil
+}
+
+func isTerminal() bool {
+	return term.IsTerminal(int(os.Stdin.Fd()))
 }

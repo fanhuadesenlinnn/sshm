@@ -87,11 +87,26 @@ func (app *App) cmdExecAll(args []string) error {
 	return nil
 }
 
-// tryGetSecretStore attempts to create a secret store without failing.
+// tryGetSecretStore attempts to create a secret store, prompting for master password.
+// Returns nil if no secrets file exists, stdin is not a terminal, or authentication fails.
 func (app *App) tryGetSecretStore() *secret.FileStore {
 	// If no secrets file exists, return nil
 	if _, err := os.Stat(app.SecretPath); os.IsNotExist(err) {
 		return nil
 	}
-	return nil // Skip password prompt for batch exec; use system ssh
+	// Only prompt if stdin is a terminal
+	if !ui.IsTerminal() {
+		return nil
+	}
+	pass, err := ui.ReadPassword("请输入 sshm 主密码: ")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, ui.Warn("读取主密码失败，将使用系统 SSH"))
+		return nil
+	}
+	fs := secret.NewFileStore(app.SecretPath, pass)
+	if err := fs.VerifyPassphrase(); err != nil {
+		fmt.Fprintln(os.Stderr, ui.Warn("主密码错误，将使用系统 SSH"))
+		return nil
+	}
+	return fs
 }
