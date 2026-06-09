@@ -55,13 +55,13 @@ func NativeConnectPassword(h config.Host, password string) error {
 	addr := fmt.Sprintf("%s:%d", h.Host, h.Port)
 	client, err := ssh.Dial("tcp", addr, sshConfig)
 	if err != nil {
-		return fmt.Errorf("SSH 连接失败: %w", err)
+		return fmt.Errorf("密码认证失败: %w", err)
 	}
 	defer client.Close()
 
 	session, err := client.NewSession()
 	if err != nil {
-		return fmt.Errorf("创建会话失败: %w", err)
+		return fmt.Errorf("密码认证 - 创建会话失败: %w", err)
 	}
 	defer session.Close()
 
@@ -132,13 +132,13 @@ func NativeExec(h config.Host, password string, command string) (string, error) 
 	addr := fmt.Sprintf("%s:%d", h.Host, h.Port)
 	client, err := ssh.Dial("tcp", addr, sshConfig)
 	if err != nil {
-		return "", fmt.Errorf("SSH 连接失败: %w", err)
+		return "", fmt.Errorf("密码认证失败: %w", err)
 	}
 	defer client.Close()
 
 	session, err := client.NewSession()
 	if err != nil {
-		return "", fmt.Errorf("创建会话失败: %w", err)
+		return "", fmt.Errorf("密码认证 - 创建会话失败: %w", err)
 	}
 	defer session.Close()
 

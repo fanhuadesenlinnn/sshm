@@ -18,6 +18,8 @@ func (app *App) interactiveMode() error {
 	hf, _ := app.Store.Load()
 	ui.RenderHostsTable(hf.Hosts)
 
+	fmt.Printf("输入 %s 查看可用命令，输入 %s 退出\n", ui.CyanText("h"), ui.CyanText("q"))
+
 	for {
 		input := ui.ReadLine(ui.CyanText("sshm> "))
 		if input == "" {
@@ -74,7 +76,7 @@ func (app *App) interactiveMode() error {
 		case "auth":
 			app.cmdAuth(args)
 		case "help", "h":
-			app.printHelp()
+			app.printInteractiveHelp()
 		case "exit", "quit", "q":
 			fmt.Println("bye.")
 			return nil

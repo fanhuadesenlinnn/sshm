@@ -34,15 +34,19 @@ func connectAuto(h config.Host, store *secret.FileStore, extraArgs []string) err
 		if code := ConnectOpenSSHKey(h, extraArgs); code == 0 {
 			return nil
 		}
-		// Key failed
+		if hasPassword && store != nil {
+			fmt.Fprintf(os.Stderr, "密钥认证失败，尝试密码认证...\n")
+		}
 	}
 
 	if hasPassword && store != nil {
 		pass, err := store.GetPassword(h.PasswordRef)
 		if err != nil {
+			fmt.Fprintf(os.Stderr, "读取密码失败: %v，回退到系统 SSH\n", err)
 			return connectSystem(h, extraArgs)
 		}
 		if err := NativeConnectPassword(h, pass); err != nil {
+			fmt.Fprintf(os.Stderr, "%v，回退到系统 SSH\n", err)
 			return connectSystem(h, extraArgs)
 		}
 		return nil
@@ -52,7 +56,8 @@ func connectAuto(h config.Host, store *secret.FileStore, extraArgs []string) err
 		return connectSystem(h, extraArgs)
 	}
 
-	// Fallback to system
+	// Fallback to system (key only, no password)
+	fmt.Fprintf(os.Stderr, "密钥认证失败，回退到系统 SSH...\n")
 	return connectSystem(h, extraArgs)
 }
 
@@ -62,7 +67,7 @@ func connectKey(h config.Host, extraArgs []string) error {
 	}
 	code := ConnectOpenSSHKey(h, extraArgs)
 	if code != 0 {
-		return fmt.Errorf("密钥认证失败 (exit %d)", code)
+		return fmt.Errorf("密钥认证失败 (exit %d)，请检查密钥路径和权限", code)
 	}
 	return nil
 }
@@ -73,11 +78,12 @@ func connectPassword(h config.Host, store *secret.FileStore, extraArgs []string)
 	}
 	pass, err := store.GetPassword(h.PasswordRef)
 	if err != nil {
-		return err
+		return fmt.Errorf("读取密码失败: %w", err)
 	}
-	// For password connections that may need extra args, use system ssh with sshpass if available
-	// Otherwise use native
-	return NativeConnectPassword(h, pass)
+	if err := NativeConnectPassword(h, pass); err != nil {
+		return fmt.Errorf("密码认证失败: %w", err)
+	}
+	return nil
 }
 
 func connectSystem(h config.Host, extraArgs []string) error {

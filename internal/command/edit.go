@@ -34,6 +34,31 @@ func (app *App) cmdEdit(args []string) error {
 	tagsInput := ui.ReadLineDefault(fmt.Sprintf("标签 [%s]: ", config.TagsToString(h.Tags)), config.TagsToString(h.Tags))
 	newTags := config.ParseTags(tagsInput)
 
+	// Handle password change
+	passwordRef := h.PasswordRef
+	if h.PasswordRef != "" {
+		fmt.Printf("\n当前主机已保存密码。\n")
+		changePass := ui.ReadYesNo("是否修改密码？[y/N]: ")
+		if changePass {
+			if err := app.changeHostPassword(h.Alias); err != nil {
+				ui.PrintWarn("修改密码失败: %v", err)
+			} else {
+				passwordRef = h.Alias
+				ui.PrintSuccess("密码已更新")
+			}
+		}
+	} else {
+		savePass := ui.ReadYesNo("\n是否保存 SSH 密码？[y/N]: ")
+		if savePass {
+			if err := app.changeHostPassword(h.Alias); err != nil {
+				ui.PrintWarn("保存密码失败: %v", err)
+			} else {
+				passwordRef = h.Alias
+				ui.PrintSuccess("密码已加密保存")
+			}
+		}
+	}
+
 	updated := config.Host{
 		Alias:       newAlias,
 		User:        newUser,
@@ -44,7 +69,7 @@ func (app *App) cmdEdit(args []string) error {
 		Group:       newGroup,
 		Tags:        newTags,
 		Auth:        newAuth,
-		PasswordRef: h.PasswordRef,
+		PasswordRef: passwordRef,
 	}
 
 	if errs := updated.Validate(); len(errs) > 0 {
@@ -71,5 +96,29 @@ func (app *App) cmdEdit(args []string) error {
 	}
 
 	ui.PrintSuccess("已更新主机：%s", newAlias)
+	return nil
+}
+
+// changeHostPassword prompts for a new password and saves it for the given alias.
+func (app *App) changeHostPassword(alias string) error {
+	fs := app.mustGetSecretStore()
+
+	pass1, err := ui.ReadPassword("请输入 SSH 密码: ")
+	if err != nil {
+		return fmt.Errorf("读取密码失败: %w", err)
+	}
+	pass2, err := ui.ReadPassword("再次输入 SSH 密码: ")
+	if err != nil {
+		return fmt.Errorf("读取密码失败: %w", err)
+	}
+
+	if pass1 != pass2 {
+		return fmt.Errorf("两次密码不一致")
+	}
+
+	if err := fs.SetPassword(alias, pass1); err != nil {
+		return fmt.Errorf("保存密码失败: %w", err)
+	}
+
 	return nil
 }
