@@ -68,7 +68,11 @@ jobs:
       - name: Package (Windows)
         if: matrix.os == 'windows'
         run: |
-          powershell Compress-Archive -Path sshm.exe -DestinationPath "sshm_windows_${{ matrix.arch }}.zip"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            powershell Compress-Archive -Path sshm.exe -DestinationPath "sshm_windows_${{ matrix.arch }}.zip"
+          else
+            zip "sshm_windows_${{ matrix.arch }}.zip" sshm.exe
+          fi
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
