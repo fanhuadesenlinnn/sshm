@@ -70,7 +70,11 @@ jobs:
         if: matrix.os == 'windows'
         shell: bash
         run: |
-          zip "sshm_windows_${{ matrix.arch }}.zip" sshm.exe
+          if command -v zip >/dev/null 2>&1; then
+            zip "sshm_windows_${{ matrix.arch }}.zip" sshm.exe
+          else
+            powershell.exe -Command "Compress-Archive -Path sshm.exe -DestinationPath 'sshm_windows_${{ matrix.arch }}.zip'"
+          fi
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
