@@ -30,23 +30,26 @@ func connectAuto(h config.Host, store *secret.FileStore, extraArgs []string) err
 	hasKey := HasIdentity(h)
 	hasPassword := h.PasswordRef != "" && store != nil
 
+	// When both key and password are available, try key first then password.
+	// Users can force password-first by setting auth: password.
 	if hasKey {
 		if code := ConnectOpenSSHKey(h, extraArgs); code == 0 {
 			return nil
 		}
-		if hasPassword && store != nil {
-			fmt.Fprintf(os.Stderr, "密钥认证失败，尝试密码认证...\n")
+		if hasPassword {
+			fmt.Fprintf(os.Stderr, "密钥认证未通过，尝试密码连接...\n")
 		}
 	}
 
-	if hasPassword && store != nil {
+	// Password auth — treated as a first-class method, not just a fallback.
+	if hasPassword {
 		pass, err := store.GetPassword(h.PasswordRef)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "读取密码失败: %v，回退到系统 SSH\n", err)
 			return connectSystem(h, extraArgs)
 		}
 		if err := NativeConnectPassword(h, pass); err != nil {
-			fmt.Fprintf(os.Stderr, "%v，回退到系统 SSH\n", err)
+			fmt.Fprintf(os.Stderr, "密码连接失败: %v，回退到系统 SSH\n", err)
 			return connectSystem(h, extraArgs)
 		}
 		return nil
@@ -56,8 +59,8 @@ func connectAuto(h config.Host, store *secret.FileStore, extraArgs []string) err
 		return connectSystem(h, extraArgs)
 	}
 
-	// Fallback to system (key only, no password)
-	fmt.Fprintf(os.Stderr, "密钥认证失败，回退到系统 SSH...\n")
+	// Key-only case: key failed, no password configured
+	fmt.Fprintf(os.Stderr, "密钥认证未通过，回退到系统 SSH...\n")
 	return connectSystem(h, extraArgs)
 }
 

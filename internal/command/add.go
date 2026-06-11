@@ -49,6 +49,28 @@ func (app *App) cmdAdd(args []string) error {
 
 	savePass := ui.ReadYesNo("是否保存 SSH 密码？[y/N]: ")
 
+	// Auth strategy selection
+	fmt.Println()
+	fmt.Println("  认证策略:")
+	fmt.Println("    auto     - 自动选择（密钥优先，密码备用）")
+	fmt.Println("    key      - 仅密钥认证")
+	fmt.Println("    password - 仅密码认证")
+	fmt.Println("    ask      - 每次询问密码")
+	fmt.Println("    system   - 使用系统 SSH 默认行为")
+	fmt.Println()
+	newAuth := ui.ReadLineDefault("认证策略 [auto]: ", "auto")
+	validAuth := map[string]bool{"auto": true, "key": true, "password": true, "ask": true, "system": true}
+	if !validAuth[newAuth] {
+		ui.PrintWarn("无效的认证策略 '%s'，使用默认值 'auto'", newAuth)
+		newAuth = "auto"
+	}
+	h.Auth = newAuth
+
+	// If user picked password auth but didn't save password, warn
+	if newAuth == "password" && !savePass {
+		ui.PrintWarn("选择了密码认证但未保存密码，将回退到系统 SSH")
+	}
+
 	h.Note = ui.ReadLine("备注，可留空: ")
 	h.Group = ui.ReadLine("分组，可留空: ")
 
@@ -101,7 +123,7 @@ func (app *App) cmdAdd(args []string) error {
 	// Print summary
 	fmt.Println()
 	ui.PrintSuccess("已添加主机：%s", h.Alias)
-	fmt.Printf("  %s\n", ui.Info("认证策略", "auto"))
+	fmt.Printf("  %s\n", ui.Info("认证策略", h.Auth))
 	if h.Identity != "" {
 		fmt.Printf("  %s\n", ui.Info("密钥", h.Identity))
 	} else {
