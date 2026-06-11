@@ -37,7 +37,7 @@ func (app *App) cmdAdd(args []string) error {
 
 	// If identity path provided, offer to import
 	if identityInput != "" {
-		if ui.ReadYesNo("是否导入密钥到 ~/.config/sshm/keys/ ? [y/N]: ") {
+		if ui.ReadYesNo("是否导入密钥到 sshm keys 目录？[y/N]: ") {
 			relPath, err := keymgr.ImportKey(h.Alias, identityInput)
 			if err != nil {
 				ui.PrintWarn("导入密钥失败: %v", err)
@@ -111,17 +111,19 @@ func (app *App) cmdAdd(args []string) error {
 
 	// Save password if requested
 	if savePass && sshPassword != "" {
-		fs := app.mustGetSecretStore()
-		if err := fs.SetPassword(h.Alias, sshPassword); err != nil {
-			ui.PrintWarn("保存密码失败: %v", err)
-		} else {
-			// Update host with password_ref
-			hf, _ := app.Store.Load()
-			for i := range hf.Hosts {
-				if hf.Hosts[i].Alias == h.Alias {
-					hf.Hosts[i].PasswordRef = h.Alias
-					app.Store.Save(hf)
-					break
+		fs := app.tryGetSecretStore()
+		if fs != nil {
+			if err := fs.SetPasswordByID(h.ID, h.Alias, sshPassword); err != nil {
+				ui.PrintWarn("保存密码失败: %v", err)
+			} else {
+				// Update host with password_ref using stable ID
+				hf, _ := app.Store.Load()
+				for i := range hf.Hosts {
+					if hf.Hosts[i].Alias == h.Alias {
+						hf.Hosts[i].PasswordRef = h.ID
+						_ = app.Store.Save(hf)
+						break
+					}
 				}
 			}
 		}

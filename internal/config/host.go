@@ -1,6 +1,8 @@
 package config
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -8,6 +10,7 @@ import (
 
 // Host represents a single SSH host entry.
 type Host struct {
+	ID          string   `yaml:"id"` // stable UUID, auto-generated if empty
 	Alias       string   `yaml:"alias"`
 	User        string   `yaml:"user"`
 	Host        string   `yaml:"host"`
@@ -27,6 +30,40 @@ type HostsFile struct {
 }
 
 var aliasRegexp = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+
+// NewID generates a short stable identifier (12 hex chars).
+func NewID() string {
+	b := make([]byte, 6)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
+// EnsureIDs fills missing IDs for all hosts and returns whether any were added.
+func (hf *HostsFile) EnsureIDs() bool {
+	changed := false
+	for i := range hf.Hosts {
+		if hf.Hosts[i].ID == "" {
+			hf.Hosts[i].ID = NewID()
+			changed = true
+		}
+	}
+	return changed
+}
+
+// DuplicateAliases returns a list of duplicate alias strings.
+func (hf *HostsFile) DuplicateAliases() []string {
+	seen := map[string]int{}
+	for _, h := range hf.Hosts {
+		seen[h.Alias]++
+	}
+	var dups []string
+	for alias, count := range seen {
+		if count > 1 {
+			dups = append(dups, alias)
+		}
+	}
+	return dups
+}
 
 // Validate checks the host entry and returns a list of errors.
 func (h *Host) Validate() []string {
@@ -67,6 +104,7 @@ func (h *Host) Validate() []string {
 // DefaultHost returns a Host with default values.
 func DefaultHost() Host {
 	return Host{
+		ID:   NewID(),
 		Port: 22,
 		Auth: "auto",
 		Tags: []string{},
@@ -78,9 +116,7 @@ func ParseTags(input string) []string {
 	if input == "" {
 		return []string{}
 	}
-	// Split by commas first, then by spaces
 	var result []string
-	// Try comma-separated first
 	seen := map[string]bool{}
 	for _, part := range splitBy(input, ',') {
 		for _, sub := range splitBy(part, ' ') {

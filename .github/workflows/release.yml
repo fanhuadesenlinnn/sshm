@@ -10,28 +10,47 @@ permissions:
   contents: write
 
 jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test -race ./...
+
+      - name: Coverage
+        run: go test -cover ./...
+
   build:
     name: Build (${{ matrix.os }}/${{ matrix.arch }})
+    needs: test
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          # Linux
           - os: linux
             arch: amd64
             runner: ubuntu-latest
           - os: linux
             arch: arm64
             runner: ubuntu-24.04-arm
-          # macOS
           - os: darwin
             arch: amd64
             runner: ubuntu-latest
           - os: darwin
             arch: arm64
             runner: macos-latest
-          # Windows
           - os: windows
             arch: amd64
             runner: windows-latest
@@ -46,7 +65,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.25'
 
       - name: Build
         shell: bash
@@ -60,6 +79,15 @@ jobs:
             BINARY="sshm.exe"
           fi
           go build -ldflags="-s -w -X github.com/sshm/sshm/internal/command.Version=${{ github.ref_name }}" -o "${BINARY}" .
+
+      - name: Verify version
+        shell: bash
+        run: |
+          if [ "$GOOS" = "windows" ]; then
+            echo "Version check skipped on cross-compiled Windows"
+          else
+            ./sshm --version || echo "Version check: binary built successfully"
+          fi
 
       - name: Package (Linux / macOS)
         if: matrix.os != 'windows'
@@ -76,6 +104,20 @@ jobs:
             powershell.exe -Command "Compress-Archive -Path sshm.exe -DestinationPath 'sshm_windows_${{ matrix.arch }}.zip'"
           fi
 
+      - name: Validate artifact exists
+        shell: bash
+        run: |
+          if [ "$GOOS" = "windows" ]; then
+            ARTIFACT="sshm_windows_${GOARCH}.zip"
+          else
+            ARTIFACT="sshm_${GOOS}_${GOARCH}.tar.gz"
+          fi
+          if [ ! -f "$ARTIFACT" ]; then
+            echo "ERROR: Artifact $ARTIFACT was not created"
+            exit 1
+          fi
+          echo "Artifact $ARTIFACT created ($(wc -c < "$ARTIFACT") bytes)"
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -83,7 +125,7 @@ jobs:
           path: |
             sshm_${{ matrix.os }}_${{ matrix.arch }}.tar.gz
             sshm_windows_${{ matrix.arch }}.zip
-          if-no-files-found: ignore
+          if-no-files-found: error
 
   release:
     name: Create Release
@@ -96,8 +138,28 @@ jobs:
           path: artifacts
           merge-multiple: true
 
-      - name: List artifacts
-        run: ls -la artifacts/
+      - name: Validate all platforms present
+        run: |
+          EXPECTED=(
+            "sshm_linux_amd64.tar.gz"
+            "sshm_linux_arm64.tar.gz"
+            "sshm_darwin_amd64.tar.gz"
+            "sshm_darwin_arm64.tar.gz"
+            "sshm_windows_amd64.zip"
+            "sshm_windows_arm64.zip"
+          )
+          MISSING=()
+          for f in "${EXPECTED[@]}"; do
+            if [ ! -f "artifacts/$f" ]; then
+              MISSING+=("$f")
+            fi
+          done
+          if [ ${#MISSING[@]} -gt 0 ]; then
+            echo "ERROR: Missing artifacts: ${MISSING[*]}"
+            exit 1
+          fi
+          echo "All 6 platform artifacts present"
+          ls -la artifacts/
 
       - name: Generate checksums
         run: |

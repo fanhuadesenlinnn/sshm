@@ -3,16 +3,17 @@
 package ui
 
 import (
-	"fmt"
 	"golang.org/x/term"
 	"os"
 )
 
 func readPasswordFromTTY() (string, error) {
-	// On Windows, fall back to simple line reading
-	var pass string
-	fmt.Scanln(&pass)
-	return pass, nil
+	// term.ReadPassword works on Windows when stdin is a terminal
+	pass, err := term.ReadPassword(int(os.Stdin.Fd()))
+	if err != nil {
+		return "", err
+	}
+	return string(pass), nil
 }
 
 func isTerminal() bool {

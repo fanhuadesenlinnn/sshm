@@ -23,8 +23,8 @@ func NewFileStore(path string, passphrase string) *FileStore {
 }
 
 // makeKey builds the plaintext key for a password entry.
-func makeKey(alias string) string {
-	return fmt.Sprintf("password:%s", alias)
+func makeKey(ref string) string {
+	return fmt.Sprintf("password:%s", ref)
 }
 
 // readRaw loads the encrypted file and returns the raw plaintext key-value lines.
@@ -52,7 +52,7 @@ func (fs *FileStore) readRaw() (map[string]string, []byte, error) {
 		if line == "" {
 			continue
 		}
-		parts := strings.SplitN(line, ":", 3) // "password:alias:value"
+		parts := strings.SplitN(line, ":", 3) // "password:ref:value"
 		if len(parts) == 3 && parts[0] == "password" {
 			entries[parts[1]] = parts[2]
 		}
@@ -61,34 +61,60 @@ func (fs *FileStore) readRaw() (map[string]string, []byte, error) {
 	return entries, data, nil
 }
 
-// GetPassword retrieves the saved SSH password for an alias.
-func (fs *FileStore) GetPassword(alias string) (string, error) {
+// GetPassword retrieves the saved SSH password for a ref (alias or ID).
+func (fs *FileStore) GetPassword(ref string) (string, error) {
 	entries, _, err := fs.readRaw()
 	if err != nil {
 		return "", err
 	}
-	pass, ok := entries[alias]
+	pass, ok := entries[ref]
 	if !ok {
-		return "", fmt.Errorf("未找到 %s 的密码", alias)
+		return "", fmt.Errorf("未找到 %s 的密码", ref)
 	}
 	return pass, nil
 }
 
-// SetPassword saves or replaces the SSH password for an alias.
-func (fs *FileStore) SetPassword(alias string, password string) error {
+// SetPassword saves or replaces the SSH password for a ref.
+func (fs *FileStore) SetPassword(ref string, password string) error {
 	return fs.writeSecrets(func(entries map[string]string) {
-		entries[alias] = password
+		entries[ref] = password
 	})
 }
 
-// RemovePassword deletes the SSH password for an alias.
-func (fs *FileStore) RemovePassword(alias string) error {
+// SetPasswordByID saves a password keyed by stable ID,
+// and migrates an existing alias-keyed entry if present.
+func (fs *FileStore) SetPasswordByID(id string, alias string, password string) error {
 	return fs.writeSecrets(func(entries map[string]string) {
-		delete(entries, alias)
+		// Remove old alias-keyed entry if present
+		if alias != "" && entries[alias] != "" {
+			delete(entries, alias)
+		}
+		entries[id] = password
 	})
 }
 
-// writeSecrets serializes, encrypts, and writes the secrets file.
+// RemovePassword deletes the SSH password for a ref.
+func (fs *FileStore) RemovePassword(ref string) error {
+	return fs.writeSecrets(func(entries map[string]string) {
+		delete(entries, ref)
+	})
+}
+
+// MigrateAliasToID re-keys a password from alias to stable ID.
+// Returns true if a migration was performed.
+func (fs *FileStore) MigrateAliasToID(alias string, id string) (bool, error) {
+	migrated := false
+	err := fs.writeSecrets(func(entries map[string]string) {
+		if pass, ok := entries[alias]; ok && alias != id {
+			delete(entries, alias)
+			entries[id] = pass
+			migrated = true
+		}
+	})
+	return migrated, err
+}
+
+// writeSecrets serializes, encrypts, and writes the secrets file atomically.
 func (fs *FileStore) writeSecrets(mutate func(map[string]string)) error {
 	entries, rawData, err := fs.readRaw()
 	if err != nil {
@@ -99,8 +125,8 @@ func (fs *FileStore) writeSecrets(mutate func(map[string]string)) error {
 
 	// Build plaintext
 	var lines []string
-	for alias, pass := range entries {
-		lines = append(lines, makeKey(alias)+":"+pass)
+	for ref, pass := range entries {
+		lines = append(lines, makeKey(ref)+":"+pass)
 	}
 	plaintext := strings.Join(lines, "\n")
 
@@ -134,8 +160,28 @@ func (fs *FileStore) writeSecrets(mutate func(map[string]string)) error {
 		return fmt.Errorf("创建 secrets 目录失败: %w", err)
 	}
 
-	if err := os.WriteFile(fs.path, data, 0600); err != nil {
-		return fmt.Errorf("写入 secrets 文件失败: %w", err)
+	// Atomic write: temp file + rename
+	tmp, err := os.CreateTemp(dir, ".secrets-*.yaml")
+	if err != nil {
+		return fmt.Errorf("创建临时文件失败: %w", err)
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+
+	if err := tmp.Chmod(0600); err != nil {
+		tmp.Close()
+		return fmt.Errorf("设置临时文件权限失败: %w", err)
+	}
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return fmt.Errorf("写入临时文件失败: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("关闭临时文件失败: %w", err)
+	}
+
+	if err := os.Rename(tmpPath, fs.path); err != nil {
+		return fmt.Errorf("原子替换 secrets 文件失败: %w", err)
 	}
 
 	return nil

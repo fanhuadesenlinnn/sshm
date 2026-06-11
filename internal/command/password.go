@@ -12,7 +12,13 @@ func (app *App) cmdPasswd(args []string) error {
 		return err
 	}
 
-	fs := app.mustGetSecretStore()
+	fs, fsErr := app.requireSecretStore()
+	if fsErr != nil {
+		return fmt.Errorf("无法访问密码存储: %w", fsErr)
+	}
+	if fs == nil {
+		return fmt.Errorf("无法访问密码存储")
+	}
 
 	pass1, err := ui.ReadPassword("请输入 SSH 密码: ")
 	if err != nil {
@@ -27,13 +33,23 @@ func (app *App) cmdPasswd(args []string) error {
 		return fmt.Errorf("两次密码不一致")
 	}
 
-	if err := fs.SetPassword(h.Alias, pass1); err != nil {
-		return fmt.Errorf("保存密码失败: %w", err)
+	// Save by stable ID if available, else by alias
+	if h.ID != "" {
+		if err := fs.SetPasswordByID(h.ID, h.Alias, pass1); err != nil {
+			return fmt.Errorf("保存密码失败: %w", err)
+		}
+		hf.Hosts[idx].PasswordRef = h.ID
+	} else {
+		if err := fs.SetPassword(h.Alias, pass1); err != nil {
+			return fmt.Errorf("保存密码失败: %w", err)
+		}
+		hf.Hosts[idx].PasswordRef = h.Alias
 	}
 
-	// Update hosts.yaml
-	hf.Hosts[idx].PasswordRef = h.Alias
-	hf.Hosts[idx].Auth = "auto"
+	if hf.Hosts[idx].Auth == "" || hf.Hosts[idx].Auth == "system" || hf.Hosts[idx].Auth == "ask" {
+		hf.Hosts[idx].Auth = "auto"
+	}
+
 	if err := app.Store.Save(hf); err != nil {
 		return fmt.Errorf("更新主机配置失败: %w", err)
 	}
@@ -58,14 +74,23 @@ func (app *App) cmdForgetPass(args []string) error {
 		return nil
 	}
 
-	fs := app.mustGetSecretStore()
+	fs, fsErr := app.requireSecretStore()
+	if fsErr != nil {
+		return fmt.Errorf("无法访问密码存储: %w", fsErr)
+	}
+	if fs == nil {
+		return fmt.Errorf("无法访问密码存储")
+	}
 
-	if err := fs.RemovePassword(h.Alias); err != nil {
-		return fmt.Errorf("删除密码失败: %w", err)
+	_ = fs.RemovePassword(h.Alias)
+	if h.ID != "" {
+		_ = fs.RemovePassword(h.ID)
 	}
 
 	hf.Hosts[idx].PasswordRef = ""
-	hf.Hosts[idx].Auth = "auto"
+	if hf.Hosts[idx].Auth == "password" {
+		hf.Hosts[idx].Auth = "auto"
+	}
 	if err := app.Store.Save(hf); err != nil {
 		return fmt.Errorf("更新主机配置失败: %w", err)
 	}

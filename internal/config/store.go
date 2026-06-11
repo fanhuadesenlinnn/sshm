@@ -26,7 +26,8 @@ func NewStoreWithPath(path string) *Store {
 // Path returns the store file path.
 func (s *Store) Path() string { return s.path }
 
-// Load reads and parses hosts.yaml.
+// Load reads and parses hosts.yaml.  Missing IDs are filled automatically.
+// v1 configs (without IDs) are migrated transparently.
 func (s *Store) Load() (*HostsFile, error) {
 	data, err := os.ReadFile(s.path)
 	if err != nil {
@@ -45,10 +46,15 @@ func (s *Store) Load() (*HostsFile, error) {
 	if hf.Hosts == nil {
 		hf.Hosts = []Host{}
 	}
+	// Ensure every host has a stable ID
+	if hf.EnsureIDs() {
+		// Persist the back-filled IDs immediately (best-effort)
+		_ = s.Save(&hf)
+	}
 	return &hf, nil
 }
 
-// Save writes hosts.yaml with proper permissions.
+// Save writes hosts.yaml with proper permissions using an atomic rename.
 func (s *Store) Save(hf *HostsFile) error {
 	if hf.Version == 0 {
 		hf.Version = 1
@@ -63,9 +69,30 @@ func (s *Store) Save(hf *HostsFile) error {
 		return fmt.Errorf("创建配置目录失败: %w", err)
 	}
 
-	if err := os.WriteFile(s.path, data, 0600); err != nil {
-		return fmt.Errorf("写入配置文件失败: %w", err)
+	// Atomic write: temp file + rename
+	tmp, err := os.CreateTemp(dir, ".hosts-*.yaml")
+	if err != nil {
+		return fmt.Errorf("创建临时文件失败: %w", err)
 	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+
+	if err := tmp.Chmod(0600); err != nil {
+		tmp.Close()
+		return fmt.Errorf("设置临时文件权限失败: %w", err)
+	}
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return fmt.Errorf("写入临时文件失败: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("关闭临时文件失败: %w", err)
+	}
+
+	if err := os.Rename(tmpPath, s.path); err != nil {
+		return fmt.Errorf("原子替换配置文件失败: %w", err)
+	}
+
 	return nil
 }
 
@@ -136,17 +163,26 @@ func parseID(s string) int {
 	return n
 }
 
-// Add appends a host to the store.
+// Add appends a host to the store after checking for duplicate aliases.
 func (s *Store) Add(h Host) error {
 	hf, err := s.Load()
 	if err != nil {
 		return err
 	}
+	// Check for duplicate alias
+	for _, existing := range hf.Hosts {
+		if existing.Alias == h.Alias {
+			return fmt.Errorf("别名 '%s' 已存在", h.Alias)
+		}
+	}
+	if h.ID == "" {
+		h.ID = NewID()
+	}
 	hf.Hosts = append(hf.Hosts, h)
 	return s.Save(hf)
 }
 
-// Update replaces a host at the given index.
+// Update replaces a host at the given index after duplicate check.
 func (s *Store) Update(idx int, h Host) error {
 	hf, err := s.Load()
 	if err != nil {
@@ -154,6 +190,12 @@ func (s *Store) Update(idx int, h Host) error {
 	}
 	if idx < 0 || idx >= len(hf.Hosts) {
 		return fmt.Errorf("索引 %d 超出范围", idx)
+	}
+	// Check for duplicate alias (skip self)
+	for i, existing := range hf.Hosts {
+		if i != idx && existing.Alias == h.Alias {
+			return fmt.Errorf("别名 '%s' 已存在", h.Alias)
+		}
 	}
 	hf.Hosts[idx] = h
 	return s.Save(hf)

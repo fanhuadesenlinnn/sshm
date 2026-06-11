@@ -84,7 +84,7 @@ func padToWidth(s string, width int) string {
 		// Truncate to fit, append "…"
 		return truncateToWidth(s, width) + strings.Repeat(" ", width-displayWidth(truncateToWidth(s, width)))
 	}
-	return s + strings.Repeat(" ", width - cur)
+	return s + strings.Repeat(" ", width-cur)
 }
 
 // truncateToWidth truncates a string to fit within display width, adding "…".
@@ -96,7 +96,7 @@ func truncateToWidth(s string, maxWidth int) string {
 	runes := []rune(s)
 	for i, r := range runes {
 		rw := runeDisplayWidth(r)
-		if w + rw + 1 > maxWidth { // +1 for "…"
+		if w+rw+1 > maxWidth { // +1 for "…"
 			return string(runes[:i]) + "…"
 		}
 		w += rw

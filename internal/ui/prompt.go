@@ -173,15 +173,15 @@ func (ed *lineEditor) run() string {
 
 // escape command constants
 const (
-	escCmdUnknown   = -1
+	escCmdUnknown    = -1
 	escCmdIncomplete = 0
-	escCmdUp        = 1
-	escCmdDown      = 2
-	escCmdRight     = 3
-	escCmdLeft      = 4
-	escCmdHome      = 5
-	escCmdEnd       = 6
-	escCmdDelete    = 7
+	escCmdUp         = 1
+	escCmdDown       = 2
+	escCmdRight      = 3
+	escCmdLeft       = 4
+	escCmdHome       = 5
+	escCmdEnd        = 6
+	escCmdDelete     = 7
 )
 
 // parseEscape tries to parse an ANSI escape sequence.

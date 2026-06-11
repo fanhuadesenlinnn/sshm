@@ -188,16 +188,6 @@ func (app *App) requireSecretStore() (*secret.FileStore, error) {
 	return fs, nil
 }
 
-// mustGetSecretStore creates a FileStore, exiting on error.
-func (app *App) mustGetSecretStore() *secret.FileStore {
-	fs, err := app.requireSecretStore()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, ui.ErrorMsg("%v", err))
-		os.Exit(1)
-	}
-	return fs
-}
-
 // resolveHost finds a host by alias or ID from args, or prompts interactively.
 func (app *App) resolveHost(args []string, promptMsg string) (*config.Host, int, *config.HostsFile, error) {
 	if len(args) > 0 {

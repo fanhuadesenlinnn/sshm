@@ -20,6 +20,18 @@ func (app *App) cmdDelete(args []string) error {
 		return nil
 	}
 
+	// Remove password from secrets if one exists
+	if h.PasswordRef != "" {
+		fs := app.tryGetSecretStore()
+		if fs != nil {
+			// Try removing by both alias and ID to clean up
+			_ = fs.RemovePassword(h.Alias)
+			if h.ID != "" {
+				_ = fs.RemovePassword(h.ID)
+			}
+		}
+	}
+
 	if err := app.Store.Remove(idx); err != nil {
 		return err
 	}

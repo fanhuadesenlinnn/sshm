@@ -28,10 +28,10 @@ func Connect(h config.Host, store *secret.FileStore, extraArgs []string) error {
 
 func connectAuto(h config.Host, store *secret.FileStore, extraArgs []string) error {
 	hasKey := HasIdentity(h)
-	hasPassword := h.PasswordRef != "" && store != nil
+	hasPasswordRef := h.PasswordRef != "" && store != nil
+	hasPassword := hasPasswordRef
 
 	// When both key and password are available, try key first then password.
-	// Users can force password-first by setting auth: password.
 	if hasKey {
 		if code := ConnectOpenSSHKey(h, extraArgs); code == 0 {
 			return nil
@@ -41,7 +41,6 @@ func connectAuto(h config.Host, store *secret.FileStore, extraArgs []string) err
 		}
 	}
 
-	// Password auth — treated as a first-class method, not just a fallback.
 	if hasPassword {
 		pass, err := store.GetPassword(h.PasswordRef)
 		if err != nil {
@@ -55,7 +54,7 @@ func connectAuto(h config.Host, store *secret.FileStore, extraArgs []string) err
 		return nil
 	}
 
-	if !hasKey && !hasPassword {
+	if !hasKey && !hasPasswordRef {
 		return connectSystem(h, extraArgs)
 	}
 
@@ -90,16 +89,16 @@ func connectPassword(h config.Host, store *secret.FileStore, extraArgs []string)
 }
 
 func connectSystem(h config.Host, extraArgs []string) error {
-	return ConnectSystem(h, extraArgs)
+	code := ConnectOpenSSHDefault(h, extraArgs)
+	if code != 0 {
+		return fmt.Errorf("系统 SSH 连接失败 (exit %d)", code)
+	}
+	return nil
 }
 
 // ConnectSystem connects using system SSH (default behavior).
 func ConnectSystem(h config.Host, extraArgs []string) error {
-	code := ConnectOpenSSHDefault(h, extraArgs)
-	if code != 0 {
-		os.Exit(code)
-	}
-	return nil
+	return connectSystem(h, extraArgs)
 }
 
 // ExecCommand runs a command on a host, using the best available auth.
@@ -160,7 +159,6 @@ func CheckPing(h config.Host, store *secret.FileStore) (bool, string) {
 				return true, msg
 			}
 			if hasPassword {
-				// Key failed, try password
 				pass, err := store.GetPassword(h.PasswordRef)
 				if err != nil {
 					return false, "[密钥] " + msg + " | [密码] 读取失败"
