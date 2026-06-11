@@ -2,10 +2,9 @@ package command
 
 import (
 	"fmt"
-	"os"
 
-	"github.com/sshm/sshm/internal/keymgr"
-	"github.com/sshm/sshm/internal/ui"
+	"github.com/fanhuadesenlinnn/sshm/internal/keymgr"
+	"github.com/fanhuadesenlinnn/sshm/internal/ui"
 )
 
 func (app *App) cmdImportKey(args []string) error {
@@ -19,10 +18,6 @@ func (app *App) cmdImportKey(args []string) error {
 	}
 
 	srcPath := args[1]
-	if _, err := os.Stat(srcPath); os.IsNotExist(err) {
-		return fmt.Errorf("私钥文件不存在: %s", srcPath)
-	}
-
 	relPath, err := keymgr.ImportKey(h.Alias, srcPath)
 	if err != nil {
 		return fmt.Errorf("导入密钥失败: %w", err)

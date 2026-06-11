@@ -3,7 +3,7 @@ package command
 import (
 	"fmt"
 
-	"github.com/sshm/sshm/internal/ui"
+	"github.com/fanhuadesenlinnn/sshm/internal/ui"
 )
 
 func (app *App) cmdPasswd(args []string) error {
@@ -18,6 +18,10 @@ func (app *App) cmdPasswd(args []string) error {
 	}
 	if fs == nil {
 		return fmt.Errorf("无法访问密码存储")
+	}
+	h, idx, hf, err = app.Store.FindHost(h.Alias)
+	if err != nil {
+		return fmt.Errorf("重新加载迁移后的主机配置失败: %w", err)
 	}
 
 	pass1, err := ui.ReadPassword("请输入 SSH 密码: ")
@@ -81,10 +85,9 @@ func (app *App) cmdForgetPass(args []string) error {
 	if fs == nil {
 		return fmt.Errorf("无法访问密码存储")
 	}
-
-	_ = fs.RemovePassword(h.Alias)
-	if h.ID != "" {
-		_ = fs.RemovePassword(h.ID)
+	h, idx, hf, err = app.Store.FindHost(h.Alias)
+	if err != nil {
+		return fmt.Errorf("重新加载迁移后的主机配置失败: %w", err)
 	}
 
 	hf.Hosts[idx].PasswordRef = ""
@@ -93,6 +96,9 @@ func (app *App) cmdForgetPass(args []string) error {
 	}
 	if err := app.Store.Save(hf); err != nil {
 		return fmt.Errorf("更新主机配置失败: %w", err)
+	}
+	if err := fs.RemovePasswords(h.Alias, h.ID, h.PasswordRef); err != nil {
+		return fmt.Errorf("主机配置已更新，但清理保存密码失败: %w", err)
 	}
 
 	ui.PrintSuccess("密码已删除：%s", h.Alias)

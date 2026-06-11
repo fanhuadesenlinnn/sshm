@@ -1,17 +1,20 @@
 package sshx
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
-	"github.com/sshm/sshm/internal/config"
-	"github.com/sshm/sshm/internal/ui"
+	"github.com/fanhuadesenlinnn/sshm/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/internal/safefile"
+	"github.com/fanhuadesenlinnn/sshm/internal/ui"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
 	"golang.org/x/term"
@@ -57,8 +60,12 @@ func createHostKeyCallback() (ssh.HostKeyCallback, error) {
 		}, nil
 	}
 
-	// known_hosts file doesn't exist or can't be read.
-	// Every host is treated as unknown.
+	if _, statErr := os.Stat(khPath); statErr == nil {
+		return nil, fmt.Errorf("无法读取 known_hosts %s: %w", khPath, cbErr)
+	} else if !os.IsNotExist(statErr) {
+		return nil, fmt.Errorf("无法访问 known_hosts %s: %w", khPath, statErr)
+	}
+
 	return func(hostname string, remote net.Addr, key ssh.PublicKey) error {
 		return handleUnknownHost(khPath, hostname, remote, key)
 	}, nil
@@ -119,49 +126,32 @@ func appendToKnownHosts(khPath, hostname string, remote net.Addr, key ssh.Public
 		return err
 	}
 
-	line := knownhosts.Line([]string{hostname}, key)
+	line := knownhosts.Line([]string{normalizedKnownHost(hostname, remote)}, key)
 	if !strings.HasSuffix(line, "\n") {
 		line += "\n"
 	}
 
-	// Read existing content
-	existing, err := os.ReadFile(khPath)
-	if err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("读取 known_hosts 失败: %w", err)
-	}
+	return safefile.WithLock(khPath, func() error {
+		existing, err := os.ReadFile(khPath)
+		if err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("读取 known_hosts 失败: %w", err)
+		}
+		return safefile.Write(khPath, append(existing, []byte(line)...), 0600, false)
+	})
+}
 
-	// Write to temp file then atomic rename
-	dir := filepath.Dir(khPath)
-	tmp, err := os.CreateTemp(dir, ".known_hosts-*")
-	if err != nil {
-		return fmt.Errorf("创建临时 known_hosts 失败: %w", err)
+func normalizedKnownHost(hostname string, remote net.Addr) string {
+	if _, port, err := net.SplitHostPort(hostname); err == nil {
+		if port == "22" {
+			host, _, _ := net.SplitHostPort(hostname)
+			return host
+		}
+		return knownhosts.Normalize(hostname)
 	}
-	tmpPath := tmp.Name()
-	defer os.Remove(tmpPath)
-
-	if err := tmp.Chmod(0600); err != nil {
-		tmp.Close()
-		return fmt.Errorf("设置临时 known_hosts 权限失败: %w", err)
+	if tcp, ok := remote.(*net.TCPAddr); ok && tcp.Port != 22 {
+		return knownhosts.Normalize(net.JoinHostPort(hostname, strconv.Itoa(tcp.Port)))
 	}
-
-	// Write existing content + new line
-	if _, err := tmp.Write(existing); err != nil {
-		tmp.Close()
-		return fmt.Errorf("写入 known_hosts 失败: %w", err)
-	}
-	if _, err := tmp.WriteString(line); err != nil {
-		tmp.Close()
-		return fmt.Errorf("写入 known_hosts 失败: %w", err)
-	}
-	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("关闭临时 known_hosts 失败: %w", err)
-	}
-
-	if err := os.Rename(tmpPath, khPath); err != nil {
-		return fmt.Errorf("替换 known_hosts 失败: %w", err)
-	}
-
-	return nil
+	return hostname
 }
 
 // NativeConnectPassword connects using Go native SSH with password auth.
@@ -221,26 +211,42 @@ func NativeConnectPassword(h config.Host, password string) error {
 	session.Stderr = os.Stderr
 
 	sigCh := make(chan os.Signal, 1)
+	done := make(chan struct{})
 	signal.Notify(sigCh, syscallSignal())
 	go func() {
-		for range sigCh {
-			if w, h, err := term.GetSize(fd); err == nil {
-				session.WindowChange(h, w)
+		for {
+			select {
+			case <-done:
+				return
+			case <-sigCh:
+				if w, h, err := term.GetSize(fd); err == nil {
+					_ = session.WindowChange(h, w)
+				}
 			}
 		}
 	}()
-	defer signal.Stop(sigCh)
+	defer func() {
+		close(done)
+		signal.Stop(sigCh)
+	}()
 
 	if err := session.Shell(); err != nil {
 		return fmt.Errorf("启动 Shell 失败: %w", err)
 	}
 
-	session.Wait()
+	if err := session.Wait(); err != nil {
+		return fmt.Errorf("远程会话异常结束: %w", err)
+	}
 	return nil
 }
 
 // NativeExec runs a command using Go native SSH with password auth.
 func NativeExec(h config.Host, password string, command string) (string, error) {
+	return NativeExecContext(context.Background(), h, password, command)
+}
+
+// NativeExecContext runs a password-authenticated command with cancellation.
+func NativeExecContext(ctx context.Context, h config.Host, password string, command string) (string, error) {
 	hostKeyCB, err := createHostKeyCallback()
 	if err != nil {
 		return "", fmt.Errorf("主机密钥回调失败: %w", err)
@@ -268,8 +274,22 @@ func NativeExec(h config.Host, password string, command string) (string, error) 
 	}
 	defer session.Close()
 
-	output, err := session.CombinedOutput(command)
-	return string(output), err
+	type result struct {
+		output []byte
+		err    error
+	}
+	done := make(chan result, 1)
+	go func() {
+		output, err := session.CombinedOutput(command)
+		done <- result{output: output, err: err}
+	}()
+	select {
+	case <-ctx.Done():
+		_ = client.Close()
+		return "", fmt.Errorf("远程命令超时或取消: %w", ctx.Err())
+	case result := <-done:
+		return string(result.output), result.err
+	}
 }
 
 // NativePing checks connectivity using Go native SSH with password auth.

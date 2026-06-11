@@ -1,14 +1,18 @@
 package command
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
 	"strings"
+	"sync"
+	"time"
 
-	"github.com/sshm/sshm/internal/secret"
-	"github.com/sshm/sshm/internal/sshx"
-	"github.com/sshm/sshm/internal/ui"
+	"github.com/fanhuadesenlinnn/sshm/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/internal/secret"
+	"github.com/fanhuadesenlinnn/sshm/internal/sshx"
+	"github.com/fanhuadesenlinnn/sshm/internal/ui"
 )
 
 func (app *App) cmdExec(args []string) error {
@@ -45,21 +49,16 @@ func (app *App) cmdExecGroup(args []string) error {
 		return err
 	}
 
-	fs := app.tryGetSecretStore()
-
+	var hosts []config.Host
 	for _, h := range hf.Hosts {
-		if h.Group != group {
-			continue
+		if h.Group == group {
+			hosts = append(hosts, h)
 		}
-		fmt.Println()
-		ui.PrintHeader(fmt.Sprintf("=== %s (%s@%s) ===", h.Alias, h.User, h.Host))
-		output, err := sshx.ExecCommand(h, fs, command)
-		if err != nil {
-			ui.PrintError("执行失败: %v", err)
-		}
-		fmt.Print(output)
 	}
-	return nil
+	if len(hosts) == 0 {
+		return fmt.Errorf("分组 %q 不存在或没有主机", group)
+	}
+	return app.executeBatch(hosts, command)
 }
 
 func (app *App) cmdExecAll(args []string) error {
@@ -74,16 +73,56 @@ func (app *App) cmdExecAll(args []string) error {
 		return err
 	}
 
-	fs := app.tryGetSecretStore()
+	if len(hf.Hosts) == 0 {
+		return fmt.Errorf("暂无主机可执行")
+	}
+	return app.executeBatch(hf.Hosts, command)
+}
 
-	for _, h := range hf.Hosts {
+type batchExecResult struct {
+	host   config.Host
+	output string
+	err    error
+}
+
+func (app *App) executeBatch(hosts []config.Host, command string) error {
+	fs := app.tryGetSecretStore()
+	results := make([]batchExecResult, len(hosts))
+	jobs := make(chan int)
+	var wg sync.WaitGroup
+	workers := min(4, len(hosts))
+	for range workers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range jobs {
+				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				output, err := sshx.ExecCommandContext(ctx, hosts[i], fs, command)
+				cancel()
+				results[i] = batchExecResult{host: hosts[i], output: output, err: err}
+			}
+		}()
+	}
+	for i := range hosts {
+		jobs <- i
+	}
+	close(jobs)
+	wg.Wait()
+
+	failed := 0
+	for _, result := range results {
 		fmt.Println()
-		ui.PrintHeader(fmt.Sprintf("=== %s (%s@%s) ===", h.Alias, h.User, h.Host))
-		output, err := sshx.ExecCommand(h, fs, command)
-		if err != nil {
-			ui.PrintError("执行失败: %v", err)
+		ui.PrintHeader(fmt.Sprintf("=== %s (%s@%s) ===", result.host.Alias, result.host.User, result.host.Host))
+		if result.err != nil {
+			failed++
+			ui.PrintError("执行失败: %v", result.err)
 		}
-		fmt.Print(output)
+		fmt.Print(result.output)
+	}
+	fmt.Println()
+	fmt.Printf("批量执行完成：成功 %d，失败 %d\n", len(results)-failed, failed)
+	if failed > 0 {
+		return fmt.Errorf("批量执行有 %d 台主机失败", failed)
 	}
 	return nil
 }
@@ -92,6 +131,9 @@ func (app *App) cmdExecAll(args []string) error {
 // Allows up to 3 retries before giving up.
 // Returns nil if no secrets file exists, stdin is not a terminal, or authentication fails.
 func (app *App) tryGetSecretStore() *secret.FileStore {
+	if app.secretStore != nil {
+		return app.secretStore
+	}
 	// If no secrets file exists, return nil
 	if _, err := os.Stat(app.SecretPath); os.IsNotExist(err) {
 		return nil
@@ -110,6 +152,10 @@ func (app *App) tryGetSecretStore() *secret.FileStore {
 		fs := secret.NewFileStore(app.SecretPath, pass)
 		err = fs.VerifyPassphrase()
 		if err == nil {
+			app.secretStore = fs
+			if migrateErr := app.migratePasswordRefs(fs); migrateErr != nil {
+				fmt.Fprintln(os.Stderr, ui.Warn("迁移旧密码引用失败: %v", migrateErr))
+			}
 			return fs
 		}
 		if !errors.Is(err, secret.ErrIncorrectPassphrase) {

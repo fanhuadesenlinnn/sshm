@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
+	"sync/atomic"
+	"time"
 )
 
 // Host represents a single SSH host entry.
@@ -30,11 +32,17 @@ type HostsFile struct {
 }
 
 var aliasRegexp = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+var fallbackIDCounter uint64
 
-// NewID generates a short stable identifier (12 hex chars).
+// NewID generates a stable 128-bit identifier.
 func NewID() string {
-	b := make([]byte, 6)
-	_, _ = rand.Read(b)
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		seed := uint64(time.Now().UnixNano()) ^ atomic.AddUint64(&fallbackIDCounter, 1)
+		for i := range b {
+			b[i] = byte(seed >> ((i % 8) * 8))
+		}
+	}
 	return hex.EncodeToString(b)
 }
 

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/sshm/sshm/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/internal/config"
 )
 
 // displayWidth returns the terminal display width of a string.
@@ -190,7 +190,7 @@ func RenderHostDetail(h config.Host, index int) {
 }
 
 // RenderSearchResults renders search results.
-func RenderSearchResults(hosts []config.Host, keyword string) {
+func RenderSearchResults(hosts []config.Host, indices []int, keyword string) {
 	if len(hosts) == 0 {
 		fmt.Println("  (未找到匹配主机)")
 		return
@@ -218,7 +218,7 @@ func RenderSearchResults(hosts []config.Host, keyword string) {
 	fmt.Println("  " + strings.Repeat("-", sepWidth-2))
 
 	for i, h := range hosts {
-		id := fmt.Sprintf("%d", i+1)
+		id := fmt.Sprintf("%d", indices[i]+1)
 		alias := truncateToWidth(h.Alias, colAlias)
 		addr := truncateToWidth(h.User+"@"+h.Host, colAddr)
 		port := fmt.Sprintf("%d", h.Port)

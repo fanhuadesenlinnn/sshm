@@ -5,10 +5,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/sshm/sshm/internal/config"
-	"github.com/sshm/sshm/internal/secret"
-	"github.com/sshm/sshm/internal/sshx"
-	"github.com/sshm/sshm/internal/ui"
+	"github.com/fanhuadesenlinnn/sshm/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/internal/secret"
+	"github.com/fanhuadesenlinnn/sshm/internal/sshx"
+	"github.com/fanhuadesenlinnn/sshm/internal/ui"
 )
 
 func (app *App) interactiveMode() error {
@@ -17,7 +17,10 @@ func (app *App) interactiveMode() error {
 	fmt.Println()
 
 	// Show host list at startup
-	hf, _ := app.Store.Load()
+	hf, err := app.Store.Load()
+	if err != nil {
+		return fmt.Errorf("加载主机配置失败: %w", err)
+	}
 	ui.RenderHostsTable(hf.Hosts)
 
 	fmt.Printf("输入 %s 查看可用命令，输入 %s 退出\n", ui.CyanText("h"), ui.CyanText("q"))
@@ -79,6 +82,9 @@ func (app *App) interactiveMode() error {
 			err = app.cmdShowPubkey(args)
 		case "auth":
 			err = app.cmdAuth(args)
+		case "lock":
+			app.lockSecretStore()
+			ui.PrintSuccess("当前会话密码库已锁定")
 		case "help", "h":
 			app.printInteractiveHelp()
 		case "exit", "quit", "q":
@@ -158,10 +164,17 @@ func (app *App) cmdConnect(args []string) error {
 	if h.PasswordRef != "" && fs != nil {
 		pass, perr := fs.GetPassword(h.PasswordRef)
 		if perr == nil {
-			if err := sshx.NativeConnectPassword(*h, pass); err == nil {
-				return nil
+			if len(extraArgs) > 0 {
+				fmt.Fprintln(os.Stderr, "密码连接不支持额外 SSH 参数，回退到系统 SSH...")
+				return sshx.ConnectSystem(*h, extraArgs)
 			}
-			fmt.Fprintf(os.Stderr, "密码连接失败: %v\n", perr)
+			if connErr := sshx.NativeConnectPassword(*h, pass); connErr == nil {
+				return nil
+			} else {
+				fmt.Fprintf(os.Stderr, "密码连接失败: %v\n", connErr)
+			}
+		} else {
+			fmt.Fprintf(os.Stderr, "读取保存密码失败: %v\n", perr)
 		}
 	}
 
@@ -171,6 +184,9 @@ func (app *App) cmdConnect(args []string) error {
 
 // connectWithPassword handles AuthPassword strategy.
 func (app *App) connectWithPassword(h config.Host, fs *secret.FileStore, extraArgs []string) error {
+	if len(extraArgs) > 0 {
+		return fmt.Errorf("password 认证不支持额外 SSH 参数；请改用 system/ask 认证策略")
+	}
 	if h.PasswordRef != "" && fs != nil {
 		pass, err := fs.GetPassword(h.PasswordRef)
 		if err == nil {
@@ -183,6 +199,9 @@ func (app *App) connectWithPassword(h config.Host, fs *secret.FileStore, extraAr
 
 // promptAndConnect prompts for SSH password, connects, and offers to save.
 func (app *App) promptAndConnect(h config.Host, fs *secret.FileStore, extraArgs []string) error {
+	if len(extraArgs) > 0 {
+		return fmt.Errorf("密码连接不支持额外 SSH 参数；请改用 system/ask 认证策略")
+	}
 	pass, err := ui.ReadPassword("请输入 SSH 密码: ")
 	if err != nil {
 		ui.PrintWarn("读取密码失败，回退到系统 SSH")
@@ -199,7 +218,11 @@ func (app *App) promptAndConnect(h config.Host, fs *secret.FileStore, extraArgs 
 	fmt.Println()
 	if ui.ReadYesNo("是否保存此密码以供下次使用？[y/N]: ") {
 		if fs == nil {
-			fs = app.tryGetSecretStore()
+			var storeErr error
+			fs, storeErr = app.requireSecretStore()
+			if storeErr != nil {
+				return fmt.Errorf("保存密码前解锁密码库失败: %w", storeErr)
+			}
 		}
 		if fs != nil {
 			// Use stable ID as the key
@@ -219,7 +242,9 @@ func (app *App) promptAndConnect(h config.Host, fs *secret.FileStore, extraArgs 
 							if hf.Hosts[i].Auth == "" || hf.Hosts[i].Auth == "auto" {
 								hf.Hosts[i].Auth = "auto"
 							}
-							_ = app.Store.Save(hf)
+							if err := app.Store.Save(hf); err != nil {
+								return fmt.Errorf("密码已保存，但更新主机配置失败: %w", err)
+							}
 							break
 						}
 					}

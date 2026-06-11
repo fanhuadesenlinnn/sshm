@@ -1,13 +1,16 @@
 package keymgr
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 
-	"github.com/sshm/sshm/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/internal/safefile"
+	"golang.org/x/crypto/ssh"
 )
 
 // ImportKey copies a private key into the sshm keys directory.
@@ -32,20 +35,50 @@ func ImportKey(alias string, srcPath string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("读取私钥失败: %w", err)
 	}
-	if err := os.WriteFile(destPath, srcData, 0600); err != nil {
-		return "", fmt.Errorf("写入私钥失败: %w", err)
+	if _, err := ssh.ParseRawPrivateKey(srcData); err != nil {
+		var passphraseErr *ssh.PassphraseMissingError
+		if !errors.As(err, &passphraseErr) {
+			return "", fmt.Errorf("文件不是可解析的 SSH 私钥: %w", err)
+		}
 	}
-
-	// Copy public key if exists
+	var pubData []byte
 	pubSrcPath := srcPath + ".pub"
 	if _, err := os.Stat(pubSrcPath); err == nil {
-		pubData, err := os.ReadFile(pubSrcPath)
-		if err == nil {
+		pubData, err = os.ReadFile(pubSrcPath)
+		if err != nil {
+			return "", fmt.Errorf("读取公钥失败: %w", err)
+		}
+	} else if !os.IsNotExist(err) {
+		return "", fmt.Errorf("检查公钥失败: %w", err)
+	}
+
+	if err := safefile.WithLock(destPath, func() error {
+		if _, err := os.Stat(destPath); err == nil {
+			return fmt.Errorf("目标密钥已存在，拒绝覆盖: %s", destPath)
+		} else if !os.IsNotExist(err) {
+			return fmt.Errorf("检查目标密钥失败: %w", err)
+		}
+		if pubData != nil {
 			pubDestPath := destPath + ".pub"
-			if err := os.WriteFile(pubDestPath, pubData, 0644); err != nil {
-				return "", fmt.Errorf("写入公钥失败: %w", err)
+			if _, err := os.Stat(pubDestPath); err == nil {
+				return fmt.Errorf("目标公钥已存在，拒绝覆盖: %s", pubDestPath)
+			} else if !os.IsNotExist(err) {
+				return fmt.Errorf("检查目标公钥失败: %w", err)
 			}
 		}
+		if err := safefile.Write(destPath, srcData, 0600, false); err != nil {
+			return fmt.Errorf("写入私钥失败: %w", err)
+		}
+		if pubData != nil {
+			pubDestPath := destPath + ".pub"
+			if err := safefile.Write(pubDestPath, pubData, 0644, false); err != nil {
+				_ = os.Remove(destPath)
+				return fmt.Errorf("写入公钥失败: %w", err)
+			}
+		}
+		return nil
+	}); err != nil {
+		return "", err
 	}
 
 	relativePath := "keys/" + destName
@@ -81,9 +114,13 @@ func GenerateKey(alias string) (string, error) {
 	}
 
 	// Ensure proper permissions
-	os.Chmod(keyPath, 0600)
+	if err := os.Chmod(keyPath, 0600); err != nil {
+		return "", fmt.Errorf("设置私钥权限失败: %w", err)
+	}
 	if _, err := os.Stat(keyPath + ".pub"); err == nil {
-		os.Chmod(keyPath+".pub", 0644)
+		if err := os.Chmod(keyPath+".pub", 0644); err != nil {
+			return "", fmt.Errorf("设置公钥权限失败: %w", err)
+		}
 	}
 
 	relativePath := "keys/" + keyName
@@ -108,4 +145,35 @@ func ShowPubKey(host config.Host) (string, error) {
 	}
 
 	return strings.TrimSpace(string(data)), nil
+}
+
+// IsManagedKey reports whether identity is inside sshm's managed keys directory.
+func IsManagedKey(identity string) bool {
+	if identity == "" {
+		return false
+	}
+	keyPath, err := filepath.Abs(config.ExpandPath(identity))
+	if err != nil {
+		return false
+	}
+	keysDir, err := filepath.Abs(config.KeysDir())
+	if err != nil {
+		return false
+	}
+	rel, err := filepath.Rel(keysDir, keyPath)
+	return err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// RemoveManagedKey deletes only keys located inside sshm's managed keys directory.
+func RemoveManagedKey(identity string) error {
+	if !IsManagedKey(identity) {
+		return fmt.Errorf("拒绝删除 sshm 管理目录之外的密钥")
+	}
+	keyPath := config.ExpandPath(identity)
+	for _, path := range []string{keyPath, keyPath + ".pub"} {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("删除密钥 %s 失败: %w", path, err)
+		}
+	}
+	return nil
 }

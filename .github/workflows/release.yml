@@ -9,6 +9,9 @@ on:
 permissions:
   contents: write
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   test:
     name: Test
@@ -26,6 +29,9 @@ jobs:
         run: go vet ./...
 
       - name: Test
+        run: go test ./...
+
+      - name: Race
         run: go test -race ./...
 
       - name: Coverage
@@ -57,6 +63,10 @@ jobs:
           - os: windows
             arch: arm64
             runner: ubuntu-latest
+    env:
+      GOOS: ${{ matrix.os }}
+      GOARCH: ${{ matrix.arch }}
+      GOTOOLCHAIN: auto
 
     steps:
       - name: Checkout
@@ -69,25 +79,20 @@ jobs:
 
       - name: Build
         shell: bash
-        env:
-          GOOS: ${{ matrix.os }}
-          GOARCH: ${{ matrix.arch }}
-          GOTOOLCHAIN: auto
         run: |
           BINARY="sshm"
           if [ "$GOOS" = "windows" ]; then
             BINARY="sshm.exe"
           fi
-          go build -ldflags="-s -w -X github.com/sshm/sshm/internal/command.Version=${{ github.ref_name }}" -o "${BINARY}" .
+          go build -ldflags="-s -w -X github.com/fanhuadesenlinnn/sshm/internal/command.Version=${{ github.ref_name }}" -o "${BINARY}" .
 
       - name: Verify version
         shell: bash
         run: |
-          if [ "$GOOS" = "windows" ]; then
-            echo "Version check skipped on cross-compiled Windows"
-          else
-            ./sshm --version || echo "Version check: binary built successfully"
-          fi
+          BINARY="sshm"
+          if [ "$GOOS" = "windows" ]; then BINARY="sshm.exe"; fi
+          go version -m "$BINARY" | tee version.txt
+          grep -F "github.com/fanhuadesenlinnn/sshm/internal/command.Version=${{ github.ref_name }}" version.txt
 
       - name: Package (Linux / macOS)
         if: matrix.os != 'windows'

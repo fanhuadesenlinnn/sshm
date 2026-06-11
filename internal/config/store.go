@@ -3,10 +3,12 @@ package config
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 
+	"github.com/fanhuadesenlinnn/sshm/internal/safefile"
 	"gopkg.in/yaml.v3"
 )
+
+const CurrentVersion = 2
 
 // Store manages host configuration persistence.
 type Store struct {
@@ -29,71 +31,61 @@ func (s *Store) Path() string { return s.path }
 // Load reads and parses hosts.yaml.  Missing IDs are filled automatically.
 // v1 configs (without IDs) are migrated transparently.
 func (s *Store) Load() (*HostsFile, error) {
+	var hf *HostsFile
+	err := safefile.WithLock(s.path, func() error {
+		var err error
+		hf, err = s.loadUnlocked(true)
+		return err
+	})
+	return hf, err
+}
+
+func (s *Store) loadUnlocked(persistMigration bool) (*HostsFile, error) {
 	data, err := os.ReadFile(s.path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return &HostsFile{Version: 1, Hosts: []Host{}}, nil
+			return &HostsFile{Version: CurrentVersion, Hosts: []Host{}}, nil
 		}
-		return nil, fmt.Errorf("读取配置文件失败: %w", err)
+		return nil, fmt.Errorf("读取配置文件失败（可检查备份 %s.bak）: %w", s.path, err)
 	}
 	var hf HostsFile
 	if err := yaml.Unmarshal(data, &hf); err != nil {
-		return nil, fmt.Errorf("解析配置文件失败: %w", err)
-	}
-	if hf.Version == 0 {
-		hf.Version = 1
+		return nil, fmt.Errorf("解析配置文件失败（主文件未修改，可检查备份 %s.bak）: %w", s.path, err)
 	}
 	if hf.Hosts == nil {
 		hf.Hosts = []Host{}
 	}
-	// Ensure every host has a stable ID
-	if hf.EnsureIDs() {
-		// Persist the back-filled IDs immediately (best-effort)
-		_ = s.Save(&hf)
+	changed := hf.EnsureIDs()
+	if hf.Version < CurrentVersion {
+		hf.Version = CurrentVersion
+		changed = true
+	}
+	if changed && persistMigration {
+		if err := s.saveUnlocked(&hf); err != nil {
+			return nil, fmt.Errorf("迁移配置到 v%d 失败，原文件已保留: %w", CurrentVersion, err)
+		}
 	}
 	return &hf, nil
 }
 
-// Save writes hosts.yaml with proper permissions using an atomic rename.
+// Save writes hosts.yaml with a backup and atomic rename.
 func (s *Store) Save(hf *HostsFile) error {
-	if hf.Version == 0 {
-		hf.Version = 1
+	return safefile.WithLock(s.path, func() error {
+		return s.saveUnlocked(hf)
+	})
+}
+
+func (s *Store) saveUnlocked(hf *HostsFile) error {
+	hf.Version = CurrentVersion
+	hf.EnsureIDs()
+	if dups := hf.DuplicateAliases(); len(dups) > 0 {
+		return fmt.Errorf("配置包含重复别名: %v", dups)
 	}
 	data, err := yaml.Marshal(hf)
 	if err != nil {
 		return fmt.Errorf("序列化配置失败: %w", err)
 	}
-
-	dir := filepath.Dir(s.path)
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		return fmt.Errorf("创建配置目录失败: %w", err)
-	}
-
-	// Atomic write: temp file + rename
-	tmp, err := os.CreateTemp(dir, ".hosts-*.yaml")
-	if err != nil {
-		return fmt.Errorf("创建临时文件失败: %w", err)
-	}
-	tmpPath := tmp.Name()
-	defer os.Remove(tmpPath)
-
-	if err := tmp.Chmod(0600); err != nil {
-		tmp.Close()
-		return fmt.Errorf("设置临时文件权限失败: %w", err)
-	}
-	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		return fmt.Errorf("写入临时文件失败: %w", err)
-	}
-	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("关闭临时文件失败: %w", err)
-	}
-
-	if err := os.Rename(tmpPath, s.path); err != nil {
-		return fmt.Errorf("原子替换配置文件失败: %w", err)
-	}
-
-	return nil
+	return safefile.Write(s.path, data, 0600, true)
 }
 
 // FindByAlias searches for a host by alias.
@@ -165,51 +157,55 @@ func parseID(s string) int {
 
 // Add appends a host to the store after checking for duplicate aliases.
 func (s *Store) Add(h Host) error {
-	hf, err := s.Load()
-	if err != nil {
-		return err
-	}
-	// Check for duplicate alias
-	for _, existing := range hf.Hosts {
-		if existing.Alias == h.Alias {
-			return fmt.Errorf("别名 '%s' 已存在", h.Alias)
+	return safefile.WithLock(s.path, func() error {
+		hf, err := s.loadUnlocked(false)
+		if err != nil {
+			return err
 		}
-	}
-	if h.ID == "" {
-		h.ID = NewID()
-	}
-	hf.Hosts = append(hf.Hosts, h)
-	return s.Save(hf)
+		for _, existing := range hf.Hosts {
+			if existing.Alias == h.Alias {
+				return fmt.Errorf("别名 '%s' 已存在", h.Alias)
+			}
+		}
+		if h.ID == "" {
+			h.ID = NewID()
+		}
+		hf.Hosts = append(hf.Hosts, h)
+		return s.saveUnlocked(hf)
+	})
 }
 
 // Update replaces a host at the given index after duplicate check.
 func (s *Store) Update(idx int, h Host) error {
-	hf, err := s.Load()
-	if err != nil {
-		return err
-	}
-	if idx < 0 || idx >= len(hf.Hosts) {
-		return fmt.Errorf("索引 %d 超出范围", idx)
-	}
-	// Check for duplicate alias (skip self)
-	for i, existing := range hf.Hosts {
-		if i != idx && existing.Alias == h.Alias {
-			return fmt.Errorf("别名 '%s' 已存在", h.Alias)
+	return safefile.WithLock(s.path, func() error {
+		hf, err := s.loadUnlocked(false)
+		if err != nil {
+			return err
 		}
-	}
-	hf.Hosts[idx] = h
-	return s.Save(hf)
+		if idx < 0 || idx >= len(hf.Hosts) {
+			return fmt.Errorf("索引 %d 超出范围", idx)
+		}
+		for i, existing := range hf.Hosts {
+			if i != idx && existing.Alias == h.Alias {
+				return fmt.Errorf("别名 '%s' 已存在", h.Alias)
+			}
+		}
+		hf.Hosts[idx] = h
+		return s.saveUnlocked(hf)
+	})
 }
 
 // Remove deletes a host at the given index.
 func (s *Store) Remove(idx int) error {
-	hf, err := s.Load()
-	if err != nil {
-		return err
-	}
-	if idx < 0 || idx >= len(hf.Hosts) {
-		return fmt.Errorf("索引 %d 超出范围", idx)
-	}
-	hf.Hosts = append(hf.Hosts[:idx], hf.Hosts[idx+1:]...)
-	return s.Save(hf)
+	return safefile.WithLock(s.path, func() error {
+		hf, err := s.loadUnlocked(false)
+		if err != nil {
+			return err
+		}
+		if idx < 0 || idx >= len(hf.Hosts) {
+			return fmt.Errorf("索引 %d 超出范围", idx)
+		}
+		hf.Hosts = append(hf.Hosts[:idx], hf.Hosts[idx+1:]...)
+		return s.saveUnlocked(hf)
+	})
 }

@@ -1,11 +1,16 @@
 package sshx
 
 import (
+	"crypto/ed25519"
+	"crypto/rand"
+	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
-	"github.com/sshm/sshm/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/internal/config"
+	"golang.org/x/crypto/ssh"
 )
 
 func TestGetAuthStrategy(t *testing.T) {
@@ -74,6 +79,46 @@ func TestCreateHostKeyCallbackNoKnownHosts(t *testing.T) {
 	}
 	if cb == nil {
 		t.Fatal("createHostKeyCallback() returned nil")
+	}
+}
+
+func TestCreateHostKeyCallbackRejectsCorruptKnownHosts(t *testing.T) {
+	origHome := os.Getenv("HOME")
+	defer os.Setenv("HOME", origHome)
+
+	tmpDir := t.TempDir()
+	os.Setenv("HOME", tmpDir)
+	if err := os.MkdirAll(filepath.Join(tmpDir, ".ssh"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, ".ssh", "known_hosts"), []byte("corrupt line"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := createHostKeyCallback(); err == nil {
+		t.Fatal("createHostKeyCallback() should reject corrupt known_hosts")
+	}
+}
+
+func TestAppendToKnownHostsUsesBracketedNonDefaultPort(t *testing.T) {
+	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicKey, err := ssh.NewPublicKey(privateKey.Public())
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "known_hosts")
+	remote := &net.TCPAddr{IP: net.ParseIP("192.0.2.10"), Port: 2222}
+	if err := appendToKnownHosts(path, "example.com", remote, publicKey); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(string(data), "[example.com]:2222 ") {
+		t.Fatalf("known_hosts line = %q", data)
 	}
 }
 

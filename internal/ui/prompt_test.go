@@ -11,9 +11,9 @@ func TestVisualLength(t *testing.T) {
 	}{
 		{"hello", 5},
 		{"", 0},
-		{"你好", 2},   // visualLength counts runes, not display width
-		{"a你好b", 4}, // 4 runes
-		{"日本語", 3},  // 3 runes
+		{"你好", 4},
+		{"a你好b", 6},
+		{"日本語", 6},
 		{"test123", 7},
 		{"a b", 3},
 	}

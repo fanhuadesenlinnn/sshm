@@ -1,5 +1,8 @@
 name: Test
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 on:
   push:
     branches: [main]
@@ -27,6 +30,9 @@ jobs:
         run: go vet ./...
 
       - name: Test
+        run: go test ./...
+
+      - name: Race
         run: go test -race ./...
 
       - name: Coverage

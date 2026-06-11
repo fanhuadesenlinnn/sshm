@@ -1,8 +1,8 @@
 package command
 
 import (
-	"github.com/sshm/sshm/internal/config"
-	"github.com/sshm/sshm/internal/ui"
+	"github.com/fanhuadesenlinnn/sshm/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/internal/ui"
 )
 
 func (app *App) cmdGroup(args []string) error {

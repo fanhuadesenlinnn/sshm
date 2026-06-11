@@ -3,9 +3,10 @@ package command
 import (
 	"fmt"
 
-	"github.com/sshm/sshm/internal/config"
-	"github.com/sshm/sshm/internal/keymgr"
-	"github.com/sshm/sshm/internal/ui"
+	"github.com/fanhuadesenlinnn/sshm/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/internal/keymgr"
+	"github.com/fanhuadesenlinnn/sshm/internal/secret"
+	"github.com/fanhuadesenlinnn/sshm/internal/ui"
 )
 
 func (app *App) cmdAdd(args []string) error {
@@ -104,29 +105,25 @@ func (app *App) cmdAdd(args []string) error {
 		return fmt.Errorf("输入校验失败")
 	}
 
-	// Save host first
-	if err := app.Store.Add(h); err != nil {
-		return fmt.Errorf("添加主机失败: %w", err)
+	var fs *secret.FileStore
+	if savePass && sshPassword != "" {
+		fs, err = app.requireSecretStore()
+		if err != nil {
+			return fmt.Errorf("无法访问密码存储: %w", err)
+		}
+		if err := fs.SetPasswordByID(h.ID, h.Alias, sshPassword); err != nil {
+			return fmt.Errorf("保存密码失败: %w", err)
+		}
+		h.PasswordRef = h.ID
 	}
 
-	// Save password if requested
-	if savePass && sshPassword != "" {
-		fs := app.tryGetSecretStore()
+	if err := app.Store.Add(h); err != nil {
 		if fs != nil {
-			if err := fs.SetPasswordByID(h.ID, h.Alias, sshPassword); err != nil {
-				ui.PrintWarn("保存密码失败: %v", err)
-			} else {
-				// Update host with password_ref using stable ID
-				hf, _ := app.Store.Load()
-				for i := range hf.Hosts {
-					if hf.Hosts[i].Alias == h.Alias {
-						hf.Hosts[i].PasswordRef = h.ID
-						_ = app.Store.Save(hf)
-						break
-					}
-				}
+			if cleanupErr := fs.RemovePasswords(h.ID, h.Alias); cleanupErr != nil {
+				return fmt.Errorf("添加主机失败: %v；回滚密码失败: %w", err, cleanupErr)
 			}
 		}
+		return fmt.Errorf("添加主机失败: %w", err)
 	}
 
 	// Print summary

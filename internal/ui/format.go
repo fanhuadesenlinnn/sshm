@@ -3,6 +3,8 @@ package ui
 import (
 	"fmt"
 	"os"
+
+	"golang.org/x/term"
 )
 
 // Colors
@@ -22,7 +24,7 @@ const (
 var noColor bool
 
 func init() {
-	noColor = os.Getenv("NO_COLOR") != ""
+	noColor = os.Getenv("NO_COLOR") != "" || !term.IsTerminal(int(os.Stdout.Fd()))
 }
 
 // colorize wraps text in color codes if color is enabled.

@@ -3,8 +3,8 @@ package command
 import (
 	"strings"
 
-	"github.com/sshm/sshm/internal/config"
-	"github.com/sshm/sshm/internal/ui"
+	"github.com/fanhuadesenlinnn/sshm/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/internal/ui"
 )
 
 func (app *App) cmdSearch(args []string) error {
@@ -25,13 +25,15 @@ func (app *App) cmdSearch(args []string) error {
 
 	keyword = strings.ToLower(keyword)
 	var results []config.Host
-	for _, h := range hf.Hosts {
+	var indices []int
+	for i, h := range hf.Hosts {
 		if matchHost(h, keyword) {
 			results = append(results, h)
+			indices = append(indices, i)
 		}
 	}
 
-	ui.RenderSearchResults(results, keyword)
+	ui.RenderSearchResults(results, indices, keyword)
 	return nil
 }
 

@@ -105,6 +105,7 @@ func (ed *lineEditor) run() string {
 
 	var escSeq [8]byte
 	escLen := 0
+	var runeBytes []byte
 
 	buf := make([]byte, 1)
 	for {
@@ -162,10 +163,20 @@ func (ed *lineEditor) run() string {
 			ed.redraw()
 
 		default:
-			// Printable character
 			if b >= 32 && b < 127 {
+				runeBytes = runeBytes[:0]
 				ed.insert(rune(b))
 				ed.redraw()
+			} else if b >= utf8.RuneSelf {
+				runeBytes = append(runeBytes, b)
+				if utf8.FullRune(runeBytes) {
+					r, size := utf8.DecodeRune(runeBytes)
+					if r != utf8.RuneError || size > 1 {
+						ed.insert(r)
+						ed.redraw()
+					}
+					runeBytes = runeBytes[:0]
+				}
 			}
 		}
 	}
@@ -415,7 +426,7 @@ func addToHistory(line string) {
 
 // visualLength estimates the terminal column width of a string.
 func visualLength(s string) int {
-	return utf8.RuneCountInString(s)
+	return displayWidth(s)
 }
 
 // readLineFallback reads a line without raw mode (for piped/redirected input).

@@ -5,8 +5,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/sshm/sshm/internal/config"
-	"github.com/sshm/sshm/internal/ui"
+	"github.com/fanhuadesenlinnn/sshm/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/internal/safefile"
+	"github.com/fanhuadesenlinnn/sshm/internal/ui"
 )
 
 func (app *App) cmdExportSSHConfig(args []string) error {
@@ -17,7 +18,7 @@ func (app *App) cmdExportSSHConfig(args []string) error {
 
 	outPath := config.SSHConfigPath()
 	if len(args) > 0 {
-		outPath = args[0]
+		outPath = config.ExpandPath(args[0])
 	}
 
 	var lines []string
@@ -32,13 +33,13 @@ func (app *App) cmdExportSSHConfig(args []string) error {
 		lines = append(lines, fmt.Sprintf("    Port %d", h.Port))
 		if h.Identity != "" {
 			identityPath := config.ExpandPath(h.Identity)
-			lines = append(lines, fmt.Sprintf("    IdentityFile %s", identityPath))
+			lines = append(lines, fmt.Sprintf("    IdentityFile %s", quoteSSHValue(identityPath)))
 		}
 		lines = append(lines, "")
 	}
 
 	content := strings.Join(lines, "\n")
-	if err := os.WriteFile(outPath, []byte(content), 0600); err != nil {
+	if err := safefile.Write(outPath, []byte(content), 0600, true); err != nil {
 		return fmt.Errorf("写入 SSH 配置失败: %w", err)
 	}
 
@@ -62,6 +63,7 @@ func (app *App) cmdImportSSHConfig(args []string) error {
 		}
 	}
 
+	srcPath = config.ExpandPath(srcPath)
 	data, err := os.ReadFile(srcPath)
 	if err != nil {
 		return fmt.Errorf("读取 SSH 配置失败: %w", err)
@@ -92,7 +94,10 @@ func (app *App) cmdImportSSHConfig(args []string) error {
 			ui.PrintWarn("别名 %s 已存在，跳过", h.Alias)
 			continue
 		}
-		h.Auth = "auto"
+		if errs := h.Validate(); len(errs) > 0 {
+			ui.PrintWarn("主机 %s 配置无效，跳过: %s", h.Alias, strings.Join(errs, "; "))
+			continue
+		}
 		hf.Hosts = append(hf.Hosts, h)
 		imported++
 	}
@@ -113,8 +118,31 @@ func (app *App) cmdImportSSHConfig(args []string) error {
 func parseSSHConfig(content string) []config.Host {
 	var hosts []config.Host
 	lines := strings.Split(content, "\n")
+	defaultUser := os.Getenv("USER")
+	if defaultUser == "" {
+		defaultUser = "root"
+	}
 
-	var current *config.Host
+	var aliases []string
+	current := config.DefaultHost()
+	current.Host = ""
+	current.User = defaultUser
+	flush := func() {
+		for _, alias := range aliases {
+			h := current
+			h.ID = config.NewID()
+			h.Alias = alias
+			if h.Host == "" {
+				h.Host = alias
+			}
+			hosts = append(hosts, h)
+		}
+		aliases = nil
+		current = config.DefaultHost()
+		current.Host = ""
+		current.User = defaultUser
+	}
+
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
@@ -127,45 +155,43 @@ func parseSSHConfig(content string) []config.Host {
 		}
 
 		keyword := strings.ToLower(parts[0])
-		value := strings.Join(parts[1:], " ")
+		value := strings.Trim(strings.Join(parts[1:], " "), `"'`)
 
 		switch keyword {
 		case "host":
-			if current != nil && current.Alias != "" {
-				hosts = append(hosts, *current)
-			}
-			// Skip wildcard hosts
-			if strings.Contains(value, "*") || strings.Contains(value, "?") {
-				current = nil
-				continue
-			}
-			current = &config.Host{
-				Alias: value,
-				Port:  22,
-				Auth:  "auto",
+			flush()
+			for _, alias := range parts[1:] {
+				alias = strings.Trim(alias, `"'`)
+				if !strings.ContainsAny(alias, "*?!") {
+					aliases = append(aliases, alias)
+				}
 			}
 		case "hostname":
-			if current != nil {
+			if len(aliases) > 0 {
 				current.Host = value
 			}
 		case "user":
-			if current != nil {
+			if len(aliases) > 0 {
 				current.User = value
 			}
 		case "port":
-			if current != nil {
-				fmt.Sscanf(value, "%d", &current.Port)
+			if len(aliases) > 0 {
+				_, _ = fmt.Sscanf(value, "%d", &current.Port)
 			}
 		case "identityfile":
-			if current != nil {
+			if len(aliases) > 0 {
 				current.Identity = value
 			}
 		}
 	}
 
-	if current != nil && current.Alias != "" && current.Host != "" {
-		hosts = append(hosts, *current)
-	}
-
+	flush()
 	return hosts
+}
+
+func quoteSSHValue(value string) string {
+	if strings.ContainsAny(value, " \t") {
+		return `"` + strings.ReplaceAll(value, `"`, `\"`) + `"`
+	}
+	return value
 }

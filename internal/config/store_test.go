@@ -1,8 +1,11 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
 )
 
@@ -12,8 +15,8 @@ func TestStoreLoadEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if hf.Version != 1 {
-		t.Fatalf("Version = %d, want 1", hf.Version)
+	if hf.Version != CurrentVersion {
+		t.Fatalf("Version = %d, want %d", hf.Version, CurrentVersion)
 	}
 	if len(hf.Hosts) != 0 {
 		t.Fatalf("len(Hosts) = %d, want 0", len(hf.Hosts))
@@ -106,6 +109,9 @@ hosts:
 	}
 	if hf.Hosts[0].ID == "" {
 		t.Fatal("v1 migration did not fill ID")
+	}
+	if hf.Version != CurrentVersion {
+		t.Fatalf("Version = %d, want %d", hf.Version, CurrentVersion)
 	}
 	if hf.Hosts[0].Alias != "old-server" {
 		t.Fatalf("Alias = %q, want old-server", hf.Hosts[0].Alias)
@@ -209,6 +215,71 @@ func TestStoreAtomicWriteSurvives(t *testing.T) {
 		if filepath.Ext(e.Name()) == ".yaml" && e.Name() != "hosts.yaml" {
 			t.Fatalf("Temp file left behind: %s", e.Name())
 		}
+	}
+}
+
+func TestStoreSaveCreatesBackup(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "hosts.yaml")
+	store := NewStoreWithPath(path)
+	first := &HostsFile{Hosts: []Host{{ID: NewID(), Alias: "one", User: "root", Host: "one", Port: 22, Auth: "auto"}}}
+	if err := store.Save(first); err != nil {
+		t.Fatal(err)
+	}
+	second := &HostsFile{Hosts: []Host{{ID: NewID(), Alias: "two", User: "root", Host: "two", Port: 22, Auth: "auto"}}}
+	if err := store.Save(second); err != nil {
+		t.Fatal(err)
+	}
+	backup, err := os.ReadFile(path + ".bak")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(backup), "alias: one") {
+		t.Fatalf("backup does not contain previous config: %s", backup)
+	}
+}
+
+func TestStoreCorruptConfigIsNotOverwritten(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "hosts.yaml")
+	original := []byte("hosts: [not valid")
+	if err := os.WriteFile(path, original, 0600); err != nil {
+		t.Fatal(err)
+	}
+	store := NewStoreWithPath(path)
+	if _, err := store.Load(); err == nil {
+		t.Fatal("Load() should reject corrupt config")
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(original) {
+		t.Fatal("Load() overwrote corrupt config")
+	}
+}
+
+func TestStoreConcurrentAddsDoNotLoseUpdates(t *testing.T) {
+	store := NewStoreWithPath(filepath.Join(t.TempDir(), "hosts.yaml"))
+	var wg sync.WaitGroup
+	for i := 0; i < 12; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			h := DefaultHost()
+			h.Alias = fmt.Sprintf("server-%d", i)
+			h.User = "root"
+			h.Host = "example.com"
+			if err := store.Add(h); err != nil {
+				t.Errorf("Add(%d) error = %v", i, err)
+			}
+		}(i)
+	}
+	wg.Wait()
+	hf, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hf.Hosts) != 12 {
+		t.Fatalf("len(Hosts) = %d, want 12", len(hf.Hosts))
 	}
 }
 

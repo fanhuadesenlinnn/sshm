@@ -5,17 +5,18 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/sshm/sshm/internal/config"
-	"github.com/sshm/sshm/internal/secret"
-	"github.com/sshm/sshm/internal/ui"
+	"github.com/fanhuadesenlinnn/sshm/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/internal/secret"
+	"github.com/fanhuadesenlinnn/sshm/internal/ui"
 )
 
 var Version = "dev"
 
 // App holds shared state for all commands.
 type App struct {
-	Store      *config.Store
-	SecretPath string
+	Store       *config.Store
+	SecretPath  string
+	secretStore *secret.FileStore
 }
 
 // NewApp creates a new App with the default store.
@@ -79,6 +80,10 @@ func Run(args []string) error {
 		return app.cmdShowPubkey(args[1:])
 	case "--auth":
 		return app.cmdAuth(args[1:])
+	case "--lock":
+		app.lockSecretStore()
+		ui.PrintSuccess("当前会话密码库已锁定")
+		return nil
 	case "--help", "-h", "help":
 		app.printHelp()
 		return nil
@@ -117,6 +122,7 @@ func (app *App) printHelp() {
 	fmt.Println("  --gen-key <别名|ID>           生成密钥")
 	fmt.Println("  --show-pubkey <别名|ID>       显示公钥")
 	fmt.Println("  --auth <别名|ID>              修改认证策略")
+	fmt.Println("  --lock                         锁定当前会话密码库")
 	fmt.Println("  --export-ssh-config [文件]    导出 SSH 配置")
 	fmt.Println("  --import-ssh-config [文件]    导入 SSH 配置")
 	fmt.Println("  --help, -h                    显示帮助")
@@ -154,6 +160,7 @@ func (app *App) printInteractiveHelp() {
 	fmt.Printf("    %-14s %-24s %s\n", "gen-key", "生成 SSH 密钥", "gen-key <别名|ID>")
 	fmt.Printf("    %-14s %-24s %s\n", "show-pubkey", "显示公钥", "show-pubkey <别名|ID>")
 	fmt.Printf("    %-14s %-24s %s\n", "auth", "修改认证策略", "auth <别名|ID>")
+	fmt.Printf("    %-14s %-24s %s\n", "lock", "锁定当前会话密码库", "")
 	fmt.Println()
 	fmt.Println("  配置")
 	fmt.Printf("    %-14s %-24s %s\n", "ssh-config, sc", "导入/导出 SSH 配置", "")
@@ -169,23 +176,104 @@ func (app *App) printInteractiveHelp() {
 // requireSecretStore creates a FileStore, prompting for master password.
 // If the secrets file already exists, it verifies the passphrase before proceeding.
 func (app *App) requireSecretStore() (*secret.FileStore, error) {
-	pass, err := ui.ReadPassword("请输入 sshm 主密码: ")
-	if err != nil {
-		return nil, fmt.Errorf("读取密码失败: %w", err)
+	if app.secretStore != nil {
+		return app.secretStore, nil
 	}
-	fs := secret.NewFileStore(app.SecretPath, pass)
 
-	// If secrets file exists, verify the passphrase to avoid data loss.
-	if _, statErr := os.Stat(app.SecretPath); statErr == nil {
-		if err := fs.VerifyPassphrase(); err != nil {
-			if errors.Is(err, secret.ErrIncorrectPassphrase) {
-				return nil, secret.ErrIncorrectPassphrase
+	if _, err := os.Stat(app.SecretPath); os.IsNotExist(err) {
+		fmt.Println("首次创建密码库。主密码无法恢复，请妥善保管。")
+		pass1, err := ui.ReadPassword("请创建 sshm 主密码: ")
+		if err != nil {
+			return nil, fmt.Errorf("读取主密码失败: %w", err)
+		}
+		if pass1 == "" {
+			return nil, fmt.Errorf("主密码不能为空")
+		}
+		pass2, err := ui.ReadPassword("请再次输入 sshm 主密码: ")
+		if err != nil {
+			return nil, fmt.Errorf("读取主密码失败: %w", err)
+		}
+		if pass1 != pass2 {
+			return nil, fmt.Errorf("两次主密码不一致")
+		}
+		app.secretStore = secret.NewFileStore(app.SecretPath, pass1)
+		return app.secretStore, nil
+	} else if err != nil {
+		return nil, fmt.Errorf("检查 secrets 文件失败: %w", err)
+	}
+
+	for attempt := 1; attempt <= 3; attempt++ {
+		pass, err := ui.ReadPassword("请输入 sshm 主密码: ")
+		if err != nil {
+			return nil, fmt.Errorf("读取主密码失败: %w", err)
+		}
+		fs := secret.NewFileStore(app.SecretPath, pass)
+		if err := fs.VerifyPassphrase(); err == nil {
+			app.secretStore = fs
+			if err := app.migratePasswordRefs(fs); err != nil {
+				app.secretStore = nil
+				return nil, fmt.Errorf("迁移旧密码引用失败: %w", err)
 			}
+			return app.secretStore, nil
+		} else if !errors.Is(err, secret.ErrIncorrectPassphrase) {
 			return nil, fmt.Errorf("无法读取 secrets 文件: %w", err)
+		} else if attempt < 3 {
+			fmt.Fprintln(os.Stderr, ui.Warn("主密码错误，请重试 (%d/3)", attempt))
 		}
 	}
+	return nil, secret.ErrIncorrectPassphrase
+}
 
-	return fs, nil
+func (app *App) lockSecretStore() {
+	app.secretStore = nil
+}
+
+func (app *App) migratePasswordRefs(fs *secret.FileStore) error {
+	hf, err := app.Store.Load()
+	if err != nil {
+		return err
+	}
+
+	destToSource := map[string]string{}
+	stableIDs := map[string]bool{}
+	for _, h := range hf.Hosts {
+		stableIDs[h.ID] = true
+		if h.PasswordRef != "" && h.PasswordRef != h.ID {
+			destToSource[h.ID] = h.PasswordRef
+		}
+	}
+	if len(destToSource) == 0 {
+		return nil
+	}
+	available := map[string]string{}
+	for dest, source := range destToSource {
+		if _, err := fs.GetPassword(source); err == nil {
+			available[dest] = source
+		}
+	}
+	if len(available) == 0 {
+		return nil
+	}
+	if err := fs.CopyPasswords(available); err != nil {
+		return err
+	}
+
+	oldRefs := make([]string, 0, len(destToSource))
+	for i := range hf.Hosts {
+		if source, ok := available[hf.Hosts[i].ID]; ok {
+			hf.Hosts[i].PasswordRef = hf.Hosts[i].ID
+			if !stableIDs[source] {
+				oldRefs = append(oldRefs, source)
+			}
+		}
+	}
+	if err := app.Store.Save(hf); err != nil {
+		return err
+	}
+	if err := fs.RemovePasswords(oldRefs...); err != nil {
+		return fmt.Errorf("配置已迁移，但清理旧密码引用失败: %w", err)
+	}
+	return nil
 }
 
 // resolveHost finds a host by alias or ID from args, or prompts interactively.

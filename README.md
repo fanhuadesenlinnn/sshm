@@ -8,7 +8,7 @@
 
 - **主机管理** — 添加、编辑、删除、搜索、查看 SSH 主机配置
 - **分组管理** — 按分组组织主机，支持分组批量执行命令
-- **交互模式** — 无参数启动进入交互式 Shell，支持自动补全和命令历史
+- **交互模式** — 无参数启动进入交互式 Shell，支持 UTF-8 输入、行编辑和命令历史
 - **快速连接** — 通过别名或 ID 一键连接远程主机
 - **批量执行** — 支持单机、分组、全部主机远程执行命令
 - **连通性测试** — `ping` 命令快速检测主机可达性
@@ -23,7 +23,7 @@
 ### 从源码构建
 
 ```bash
-git clone https://github.com/sshm/sshm.git
+git clone https://github.com/fanhuadesenlinnn/sshm.git
 cd sshm
 go build -o sshm .
 ```
@@ -41,7 +41,7 @@ mkdir -p ~/bin && mv sshm ~/bin/
 ### Go 安装
 
 ```bash
-go install github.com/sshm/sshm@latest
+go install github.com/fanhuadesenlinnn/sshm@latest
 ```
 
 ## 🚀 快速开始
@@ -128,6 +128,7 @@ sshm --list
 | `sshm --gen-key <别名\|ID>` | 生成新的 SSH 密钥对 |
 | `sshm --show-pubkey <别名\|ID>` | 显示公钥内容 |
 | `sshm --auth <别名\|ID>` | 修改认证策略 |
+| `sshm --lock` | 锁定当前会话已解锁的密码库 |
 
 ### 配置管理
 
@@ -194,6 +195,14 @@ sshm/
 | [golang.org/x/crypto](https://pkg.go.dev/golang.org/x/crypto) | SSH 协议实现 |
 | [golang.org/x/term](https://pkg.go.dev/golang.org/x/term) | 终端原始模式 |
 | [gopkg.in/yaml.v3](https://pkg.go.dev/gopkg.in/yaml.v3) | YAML 配置文件解析 |
+
+## 🔐 安全与恢复
+
+- 配置默认位于 `~/.config/sshm`，可通过 `SSHM_HOME` 修改。
+- `hosts.yaml`、`secrets.yaml` 和导出的 SSH 配置在覆盖前保留最近一份 `.bak`。
+- 密码库使用主密码加密；主密码不会保存且无法恢复。交互会话只需解锁一次，可用 `lock` 立即锁定。
+- 原生密码连接严格校验 `~/.ssh/known_hosts`。首次连接仅在交互终端确认指纹后写入，非交互环境默认拒绝未知主机。
+- 如果主配置损坏，请先退出 sshm，检查同目录下的 `.bak`，确认内容后再手动恢复，程序不会静默覆盖损坏文件。
 
 ## 📄 许可证
 

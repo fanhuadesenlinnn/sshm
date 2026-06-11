@@ -5,9 +5,10 @@ import (
 	"encoding/base64"
 	"fmt"
 	"os"
-	"path/filepath"
+	"sort"
 	"strings"
 
+	"github.com/fanhuadesenlinnn/sshm/internal/safefile"
 	"gopkg.in/yaml.v3"
 )
 
@@ -34,12 +35,12 @@ func (fs *FileStore) readRaw() (map[string]string, []byte, error) {
 		if os.IsNotExist(err) {
 			return map[string]string{}, nil, nil
 		}
-		return nil, nil, fmt.Errorf("读取 secrets 文件失败: %w", err)
+		return nil, nil, fmt.Errorf("读取 secrets 文件失败（可检查备份 %s.bak）: %w", fs.path, err)
 	}
 
 	var ef EncryptedFile
 	if err := yaml.Unmarshal(data, &ef); err != nil {
-		return nil, nil, fmt.Errorf("解析 secrets 文件失败: %w", err)
+		return nil, nil, fmt.Errorf("解析 secrets 文件失败（主文件未修改，可检查备份 %s.bak）: %w", fs.path, err)
 	}
 
 	plain, err := Decrypt(&ef, fs.passphrase)
@@ -85,8 +86,7 @@ func (fs *FileStore) SetPassword(ref string, password string) error {
 // and migrates an existing alias-keyed entry if present.
 func (fs *FileStore) SetPasswordByID(id string, alias string, password string) error {
 	return fs.writeSecrets(func(entries map[string]string) {
-		// Remove old alias-keyed entry if present
-		if alias != "" && entries[alias] != "" {
+		if alias != "" {
 			delete(entries, alias)
 		}
 		entries[id] = password
@@ -95,8 +95,15 @@ func (fs *FileStore) SetPasswordByID(id string, alias string, password string) e
 
 // RemovePassword deletes the SSH password for a ref.
 func (fs *FileStore) RemovePassword(ref string) error {
+	return fs.RemovePasswords(ref)
+}
+
+// RemovePasswords deletes multiple references in one encrypted-file transaction.
+func (fs *FileStore) RemovePasswords(refs ...string) error {
 	return fs.writeSecrets(func(entries map[string]string) {
-		delete(entries, ref)
+		for _, ref := range refs {
+			delete(entries, ref)
+		}
 	})
 }
 
@@ -114,77 +121,75 @@ func (fs *FileStore) MigrateAliasToID(alias string, id string) (bool, error) {
 	return migrated, err
 }
 
+// CopyPasswords copies old references to stable IDs without deleting the old
+// references. Callers can safely update hosts.yaml before cleaning up old keys.
+func (fs *FileStore) CopyPasswords(destToSource map[string]string) error {
+	return fs.writeSecretsE(func(entries map[string]string) error {
+		for dest, source := range destToSource {
+			pass, ok := entries[source]
+			if !ok {
+				return fmt.Errorf("未找到旧密码引用 %s", source)
+			}
+			entries[dest] = pass
+		}
+		return nil
+	})
+}
+
 // writeSecrets serializes, encrypts, and writes the secrets file atomically.
 func (fs *FileStore) writeSecrets(mutate func(map[string]string)) error {
-	entries, rawData, err := fs.readRaw()
-	if err != nil {
-		return fmt.Errorf("无法读取现有 secrets，已拒绝覆盖: %w", err)
-	}
+	return fs.writeSecretsE(func(entries map[string]string) error {
+		mutate(entries)
+		return nil
+	})
+}
 
-	mutate(entries)
-
-	// Build plaintext
-	var lines []string
-	for ref, pass := range entries {
-		lines = append(lines, makeKey(ref)+":"+pass)
-	}
-	plaintext := strings.Join(lines, "\n")
-
-	// Extract existing salt if available, otherwise generate new
-	var salt []byte
-	if rawData != nil {
-		var ef EncryptedFile
-		if err := yaml.Unmarshal(rawData, &ef); err == nil {
-			salt, _ = base64.StdEncoding.DecodeString(ef.SaltB64)
+func (fs *FileStore) writeSecretsE(mutate func(map[string]string) error) error {
+	return safefile.WithLock(fs.path, func() error {
+		entries, rawData, err := fs.readRaw()
+		if err != nil {
+			return fmt.Errorf("无法读取现有 secrets，已拒绝覆盖: %w", err)
 		}
-	}
-	if salt == nil {
-		salt = make([]byte, 32)
-		if _, err := rand.Read(salt); err != nil {
-			return fmt.Errorf("生成 salt 失败: %w", err)
+
+		if err := mutate(entries); err != nil {
+			return err
 		}
-	}
 
-	ef, err := Encrypt(plaintext, fs.passphrase, salt)
-	if err != nil {
-		return err
-	}
+		refs := make([]string, 0, len(entries))
+		for ref := range entries {
+			refs = append(refs, ref)
+		}
+		sort.Strings(refs)
+		lines := make([]string, 0, len(refs))
+		for _, ref := range refs {
+			lines = append(lines, makeKey(ref)+":"+entries[ref])
+		}
+		plaintext := strings.Join(lines, "\n")
 
-	data, err := yaml.Marshal(ef)
-	if err != nil {
-		return fmt.Errorf("序列化 secrets 文件失败: %w", err)
-	}
+		var salt []byte
+		if rawData != nil {
+			var ef EncryptedFile
+			if err := yaml.Unmarshal(rawData, &ef); err == nil {
+				salt, _ = base64.StdEncoding.DecodeString(ef.SaltB64)
+			}
+		}
+		if salt == nil {
+			salt = make([]byte, 32)
+			if _, err := rand.Read(salt); err != nil {
+				return fmt.Errorf("生成 salt 失败: %w", err)
+			}
+		}
 
-	dir := filepath.Dir(fs.path)
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		return fmt.Errorf("创建 secrets 目录失败: %w", err)
-	}
-
-	// Atomic write: temp file + rename
-	tmp, err := os.CreateTemp(dir, ".secrets-*.yaml")
-	if err != nil {
-		return fmt.Errorf("创建临时文件失败: %w", err)
-	}
-	tmpPath := tmp.Name()
-	defer os.Remove(tmpPath)
-
-	if err := tmp.Chmod(0600); err != nil {
-		tmp.Close()
-		return fmt.Errorf("设置临时文件权限失败: %w", err)
-	}
-	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		return fmt.Errorf("写入临时文件失败: %w", err)
-	}
-	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("关闭临时文件失败: %w", err)
-	}
-
-	if err := os.Rename(tmpPath, fs.path); err != nil {
-		return fmt.Errorf("原子替换 secrets 文件失败: %w", err)
-	}
-
-	return nil
+		ef, err := Encrypt(plaintext, fs.passphrase, salt)
+		if err != nil {
+			return err
+		}
+		data, err := yaml.Marshal(ef)
+		if err != nil {
+			return fmt.Errorf("序列化 secrets 文件失败: %w", err)
+		}
+		return safefile.Write(fs.path, data, 0600, true)
+	})
 }
 
 // VerifyPassphrase checks whether the master passphrase is correct.

@@ -2,8 +2,10 @@ package secret
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 )
 
@@ -108,6 +110,20 @@ func TestFileStoreSetPasswordByID(t *testing.T) {
 	}
 }
 
+func TestFileStoreSetPasswordByIDRemovesEmptyAliasPassword(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "secrets.yaml")
+	store := NewFileStore(path, "master-password")
+	if err := store.SetPassword("old-alias", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetPasswordByID("stable-id", "old-alias", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.GetPassword("old-alias"); err == nil {
+		t.Fatal("empty alias password was not removed")
+	}
+}
+
 func TestFileStoreMigrateAliasToID(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "secrets.yaml")
 	store := NewFileStore(path, "master-password")
@@ -155,6 +171,22 @@ func TestFileStoreMigrateNonExistentAlias(t *testing.T) {
 	}
 }
 
+func TestFileStoreCopyPasswordsKeepsOldReference(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "secrets.yaml")
+	store := NewFileStore(path, "master-password")
+	if err := store.SetPassword("old", "secret"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.CopyPasswords(map[string]string{"new": "old"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, ref := range []string{"old", "new"} {
+		if got, err := store.GetPassword(ref); err != nil || got != "secret" {
+			t.Fatalf("GetPassword(%q) = %q, %v", ref, got, err)
+		}
+	}
+}
+
 func TestFileStoreBackupBehavior(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "secrets.yaml")
 	store := NewFileStore(path, "master-password")
@@ -183,6 +215,36 @@ func TestFileStoreBackupBehavior(t *testing.T) {
 	for _, name := range []string{"server", "server2"} {
 		if p, err := store.GetPassword(name); err != nil || p == "" {
 			t.Fatalf("Lost password for %q after second write", name)
+		}
+	}
+
+	backup, err := os.ReadFile(path + ".bak")
+	if err != nil {
+		t.Fatalf("backup missing: %v", err)
+	}
+	if string(backup) != string(data1) {
+		t.Fatal("backup does not contain previous encrypted file")
+	}
+}
+
+func TestFileStoreConcurrentWritesDoNotLosePasswords(t *testing.T) {
+	store := NewFileStore(filepath.Join(t.TempDir(), "secrets.yaml"), "master-password")
+	var wg sync.WaitGroup
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			ref := fmt.Sprintf("server-%d", i)
+			if err := store.SetPassword(ref, "secret"); err != nil {
+				t.Errorf("SetPassword(%s) error = %v", ref, err)
+			}
+		}(i)
+	}
+	wg.Wait()
+	for i := 0; i < 10; i++ {
+		ref := fmt.Sprintf("server-%d", i)
+		if got, err := store.GetPassword(ref); err != nil || got != "secret" {
+			t.Fatalf("GetPassword(%s) = %q, %v", ref, got, err)
 		}
 	}
 }

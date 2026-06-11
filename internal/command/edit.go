@@ -3,13 +3,13 @@ package command
 import (
 	"fmt"
 
-	"github.com/sshm/sshm/internal/config"
-	"github.com/sshm/sshm/internal/secret"
-	"github.com/sshm/sshm/internal/ui"
+	"github.com/fanhuadesenlinnn/sshm/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/internal/secret"
+	"github.com/fanhuadesenlinnn/sshm/internal/ui"
 )
 
 func (app *App) cmdEdit(args []string) error {
-	h, idx, _, err := app.resolveHost(args, "请输入要编辑的主机别名或ID: ")
+	h, idx, hf, err := app.resolveHost(args, "请输入要编辑的主机别名或ID: ")
 	if err != nil {
 		return err
 	}
@@ -35,50 +35,7 @@ func (app *App) cmdEdit(args []string) error {
 	tagsInput := ui.ReadLineDefault(fmt.Sprintf("标签 [%s]: ", config.TagsToString(h.Tags)), config.TagsToString(h.Tags))
 	newTags := config.ParseTags(tagsInput)
 
-	passwordRef := h.PasswordRef
-	oldAlias := h.Alias
-	aliasChanged := newAlias != oldAlias
-
-	if h.PasswordRef != "" {
-		fmt.Printf("\n当前主机已保存密码。\n")
-		changePass := ui.ReadYesNo("是否修改密码？[y/N]: ")
-		if changePass {
-			fs, fsErr := app.requireSecretStore()
-			if fsErr != nil {
-				ui.PrintWarn("无法访问密码存储: %v", fsErr)
-			} else if fs != nil {
-				if err := app.changeHostPasswordWithStore(fs, h.Alias); err != nil {
-					ui.PrintWarn("修改密码失败: %v", err)
-				} else {
-					passwordRef = h.ID
-					ui.PrintSuccess("密码已更新")
-				}
-			}
-		} else if aliasChanged {
-			fs := app.tryGetSecretStore()
-			if fs != nil {
-				if migrated, _ := fs.MigrateAliasToID(oldAlias, h.ID); migrated {
-					passwordRef = h.ID
-					ui.PrintSuccess("密码引用已迁移到新别名")
-				}
-			}
-		}
-	} else {
-		savePass := ui.ReadYesNo("\n是否保存 SSH 密码？[y/N]: ")
-		if savePass {
-			fs, fsErr := app.requireSecretStore()
-			if fsErr != nil {
-				ui.PrintWarn("无法访问密码存储: %v", fsErr)
-			} else if fs != nil {
-				if err := app.changeHostPasswordWithStore(fs, h.Alias); err != nil {
-					ui.PrintWarn("保存密码失败: %v", err)
-				} else {
-					passwordRef = h.ID
-					ui.PrintSuccess("密码已加密保存")
-				}
-			}
-		}
-	}
+	aliasChanged := newAlias != h.Alias
 
 	updated := config.Host{
 		ID:          h.ID,
@@ -91,14 +48,58 @@ func (app *App) cmdEdit(args []string) error {
 		Group:       newGroup,
 		Tags:        newTags,
 		Auth:        newAuth,
-		PasswordRef: passwordRef,
+		PasswordRef: h.PasswordRef,
 	}
-
 	if errs := updated.Validate(); len(errs) > 0 {
 		for _, e := range errs {
 			ui.PrintError("%s", e)
 		}
 		return fmt.Errorf("输入校验失败")
+	}
+	for i, existing := range hf.Hosts {
+		if i != idx && existing.Alias == newAlias {
+			return fmt.Errorf("别名 '%s' 已存在", newAlias)
+		}
+	}
+
+	if h.PasswordRef != "" {
+		fmt.Printf("\n当前主机已保存密码。\n")
+		changePass := ui.ReadYesNo("是否修改密码？[y/N]: ")
+		if changePass {
+			fs, fsErr := app.requireSecretStore()
+			if fsErr != nil {
+				return fmt.Errorf("无法访问密码存储: %w", fsErr)
+			} else if fs != nil {
+				if err := app.changeHostPasswordWithStore(fs, h.ID, h.Alias); err != nil {
+					return fmt.Errorf("修改密码失败: %w", err)
+				} else {
+					updated.PasswordRef = h.ID
+					ui.PrintSuccess("密码已更新")
+				}
+			}
+		} else if aliasChanged && h.PasswordRef != h.ID {
+			fs := app.tryGetSecretStore()
+			if fs != nil {
+				if _, err := fs.GetPassword(h.ID); err == nil {
+					updated.PasswordRef = h.ID
+				}
+			}
+		}
+	} else {
+		savePass := ui.ReadYesNo("\n是否保存 SSH 密码？[y/N]: ")
+		if savePass {
+			fs, fsErr := app.requireSecretStore()
+			if fsErr != nil {
+				return fmt.Errorf("无法访问密码存储: %w", fsErr)
+			} else if fs != nil {
+				if err := app.changeHostPasswordWithStore(fs, h.ID, h.Alias); err != nil {
+					return fmt.Errorf("保存密码失败: %w", err)
+				} else {
+					updated.PasswordRef = h.ID
+					ui.PrintSuccess("密码已加密保存")
+				}
+			}
+		}
 	}
 
 	if err := app.Store.Update(idx, updated); err != nil {
@@ -109,7 +110,7 @@ func (app *App) cmdEdit(args []string) error {
 	return nil
 }
 
-func (app *App) changeHostPasswordWithStore(fs *secret.FileStore, alias string) error {
+func (app *App) changeHostPasswordWithStore(fs *secret.FileStore, id, alias string) error {
 	pass1, err := ui.ReadPassword("请输入 SSH 密码: ")
 	if err != nil {
 		return fmt.Errorf("读取密码失败: %w", err)
@@ -123,7 +124,7 @@ func (app *App) changeHostPasswordWithStore(fs *secret.FileStore, alias string) 
 		return fmt.Errorf("两次密码不一致")
 	}
 
-	if err := fs.SetPassword(alias, pass1); err != nil {
+	if err := fs.SetPasswordByID(id, alias, pass1); err != nil {
 		return fmt.Errorf("保存密码失败: %w", err)
 	}
 

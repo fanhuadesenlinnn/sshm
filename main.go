@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/sshm/sshm/internal/command"
+	"github.com/fanhuadesenlinnn/sshm/internal/command"
 )
 
 func main() {
