@@ -47,7 +47,26 @@ func (app *App) cmdAdd(args []string) error {
 		}
 	}
 
-	savePass := ui.ReadYesNo("是否保存 SSH 密码？[y/N]: ")
+	// Prompt for SSH password first, then ask if save
+	var sshPassword string
+	passInput, err := ui.ReadPassword("请输入 SSH 密码 (留空跳过): ")
+	if err != nil {
+		ui.PrintWarn("读取密码失败，将跳过密码设置")
+	} else if passInput != "" {
+		pass2, err := ui.ReadPassword("再次输入 SSH 密码: ")
+		if err != nil {
+			ui.PrintWarn("读取密码失败，将跳过密码设置")
+		} else if passInput != pass2 {
+			ui.PrintWarn("两次密码不一致，将跳过密码设置")
+		} else {
+			sshPassword = passInput
+		}
+	}
+
+	savePass := false
+	if sshPassword != "" {
+		savePass = ui.ReadYesNo("是否保存此密码？[y/N]: ")
+	}
 
 	// Auth strategy selection
 	fmt.Println()
@@ -91,30 +110,18 @@ func (app *App) cmdAdd(args []string) error {
 	}
 
 	// Save password if requested
-	if savePass {
-		pass, err := ui.ReadPassword("请输入 SSH 密码: ")
-		if err != nil {
-			ui.PrintWarn("读取密码失败，跳过密码保存")
-		} else if pass != "" {
-			pass2, err := ui.ReadPassword("再次输入 SSH 密码: ")
-			if err != nil {
-				ui.PrintWarn("读取密码失败，跳过密码保存")
-			} else if pass != pass2 {
-				ui.PrintWarn("两次密码不一致，跳过密码保存")
-			} else {
-				fs := app.mustGetSecretStore()
-				if err := fs.SetPassword(h.Alias, pass); err != nil {
-					ui.PrintWarn("保存密码失败: %v", err)
-				} else {
-					// Update host with password_ref
-					hf, _ := app.Store.Load()
-					for i := range hf.Hosts {
-						if hf.Hosts[i].Alias == h.Alias {
-							hf.Hosts[i].PasswordRef = h.Alias
-							app.Store.Save(hf)
-							break
-						}
-					}
+	if savePass && sshPassword != "" {
+		fs := app.mustGetSecretStore()
+		if err := fs.SetPassword(h.Alias, sshPassword); err != nil {
+			ui.PrintWarn("保存密码失败: %v", err)
+		} else {
+			// Update host with password_ref
+			hf, _ := app.Store.Load()
+			for i := range hf.Hosts {
+				if hf.Hosts[i].Alias == h.Alias {
+					hf.Hosts[i].PasswordRef = h.Alias
+					app.Store.Save(hf)
+					break
 				}
 			}
 		}

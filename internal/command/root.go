@@ -164,12 +164,21 @@ func (app *App) printInteractiveHelp() {
 }
 
 // requireSecretStore creates a FileStore, prompting for master password.
+// If the secrets file already exists, it verifies the passphrase before proceeding.
 func (app *App) requireSecretStore() (*secret.FileStore, error) {
 	pass, err := ui.ReadPassword("请输入 sshm 主密码: ")
 	if err != nil {
 		return nil, fmt.Errorf("读取密码失败: %w", err)
 	}
 	fs := secret.NewFileStore(app.SecretPath, pass)
+
+	// If secrets file exists, verify the passphrase to avoid data loss.
+	if _, statErr := os.Stat(app.SecretPath); statErr == nil {
+		if err := fs.VerifyPassphrase(); err != nil {
+			return nil, fmt.Errorf("主密码错误")
+		}
+	}
+
 	return fs, nil
 }
 

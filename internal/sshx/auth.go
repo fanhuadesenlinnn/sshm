@@ -90,6 +90,11 @@ func connectPassword(h config.Host, store *secret.FileStore, extraArgs []string)
 }
 
 func connectSystem(h config.Host, extraArgs []string) error {
+	return ConnectSystem(h, extraArgs)
+}
+
+// ConnectSystem connects using system SSH (default behavior).
+func ConnectSystem(h config.Host, extraArgs []string) error {
 	code := ConnectOpenSSHDefault(h, extraArgs)
 	if code != 0 {
 		os.Exit(code)

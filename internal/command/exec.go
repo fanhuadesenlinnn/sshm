@@ -88,6 +88,7 @@ func (app *App) cmdExecAll(args []string) error {
 }
 
 // tryGetSecretStore attempts to create a secret store, prompting for master password.
+// Allows up to 3 retries before giving up.
 // Returns nil if no secrets file exists, stdin is not a terminal, or authentication fails.
 func (app *App) tryGetSecretStore() *secret.FileStore {
 	// If no secrets file exists, return nil
@@ -98,15 +99,22 @@ func (app *App) tryGetSecretStore() *secret.FileStore {
 	if !ui.IsTerminal() {
 		return nil
 	}
-	pass, err := ui.ReadPassword("请输入 sshm 主密码: ")
-	if err != nil {
-		fmt.Fprintln(os.Stderr, ui.Warn("读取主密码失败，将使用系统 SSH"))
-		return nil
+
+	for attempt := 1; attempt <= 3; attempt++ {
+		pass, err := ui.ReadPassword("请输入 sshm 主密码: ")
+		if err != nil {
+			fmt.Fprintln(os.Stderr, ui.Warn("读取主密码失败，将使用系统 SSH"))
+			return nil
+		}
+		fs := secret.NewFileStore(app.SecretPath, pass)
+		if err := fs.VerifyPassphrase(); err == nil {
+			return fs
+		}
+		if attempt < 3 {
+			fmt.Fprintf(os.Stderr, "%s\n", ui.Warn("主密码错误，请重试 (%d/3)", attempt))
+		}
 	}
-	fs := secret.NewFileStore(app.SecretPath, pass)
-	if err := fs.VerifyPassphrase(); err != nil {
-		fmt.Fprintln(os.Stderr, ui.Warn("主密码错误，将使用系统 SSH"))
-		return nil
-	}
-	return fs
+
+	fmt.Fprintln(os.Stderr, ui.Warn("主密码错误，将使用系统 SSH"))
+	return nil
 }

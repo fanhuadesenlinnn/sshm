@@ -2,8 +2,10 @@ package command
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
+	"github.com/sshm/sshm/internal/config"
 	"github.com/sshm/sshm/internal/secret"
 	"github.com/sshm/sshm/internal/sshx"
 	"github.com/sshm/sshm/internal/ui"
@@ -96,7 +98,7 @@ func (app *App) cmdConnect(args []string) error {
 	aliasOrID := args[0]
 	extraArgs := args[1:]
 
-	h, _, _, err := app.Store.FindHost(aliasOrID)
+	h, idx, hf, err := app.Store.FindHost(aliasOrID)
 	if err != nil {
 		return err
 	}
@@ -110,7 +112,112 @@ func (app *App) cmdConnect(args []string) error {
 		fs = app.tryGetSecretStore()
 	}
 
-	return sshx.Connect(*h, fs, extraArgs)
+	strategy := sshx.GetAuthStrategy(h.Auth)
+
+	// If user wants system SSH or ask-each-time, delegate directly
+	if strategy == sshx.AuthSystem || strategy == sshx.AuthAsk {
+		return sshx.ConnectSystem(*h, extraArgs)
+	}
+
+	// If user wants key-only auth
+	if strategy == sshx.AuthKey {
+		if !sshx.HasIdentity(*h) {
+			return fmt.Errorf("主机 %s 未配置密钥", h.Alias)
+		}
+		code := sshx.ConnectOpenSSHKey(*h, extraArgs)
+		if code != 0 {
+			return fmt.Errorf("密钥认证失败 (exit %d)", code)
+		}
+		return nil
+	}
+
+	// If user wants password-only auth
+	if strategy == sshx.AuthPassword {
+		return app.connectWithPassword(*h, fs, idx, hf, extraArgs)
+	}
+
+	// AuthAuto: try key first, then password, then prompt
+	hasKey := sshx.HasIdentity(*h)
+
+	if hasKey {
+		code := sshx.ConnectOpenSSHKey(*h, extraArgs)
+		if code == 0 {
+			return nil
+		}
+		fmt.Fprintf(os.Stderr, "密钥认证未通过，尝试密码连接...\n")
+	}
+
+	// Try saved password
+	if h.PasswordRef != "" && fs != nil {
+		pass, err := fs.GetPassword(h.PasswordRef)
+		if err == nil {
+			if err := sshx.NativeConnectPassword(*h, pass); err == nil {
+				return nil
+			}
+			fmt.Fprintf(os.Stderr, "密码连接失败: %v\n", err)
+		}
+	}
+
+	// Prompt for SSH password interactively
+	return app.promptAndConnect(*h, fs, idx, hf, extraArgs)
+}
+
+// connectWithPassword handles AuthPassword strategy.
+func (app *App) connectWithPassword(h config.Host, fs *secret.FileStore, idx int, hf *config.HostsFile, extraArgs []string) error {
+	if h.PasswordRef != "" && fs != nil {
+		pass, err := fs.GetPassword(h.PasswordRef)
+		if err == nil {
+			return sshx.NativeConnectPassword(h, pass)
+		}
+		fmt.Fprintf(os.Stderr, "读取密码失败: %v\n", err)
+	}
+	return app.promptAndConnect(h, fs, idx, hf, extraArgs)
+}
+
+// promptAndConnect prompts for SSH password, connects, and offers to save.
+func (app *App) promptAndConnect(h config.Host, fs *secret.FileStore, idx int, hf *config.HostsFile, extraArgs []string) error {
+	pass, err := ui.ReadPassword("请输入 SSH 密码: ")
+	if err != nil {
+		ui.PrintWarn("读取密码失败，回退到系统 SSH")
+		return sshx.ConnectSystem(h, extraArgs)
+	}
+
+	err = sshx.NativeConnectPassword(h, pass)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "密码连接失败: %v，回退到系统 SSH\n", err)
+		return sshx.ConnectSystem(h, extraArgs)
+	}
+
+	// Connection successful — ask whether to save the password
+	fmt.Println()
+	if ui.ReadYesNo("是否保存此密码以供下次使用？[y/N]: ") {
+		if fs == nil {
+			fs = app.tryGetSecretStore()
+		}
+		if fs != nil {
+			if err := fs.SetPassword(h.Alias, pass); err != nil {
+				ui.PrintWarn("保存密码失败: %v", err)
+			} else {
+				// Update host config
+				hf, loadErr := app.Store.Load()
+				if loadErr == nil {
+					for i := range hf.Hosts {
+						if hf.Hosts[i].Alias == h.Alias {
+							hf.Hosts[i].PasswordRef = h.Alias
+							if hf.Hosts[i].Auth == "" || hf.Hosts[i].Auth == "auto" {
+								hf.Hosts[i].Auth = "auto"
+							}
+							app.Store.Save(hf)
+							break
+						}
+					}
+				}
+				ui.PrintSuccess("密码已加密保存：%s", h.Alias)
+			}
+		}
+	}
+
+	return nil
 }
 
 // Interactive variants for exec commands in interactive mode.
