@@ -1,6 +1,7 @@
 package command
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -107,8 +108,13 @@ func (app *App) tryGetSecretStore() *secret.FileStore {
 			return nil
 		}
 		fs := secret.NewFileStore(app.SecretPath, pass)
-		if err := fs.VerifyPassphrase(); err == nil {
+		err = fs.VerifyPassphrase()
+		if err == nil {
 			return fs
+		}
+		if !errors.Is(err, secret.ErrIncorrectPassphrase) {
+			fmt.Fprintln(os.Stderr, ui.Warn("无法读取 secrets 文件: %v", err))
+			return nil
 		}
 		if attempt < 3 {
 			fmt.Fprintf(os.Stderr, "%s\n", ui.Warn("主密码错误，请重试 (%d/3)", attempt))

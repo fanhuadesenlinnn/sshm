@@ -49,7 +49,6 @@ func (fs *FileStore) readRaw() (map[string]string, []byte, error) {
 
 	entries := map[string]string{}
 	for _, line := range strings.Split(plain, "\n") {
-		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
 		}
@@ -93,8 +92,7 @@ func (fs *FileStore) RemovePassword(alias string) error {
 func (fs *FileStore) writeSecrets(mutate func(map[string]string)) error {
 	entries, rawData, err := fs.readRaw()
 	if err != nil {
-		// If decryption fails, start fresh
-		entries = map[string]string{}
+		return fmt.Errorf("无法读取现有 secrets，已拒绝覆盖: %w", err)
 	}
 
 	mutate(entries)
@@ -126,29 +124,17 @@ func (fs *FileStore) writeSecrets(mutate func(map[string]string)) error {
 		return err
 	}
 
-	// Write with custom YAML to match the exact format
-	yamlStr := fmt.Sprintf(`version: 1
-kdf: scrypt
-cipher: aes-256-gcm
-
-scrypt:
-  n: %d
-  r: %d
-  p: %d
-  key_len: %d
-
-salt: %s
-nonce: %s
-ciphertext: %s
-`, ef.ScryptN, ef.ScryptR, ef.ScryptP, ef.ScryptKeyLen,
-		ef.SaltB64, ef.NonceB64, ef.CiphertextB64)
+	data, err := yaml.Marshal(ef)
+	if err != nil {
+		return fmt.Errorf("序列化 secrets 文件失败: %w", err)
+	}
 
 	dir := filepath.Dir(fs.path)
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return fmt.Errorf("创建 secrets 目录失败: %w", err)
 	}
 
-	if err := os.WriteFile(fs.path, []byte(yamlStr), 0600); err != nil {
+	if err := os.WriteFile(fs.path, data, 0600); err != nil {
 		return fmt.Errorf("写入 secrets 文件失败: %w", err)
 	}
 

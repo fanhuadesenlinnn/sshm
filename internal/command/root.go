@@ -1,6 +1,7 @@
 package command
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -8,6 +9,8 @@ import (
 	"github.com/sshm/sshm/internal/secret"
 	"github.com/sshm/sshm/internal/ui"
 )
+
+var Version = "dev"
 
 // App holds shared state for all commands.
 type App struct {
@@ -80,7 +83,7 @@ func Run(args []string) error {
 		app.printHelp()
 		return nil
 	case "--version", "-v":
-		fmt.Println("sshm v1.0.0")
+		fmt.Printf("sshm %s\n", Version)
 		return nil
 	default:
 		// Treat as alias or ID to connect
@@ -175,7 +178,10 @@ func (app *App) requireSecretStore() (*secret.FileStore, error) {
 	// If secrets file exists, verify the passphrase to avoid data loss.
 	if _, statErr := os.Stat(app.SecretPath); statErr == nil {
 		if err := fs.VerifyPassphrase(); err != nil {
-			return nil, fmt.Errorf("主密码错误")
+			if errors.Is(err, secret.ErrIncorrectPassphrase) {
+				return nil, secret.ErrIncorrectPassphrase
+			}
+			return nil, fmt.Errorf("无法读取 secrets 文件: %w", err)
 		}
 	}
 

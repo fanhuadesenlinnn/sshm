@@ -59,7 +59,7 @@ jobs:
           if [ "$GOOS" = "windows" ]; then
             BINARY="sshm.exe"
           fi
-          go build -ldflags="-s -w" -o "${BINARY}" .
+          go build -ldflags="-s -w -X github.com/sshm/sshm/internal/command.Version=${{ github.ref_name }}" -o "${BINARY}" .
 
       - name: Package (Linux / macOS)
         if: matrix.os != 'windows'
