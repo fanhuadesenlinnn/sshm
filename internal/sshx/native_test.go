@@ -5,13 +5,11 @@ import (
 	"crypto/rand"
 	"encoding/pem"
 	"net"
-	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
-	"github.com/fanhuadesenlinnn/sshm/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/internal/secret"
+	"github.com/fanhuadesenlinnn/sshm/v4/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v4/internal/secret"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -35,71 +33,7 @@ func TestGetAuthStrategy(t *testing.T) {
 	}
 }
 
-func TestKnownHostsPath(t *testing.T) {
-	path := knownHostsPath()
-	if path == "" {
-		t.Fatal("knownHostsPath() returned empty string")
-	}
-	if filepath.Base(path) != "known_hosts" {
-		t.Fatalf("knownHostsPath() = %q, want path ending with known_hosts", path)
-	}
-}
-
-func TestEnsureSSHDir(t *testing.T) {
-	origHome := os.Getenv("HOME")
-	defer os.Setenv("HOME", origHome)
-
-	tmpDir := t.TempDir()
-	os.Setenv("HOME", tmpDir)
-
-	if err := ensureSSHDir(); err != nil {
-		t.Fatalf("ensureSSHDir() error = %v", err)
-	}
-
-	sshDir := filepath.Join(tmpDir, ".ssh")
-	info, err := os.Stat(sshDir)
-	if err != nil {
-		t.Fatalf(".ssh dir not created: %v", err)
-	}
-	if !info.IsDir() {
-		t.Fatal(".ssh is not a directory")
-	}
-}
-
-func TestCreateHostKeyCallbackNoKnownHosts(t *testing.T) {
-	origHome := os.Getenv("HOME")
-	defer os.Setenv("HOME", origHome)
-
-	tmpDir := t.TempDir()
-	os.Setenv("HOME", tmpDir)
-
-	cb, err := createHostKeyCallback()
-	if err != nil {
-		t.Fatalf("createHostKeyCallback() error = %v", err)
-	}
-	if cb == nil {
-		t.Fatal("createHostKeyCallback() returned nil")
-	}
-}
-
-func TestCreateHostKeyCallbackRejectsCorruptKnownHosts(t *testing.T) {
-	origHome := os.Getenv("HOME")
-	defer os.Setenv("HOME", origHome)
-
-	tmpDir := t.TempDir()
-	os.Setenv("HOME", tmpDir)
-	if err := os.MkdirAll(filepath.Join(tmpDir, ".ssh"), 0700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(tmpDir, ".ssh", "known_hosts"), []byte("corrupt line"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := createHostKeyCallback(); err == nil {
-		t.Fatal("createHostKeyCallback() should reject corrupt known_hosts")
-	}
-}
-
-func TestAppendToKnownHostsUsesBracketedNonDefaultPort(t *testing.T) {
+func TestAcceptNewHostKeyIsStoredInConfig(t *testing.T) {
 	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatal(err)
@@ -108,17 +42,92 @@ func TestAppendToKnownHostsUsesBracketedNonDefaultPort(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(t.TempDir(), "known_hosts")
-	remote := &net.TCPAddr{IP: net.ParseIP("192.0.2.10"), Port: 2222}
-	if err := appendToKnownHosts(path, "example.com", remote, publicKey); err != nil {
-		t.Fatal(err)
+	path := filepath.Join(t.TempDir(), "sshm.yaml")
+	host := config.Host{
+		Alias: "server", Host: "example.com", Port: 2222, ConfigPath: path,
+		ResolvedHostKeyPolicy: config.HostKeyPolicyAcceptNew,
 	}
-	data, err := os.ReadFile(path)
+	cb, err := createHostKeyCallback(host)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(string(data), "[example.com]:2222 ") {
-		t.Fatalf("known_hosts line = %q", data)
+	remote := &net.TCPAddr{IP: net.ParseIP("192.0.2.10"), Port: 2222}
+	if err := cb("example.com:2222", remote, publicKey); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := config.NewRepositoryWithPath(path).Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(doc.HostTrust.Entries) != 1 || doc.HostTrust.Entries[0].Port != 2222 {
+		t.Fatalf("host trust entries = %+v", doc.HostTrust.Entries)
+	}
+}
+
+func TestExplicitInsecureHostPolicyDoesNotRequireStoreLoad(t *testing.T) {
+	host := config.Host{
+		Alias: "server", Host: "example.com", Port: 22,
+		HostKeyPolicy: config.HostKeyPolicyInsecure,
+	}
+	callback, err := createHostKeyCallback(host)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if callback == nil {
+		t.Fatal("callback is nil")
+	}
+}
+
+func TestHostKeyChangeIsRejected(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sshm.yaml")
+	host := config.Host{
+		Alias: "server", Host: "example.com", Port: 22, ConfigPath: path,
+		ResolvedHostKeyPolicy: config.HostKeyPolicyAcceptNew,
+	}
+	cb, err := createHostKeyCallback(host)
+	if err != nil {
+		t.Fatal(err)
+	}
+	remote := &net.TCPAddr{IP: net.ParseIP("192.0.2.10"), Port: 22}
+	for i := 0; i < 2; i++ {
+		_, privateKey, err := ed25519.GenerateKey(rand.Reader)
+		if err != nil {
+			t.Fatal(err)
+		}
+		publicKey, err := ssh.NewPublicKey(privateKey.Public())
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = cb("example.com:22", remote, publicKey)
+		if i == 0 && err != nil {
+			t.Fatal(err)
+		}
+		if i == 1 && err == nil {
+			t.Fatal("changed host key should be rejected")
+		}
+	}
+}
+
+func TestStrictUnknownHostIsRejectedWithoutInteractiveTerminal(t *testing.T) {
+	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicKey, err := ssh.NewPublicKey(privateKey.Public())
+	if err != nil {
+		t.Fatal(err)
+	}
+	host := config.Host{
+		Alias: "server", Host: "example.com", Port: 22,
+		ConfigPath:            filepath.Join(t.TempDir(), "sshm.yaml"),
+		ResolvedHostKeyPolicy: config.HostKeyPolicyStrict,
+	}
+	callback, err := createHostKeyCallback(host)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := callback("example.com:22", &net.TCPAddr{IP: net.ParseIP("192.0.2.10"), Port: 22}, publicKey); err == nil {
+		t.Fatal("strict policy should reject an unknown host outside an interactive terminal")
 	}
 }
 
@@ -132,16 +141,6 @@ func TestAuthStrategyConsts(t *testing.T) {
 	}
 }
 
-func TestNativePingInvalidHost(t *testing.T) {
-	ok, msg := NativePing(config.Host{Alias: "test", Host: "255.255.255.255", Port: 22, User: "nobody"}, "wrong-password")
-	if ok {
-		t.Fatalf("NativePing to invalid host should fail, got ok=true, msg=%q", msg)
-	}
-	if msg == "" {
-		t.Fatal("NativePing should return an error message for invalid host")
-	}
-}
-
 func TestManagedKeyMaterialLoadsSigner(t *testing.T) {
 	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
@@ -151,7 +150,7 @@ func TestManagedKeyMaterialLoadsSigner(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	store := secret.NewFileStore(filepath.Join(t.TempDir(), "secrets.yaml"), "master")
+	store := secret.NewFileStore(filepath.Join(t.TempDir(), "sshm.yaml"), "master")
 	if err := store.SetManagedKey("personal", pem.EncodeToMemory(block)); err != nil {
 		t.Fatal(err)
 	}

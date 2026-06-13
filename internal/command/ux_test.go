@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fanhuadesenlinnn/sshm/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v4/internal/config"
 )
 
 func TestParseSSHTarget(t *testing.T) {
@@ -82,8 +82,8 @@ func TestCompletionScripts(t *testing.T) {
 }
 
 func TestCmdQuickAddPersistsDefaultsAndOptions(t *testing.T) {
-	store := config.NewStoreWithPath(filepath.Join(t.TempDir(), "hosts.yaml"))
-	app := &App{Store: store, SecretPath: filepath.Join(t.TempDir(), "secrets.yaml")}
+	store := config.NewStoreWithPath(filepath.Join(t.TempDir(), "sshm.yaml"))
+	app := &App{Store: store, ConfigPath: store.Path()}
 	err := app.cmdQuickAdd([]string{
 		"prod", "deploy@example.com:2222",
 		"--tags", "web,linux",
@@ -104,7 +104,7 @@ func TestCmdQuickAddPersistsDefaultsAndOptions(t *testing.T) {
 }
 
 func TestCompletionCandidatesIncludeCommandsAndHosts(t *testing.T) {
-	store := config.NewStoreWithPath(filepath.Join(t.TempDir(), "hosts.yaml"))
+	store := config.NewStoreWithPath(filepath.Join(t.TempDir(), "sshm.yaml"))
 	host := config.DefaultHost()
 	host.Alias = "my-server"
 	host.User = "root"
@@ -123,21 +123,15 @@ func TestCompletionCandidatesIncludeCommandsAndHosts(t *testing.T) {
 	}
 }
 
-func TestShouldPromptForPassword(t *testing.T) {
-	tests := []struct {
-		name string
-		host config.Host
-		want bool
-	}{
-		{"auto without key", config.Host{Auth: "auto"}, true},
-		{"auto with key", config.Host{Auth: "auto", Identity: "~/.ssh/id_ed25519"}, false},
-		{"password with key", config.Host{Auth: "password", Identity: "~/.ssh/id_ed25519"}, true},
+func TestConfigEditInitializesMissingSingleConfig(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sshm.yaml")
+	store := config.NewStoreWithPath(path)
+	app := &App{Store: store, ConfigPath: path}
+	t.Setenv("EDITOR", "true")
+	if err := app.cmdConfigEdit(nil); err != nil {
+		t.Fatal(err)
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := shouldPromptForPassword(tt.host); got != tt.want {
-				t.Fatalf("shouldPromptForPassword() = %v, want %v", got, tt.want)
-			}
-		})
+	if _, err := config.NewRepositoryWithPath(path).Load(); err != nil {
+		t.Fatal(err)
 	}
 }

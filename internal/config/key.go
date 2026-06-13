@@ -19,11 +19,10 @@ type ManagedKey struct {
 	CreatedAt string `yaml:"created_at"`
 }
 
-// ManagedKeysFile is the top-level structure of keys.yaml.
+// ManagedKeysFile is the managed-key section of sshm.yaml.
 type ManagedKeysFile struct {
-	Version int          `yaml:"version"`
 	Default string       `yaml:"default,omitempty"`
-	Keys    []ManagedKey `yaml:"keys"`
+	Keys    []ManagedKey `yaml:"items"`
 }
 
 // ManagedIdentity returns the host identity reference for a managed key.

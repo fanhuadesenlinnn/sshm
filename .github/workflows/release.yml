@@ -87,7 +87,7 @@ jobs:
             BUILD_ARGS=(-tags "netgo osusergo")
           fi
           go build "${BUILD_ARGS[@]}" \
-            -ldflags="-s -w -X github.com/fanhuadesenlinnn/sshm/internal/command.Version=${{ github.ref_name }}" \
+            -ldflags="-s -w -X github.com/fanhuadesenlinnn/sshm/v4/internal/command.Version=${{ github.ref_name }}" \
             -o "${BINARY}" .
 
       - name: Verify version
@@ -96,7 +96,12 @@ jobs:
           BINARY="sshm"
           if [ "$GOOS" = "windows" ]; then BINARY="sshm.exe"; fi
           go version -m "$BINARY" | tee version.txt
-          grep -F "github.com/fanhuadesenlinnn/sshm/internal/command.Version=${{ github.ref_name }}" version.txt
+          grep -F "github.com/fanhuadesenlinnn/sshm/v4" version.txt
+          grep -aF "${{ github.ref_name }}" "$BINARY" >/dev/null
+          if [ "$(go env GOHOSTOS)" = "$GOOS" ] && [ "$(go env GOHOSTARCH)" = "$GOARCH" ]; then
+            "./$BINARY" --version | tee version-output.txt
+            grep -Fx "sshm ${{ github.ref_name }}" version-output.txt
+          fi
 
       - name: Verify Linux binary is static
         if: matrix.os == 'linux'
@@ -193,7 +198,7 @@ jobs:
       - name: Generate checksums
         run: |
           cd artifacts
-          sha256sum * > checksums.txt
+          sha256sum -- * > checksums.txt
           cat checksums.txt
 
       - name: Create Release
@@ -220,7 +225,11 @@ jobs:
 
             ```bash
             # macOS / Linux
-            tar -xzf sshm_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m).tar.gz
+            OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+            ARCH=$(uname -m)
+            [ "$ARCH" = "x86_64" ] && ARCH=amd64
+            [ "$ARCH" = "aarch64" ] && ARCH=arm64
+            tar -xzf "sshm_${OS}_${ARCH}.tar.gz"
             sudo mv sshm /usr/local/bin/
             ```
           files: artifacts/*

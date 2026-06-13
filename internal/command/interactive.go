@@ -6,17 +6,18 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fanhuadesenlinnn/sshm/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/internal/secret"
-	"github.com/fanhuadesenlinnn/sshm/internal/sshx"
-	"github.com/fanhuadesenlinnn/sshm/internal/ui"
+	"github.com/fanhuadesenlinnn/sshm/v4/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v4/internal/operation"
+	"github.com/fanhuadesenlinnn/sshm/v4/internal/secret"
+	"github.com/fanhuadesenlinnn/sshm/v4/internal/sshx"
+	"github.com/fanhuadesenlinnn/sshm/v4/internal/ui"
 )
 
 func (app *App) interactiveMode() error {
 	if _, err := app.Store.Load(); err != nil {
 		return fmt.Errorf("加载主机配置失败: %w", err)
 	}
-	app.printInteractiveHelp()
+	app.printWorkbench()
 
 	for {
 		input := ui.ReadLine(ui.CyanText("sshm> "))
@@ -78,6 +79,14 @@ func (app *App) interactiveMode() error {
 			err = app.cmdPush(args)
 		case "pull":
 			err = app.cmdPull(args)
+		case "forward":
+			err = app.cmdForward(args)
+		case "logs":
+			err = app.cmdLogs(args)
+		case "config":
+			err = app.cmdConfig(args)
+		case "config-edit":
+			err = app.cmdConfigEdit(args)
 		case "ssh-config", "sc":
 			err = app.cmdInteractiveSSHConfig(args)
 		case "passwd":
@@ -106,9 +115,44 @@ func (app *App) interactiveMode() error {
 	}
 }
 
+func (app *App) printWorkbench() {
+	ui.PrintHeader("sshm 工作台")
+	fmt.Println()
+	fmt.Println("  p/pick        查找并连接主机")
+	fmt.Println("  r/recent      收藏与最近使用")
+	fmt.Println("  a/add         添加主机")
+	fmt.Println("  host / key    主机与托管密钥管理")
+	fmt.Println("  h/help        完整帮助")
+	fmt.Println("  lock / q      锁定密码库 / 退出")
+	fmt.Println()
+	hf, err := app.Store.Load()
+	if err != nil {
+		return
+	}
+	recent := make([]config.Host, 0, 5)
+	for _, host := range hf.Hosts {
+		if host.Pinned || host.LastUsedAt != "" {
+			recent = append(recent, host)
+		}
+	}
+	if len(recent) > 5 {
+		recent = recent[:5]
+	}
+	if len(recent) > 0 {
+		fmt.Println("  最近与收藏:")
+		for _, host := range recent {
+			fmt.Printf("    %-18s %s@%s\n", host.Alias, host.User, host.Host)
+		}
+		fmt.Println()
+	}
+}
+
 func (app *App) cmdConnect(args []string) (err error) {
 	if len(args) == 0 {
 		return fmt.Errorf("请指定主机别名或ID")
+	}
+	if len(args) > 1 {
+		return fmt.Errorf("不支持透传 OpenSSH 参数；请使用 sshm 的原生能力")
 	}
 
 	aliasOrID := args[0]
@@ -129,39 +173,30 @@ func (app *App) cmdConnect(args []string) (err error) {
 	fmt.Printf("连接 %s (%s@%s:%d)...\n", h.Alias, h.User, h.Host, h.Port)
 	fmt.Println()
 
-	if _, managed := config.ManagedKeyName(h.Identity); managed {
-		fs, storeErr := app.requireSecretStore()
-		if storeErr != nil {
-			return storeErr
-		}
-		return sshx.Connect(*h, fs)
-	}
-
-	var fs *secret.FileStore
-	if h.PasswordRef != "" {
-		fs = app.tryGetSecretStore()
-	}
-
+	fs := app.getSecretStoreForHost(h)
 	err = sshx.Connect(*h, fs)
 	if err == nil {
 		return nil
 	}
-
-	if h.PasswordRef == "" || fs == nil {
-		return app.promptAndConnect(*h, fs)
+	stage := operation.StageOf(err, operation.StageSession)
+	fmt.Fprintln(os.Stderr, ui.Warn("已配置认证连接失败（阶段: %s）: %v", stage, err))
+	if !ui.IsTerminal() {
+		return connectionFailure(*h, err)
 	}
-
-	return err
+	return app.promptAndConnect(*h, fs)
 }
 
 func (app *App) promptAndConnect(h config.Host, fs *secret.FileStore) error {
+	if h.JumpHost != "" && fs == nil {
+		fs = app.tryGetSecretStore()
+	}
 	pass, err := ui.ReadPassword("请输入 SSH 密码: ")
 	if err != nil {
 		return fmt.Errorf("读取密码失败: %w", err)
 	}
 
-	if err := sshx.NativeConnectPassword(h, pass); err != nil {
-		return fmt.Errorf("密码认证失败: %w", err)
+	if err := sshx.ConnectTemporaryPassword(h, fs, pass); err != nil {
+		return connectionFailure(h, fmt.Errorf("临时密码认证失败: %w", err))
 	}
 
 	fmt.Println()
@@ -175,33 +210,29 @@ func (app *App) promptAndConnect(h config.Host, fs *secret.FileStore) error {
 		}
 		if fs != nil {
 			ref := h.ID
-			if ref == "" {
-				ref = h.Alias
-			}
-			if err := fs.SetPassword(ref, pass); err != nil {
-				ui.PrintWarn("保存密码失败: %v", err)
-			} else {
-				hf, loadErr := app.Store.Load()
-				if loadErr == nil {
-					for i := range hf.Hosts {
-						if hf.Hosts[i].Alias == h.Alias {
-							hf.Hosts[i].PasswordRef = ref
-							if hf.Hosts[i].Auth == "" {
-								hf.Hosts[i].Auth = "auto"
-							}
-							if err := app.Store.Save(hf); err != nil {
-								return fmt.Errorf("密码已保存，但更新主机配置失败: %w", err)
-							}
-							break
-						}
+			if err := fs.UpdateDocument(func(doc *config.Document, entries map[string]string) error {
+				entries["password:"+ref] = pass
+				for i := range doc.Hosts {
+					if doc.Hosts[i].ID == h.ID {
+						doc.Hosts[i].PasswordRef = ref
+						return nil
 					}
 				}
+				return fmt.Errorf("未找到主机: %s", h.Alias)
+			}); err != nil {
+				ui.PrintWarn("保存密码失败: %v", err)
+			} else {
 				ui.PrintSuccess("密码已加密保存：%s", h.Alias)
 			}
 		}
 	}
 
 	return nil
+}
+
+func connectionFailure(h config.Host, err error) error {
+	stage := operation.StageOf(err, operation.StageSession)
+	return fmt.Errorf("连接 %s 失败（阶段: %s）: %w；建议: %s", h.Alias, stage, err, operation.Suggestion(stage))
 }
 
 func (app *App) cmdInteractiveExec(args []string) error {
@@ -239,11 +270,11 @@ func (app *App) cmdInteractiveSSHConfig(args []string) error {
 
 	switch choice {
 	case "1":
-		path := ui.ReadLine("导出路径 (留空使用默认): ")
-		if path != "" {
-			return app.cmdExportSSHConfig([]string{path})
+		path := ui.ReadLine("导出路径（必填，留空取消）: ")
+		if path == "" {
+			return nil
 		}
-		return app.cmdExportSSHConfig(nil)
+		return app.cmdExportSSHConfig([]string{path})
 	case "2":
 		path := ui.ReadLine("导入路径 (留空使用 ~/.ssh/config): ")
 		if path != "" {

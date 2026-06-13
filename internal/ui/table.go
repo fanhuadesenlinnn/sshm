@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/fanhuadesenlinnn/sshm/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v4/internal/config"
 	"golang.org/x/term"
 )
 
@@ -214,6 +214,21 @@ func RenderHostDetail(h config.Host, index int) {
 		fmt.Printf("  %s %s\n", BoldText("密码:"), DimText("未保存"))
 	}
 	fmt.Printf("  %s %s\n", BoldText("认证:"), h.Auth)
+	policy := h.ResolvedHostKeyPolicy
+	if policy == "" {
+		policy = h.HostKeyPolicy
+	}
+	if policy == "" {
+		policy = config.HostKeyPolicyStrict
+	}
+	source := "全局"
+	if h.HostKeyPolicy != "" {
+		source = "主机覆盖"
+	}
+	fmt.Printf("  %s %s (%s)\n", BoldText("主机信任:"), policy, source)
+	if h.JumpHost != "" {
+		fmt.Printf("  %s %s\n", BoldText("跳板机:"), h.JumpHost)
+	}
 	if h.Note != "" {
 		fmt.Printf("  %s %s\n", BoldText("备注:"), h.Note)
 	}

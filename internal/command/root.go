@@ -6,18 +6,18 @@ import (
 	"os"
 	"strings"
 
-	"github.com/fanhuadesenlinnn/sshm/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/internal/secret"
-	"github.com/fanhuadesenlinnn/sshm/internal/ui"
+	"github.com/fanhuadesenlinnn/sshm/v4/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v4/internal/secret"
+	"github.com/fanhuadesenlinnn/sshm/v4/internal/ui"
 )
 
-var Version = "0.2.0"
+var Version = "dev"
 
 // App holds shared state for all commands.
 type App struct {
 	Store       *config.Store
 	Keys        *config.KeyStore
-	SecretPath  string
+	ConfigPath  string
 	secretStore *secret.FileStore
 }
 
@@ -26,7 +26,7 @@ func NewApp() *App {
 	return &App{
 		Store:      config.NewStore(),
 		Keys:       config.NewKeyStore(),
-		SecretPath: config.SecretsFilePath(),
+		ConfigPath: config.ConfigFilePath(),
 	}
 }
 
@@ -82,6 +82,8 @@ func Run(args []string) error {
 		return app.cmdPick(args[1:])
 	case "config-edit":
 		return app.cmdConfigEdit(args[1:])
+	case "config":
+		return app.cmdConfig(args[1:])
 	case "doctor":
 		return app.cmdDoctor(args[1:])
 	case "connect", "conn":
@@ -98,6 +100,10 @@ func Run(args []string) error {
 		return app.cmdPush(args[1:])
 	case "pull":
 		return app.cmdPull(args[1:])
+	case "forward":
+		return app.cmdForward(args[1:])
+	case "logs":
+		return app.cmdLogs(args[1:])
 	case "--export-ssh-config", "export-ssh-config":
 		return app.cmdExportSSHConfig(args[1:])
 	case "--import-ssh-config", "import-ssh-config":
@@ -115,6 +121,10 @@ func Run(args []string) error {
 		ui.PrintSuccess("当前会话密码库已锁定")
 		return nil
 	case "--help", "-h", "help":
+		if len(args) > 1 && args[1] == "config" {
+			printConfigHelp()
+			return nil
+		}
 		app.printHelp()
 		return nil
 	case "--version", "-v":
@@ -130,13 +140,13 @@ func Run(args []string) error {
 }
 
 func unknownOptionError(option string) error {
-	commands := []string{
-		"--list", "--add", "--edit", "--delete", "--copy", "--show", "--search",
+	commands := append([]string{}, completionCommands...)
+	commands = append(commands,
+		"--list", "--add", "--edit", "--delete", "--show", "--search",
 		"--tag", "--ping", "--exec", "--exec-tag", "--exec-all", "--passwd",
 		"--forget-pass", "--show-pubkey", "--auth",
 		"--lock", "--export-ssh-config", "--import-ssh-config", "--help", "--version",
-		"host", "key", "add-batch", "config-edit",
-	}
+	)
 	best := ""
 	bestDistance := 4
 	for _, command := range commands {
@@ -178,7 +188,7 @@ func (app *App) printHelp() {
 	fmt.Println()
 	fmt.Println("用法:")
 	fmt.Println("  sshm                          进入交互模式")
-	fmt.Println("  sshm <别名|ID> [SSH参数...]    连接到主机")
+	fmt.Println("  sshm <别名|ID>                 连接到主机")
 	fmt.Println("  sshm <命令> [参数...]           执行管理命令")
 	fmt.Println()
 	fmt.Println("常用命令（旧版 --参数仍然兼容）:")
@@ -196,19 +206,23 @@ func (app *App) printHelp() {
 	fmt.Println("  pin/unpin <别名|ID>           收藏或取消收藏")
 	fmt.Println("  completion <bash|zsh|fish>     生成 Shell 自动补全脚本")
 	fmt.Println("  pick                          打开可搜索主机选择器")
-	fmt.Println("  connect <别名|ID> [SSH参数...]  显式连接主机")
-	fmt.Println("  doctor                        检查配置、SSH 与密钥环境")
-	fmt.Println("  ping [别名|ID]                测试连接")
-	fmt.Println("  exec <目标> <命令>             执行命令")
-	fmt.Println("  exec-tag <标签> <命令>         按标签执行命令")
-	fmt.Println("  exec-all <命令>                所有主机执行命令")
+	fmt.Println("  connect <别名|ID>              显式连接主机")
+	fmt.Println("  doctor                        检查配置与凭据环境")
+	fmt.Println("  ping [--yes] [--quiet] [目标]  测试连接")
+	fmt.Println("  exec [--yes] [--quiet] ...     执行命令")
+	fmt.Println("  exec-tag [--yes] [--quiet] ... 按标签执行命令")
+	fmt.Println("  exec-all [--yes] [--quiet] ... 所有主机执行命令")
+	fmt.Println("  push/pull ...                  安全传输文件或目录，可选 rsync 加速")
+	fmt.Println("  forward <主机> <本地> <远程>   建立本地端口转发")
+	fmt.Println("  logs [clean]                   查看或清理操作日志")
 	fmt.Println("  passwd <别名|ID>              设置 SSH 密码")
 	fmt.Println("  forget-pass <别名|ID>         删除 SSH 密码")
 	fmt.Println("  show-pubkey <别名|ID>         显示公钥")
 	fmt.Println("  auth <别名|ID>                修改认证策略")
 	fmt.Println("  lock                           锁定当前会话密码库")
-	fmt.Println("  config-edit                    校验后编辑 hosts.yaml")
-	fmt.Println("  export-ssh-config [文件]      导出 SSH 配置")
+	fmt.Println("  config-edit                    校验后编辑 sshm.yaml")
+	fmt.Println("  config                         查看或修改全局配置")
+	fmt.Println("  export-ssh-config <文件>      导出 SSH 配置")
 	fmt.Println("  import-ssh-config [文件]      导入 SSH 配置")
 	fmt.Println("  --help, -h                    显示帮助")
 	fmt.Println("  --version, -v                 显示版本")
@@ -252,7 +266,7 @@ func (app *App) printInteractiveHelp() {
 	fmt.Println()
 	fmt.Println("  配置")
 	fmt.Printf("    %-14s %-24s %s\n", "ssh-config, sc", "导入/导出 SSH 配置", "")
-	fmt.Printf("    %-14s %-24s %s\n", "config-edit", "校验后编辑 hosts.yaml", "")
+	fmt.Printf("    %-14s %-24s %s\n", "config-edit", "校验后编辑 sshm.yaml", "")
 	fmt.Printf("    %-14s %-24s %s\n", "doctor", "检查本机环境", "")
 	fmt.Println()
 	fmt.Println("  其他")
@@ -263,14 +277,18 @@ func (app *App) printInteractiveHelp() {
 	fmt.Println()
 }
 
-// requireSecretStore creates a FileStore, prompting for master password.
-// If the secrets file already exists, it verifies the passphrase before proceeding.
+// requireSecretStore opens the vault, prompting for the master password.
+// If a vault already exists, it verifies the passphrase before proceeding.
 func (app *App) requireSecretStore() (*secret.FileStore, error) {
 	if app.secretStore != nil {
 		return app.secretStore, nil
 	}
 
-	if _, err := os.Stat(app.SecretPath); os.IsNotExist(err) {
+	exists, err := secret.VaultExists(app.ConfigPath)
+	if err != nil {
+		return nil, fmt.Errorf("检查 vault 失败: %w", err)
+	}
+	if !exists {
 		fmt.Println("首次创建密码库。主密码无法恢复，请妥善保管。")
 		pass1, err := ui.ReadPassword("请创建 sshm 主密码: ")
 		if err != nil {
@@ -286,10 +304,8 @@ func (app *App) requireSecretStore() (*secret.FileStore, error) {
 		if pass1 != pass2 {
 			return nil, fmt.Errorf("两次主密码不一致")
 		}
-		app.secretStore = secret.NewFileStore(app.SecretPath, pass1)
+		app.secretStore = secret.NewFileStore(app.ConfigPath, pass1)
 		return app.secretStore, nil
-	} else if err != nil {
-		return nil, fmt.Errorf("检查 secrets 文件失败: %w", err)
 	}
 
 	for attempt := 1; attempt <= 3; attempt++ {
@@ -297,16 +313,12 @@ func (app *App) requireSecretStore() (*secret.FileStore, error) {
 		if err != nil {
 			return nil, fmt.Errorf("读取主密码失败: %w", err)
 		}
-		fs := secret.NewFileStore(app.SecretPath, pass)
+		fs := secret.NewFileStore(app.ConfigPath, pass)
 		if err := fs.VerifyPassphrase(); err == nil {
 			app.secretStore = fs
-			if err := app.migratePasswordRefs(fs); err != nil {
-				app.secretStore = nil
-				return nil, fmt.Errorf("迁移旧密码引用失败: %w", err)
-			}
 			return app.secretStore, nil
 		} else if !errors.Is(err, secret.ErrIncorrectPassphrase) {
-			return nil, fmt.Errorf("无法读取 secrets 文件: %w", err)
+			return nil, fmt.Errorf("无法读取 vault: %w", err)
 		} else if attempt < 3 {
 			fmt.Fprintln(os.Stderr, ui.Warn("主密码错误，请重试 (%d/3)", attempt))
 		}
@@ -316,54 +328,6 @@ func (app *App) requireSecretStore() (*secret.FileStore, error) {
 
 func (app *App) lockSecretStore() {
 	app.secretStore = nil
-}
-
-func (app *App) migratePasswordRefs(fs *secret.FileStore) error {
-	hf, err := app.Store.Load()
-	if err != nil {
-		return err
-	}
-
-	destToSource := map[string]string{}
-	stableIDs := map[string]bool{}
-	for _, h := range hf.Hosts {
-		stableIDs[h.ID] = true
-		if h.PasswordRef != "" && h.PasswordRef != h.ID {
-			destToSource[h.ID] = h.PasswordRef
-		}
-	}
-	if len(destToSource) == 0 {
-		return nil
-	}
-	available := map[string]string{}
-	for dest, source := range destToSource {
-		if _, err := fs.GetPassword(source); err == nil {
-			available[dest] = source
-		}
-	}
-	if len(available) == 0 {
-		return nil
-	}
-	if err := fs.CopyPasswords(available); err != nil {
-		return err
-	}
-
-	oldRefs := make([]string, 0, len(destToSource))
-	for i := range hf.Hosts {
-		if source, ok := available[hf.Hosts[i].ID]; ok {
-			hf.Hosts[i].PasswordRef = hf.Hosts[i].ID
-			if !stableIDs[source] {
-				oldRefs = append(oldRefs, source)
-			}
-		}
-	}
-	if err := app.Store.Save(hf); err != nil {
-		return err
-	}
-	if err := fs.RemovePasswords(oldRefs...); err != nil {
-		return fmt.Errorf("配置已迁移，但清理旧密码引用失败: %w", err)
-	}
-	return nil
 }
 
 // resolveHost finds a host by alias or ID from args, or prompts interactively.

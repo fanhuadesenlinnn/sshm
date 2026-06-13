@@ -3,9 +3,9 @@ package command
 import (
 	"fmt"
 
-	"github.com/fanhuadesenlinnn/sshm/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/internal/secret"
-	"github.com/fanhuadesenlinnn/sshm/internal/ui"
+	"github.com/fanhuadesenlinnn/sshm/v4/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v4/internal/secret"
+	"github.com/fanhuadesenlinnn/sshm/v4/internal/ui"
 )
 
 func (app *App) cmdEdit(args []string) error {
@@ -26,29 +26,31 @@ func (app *App) cmdEdit(args []string) error {
 	newPort := h.Port
 	fmt.Sscanf(portStr, "%d", &newPort)
 
-	newIdentity := readEditableValue("托管密钥", h.Identity)
+	newIdentity := normalizeManagedIdentity(readEditableValue("托管密钥", managedIdentityDisplay(h.Identity)))
 	newNote := readEditableValue("备注", h.Note)
 
 	newAuth := ui.ReadLineDefault(fmt.Sprintf("认证策略 (auto/key/password) [%s]: ", h.Auth), h.Auth)
+	newHostKeyPolicy := readEditableValue("主机信任策略 (strict/accept-new/insecure，空为继承)", h.HostKeyPolicy)
+	newJumpHost := readEditableValue("跳板机别名", h.JumpHost)
 
 	tagsInput := readEditableValue("标签", config.TagsToString(h.Tags))
 	newTags := config.ParseTags(tagsInput)
 
-	aliasChanged := newAlias != h.Alias
-
 	updated := config.Host{
-		ID:          h.ID,
-		Alias:       newAlias,
-		User:        newUser,
-		Host:        newHost,
-		Port:        newPort,
-		Identity:    newIdentity,
-		Note:        newNote,
-		Tags:        newTags,
-		Auth:        newAuth,
-		PasswordRef: h.PasswordRef,
-		Pinned:      h.Pinned,
-		LastUsedAt:  h.LastUsedAt,
+		ID:            h.ID,
+		Alias:         newAlias,
+		User:          newUser,
+		Host:          newHost,
+		Port:          newPort,
+		Identity:      newIdentity,
+		Note:          newNote,
+		Tags:          newTags,
+		Auth:          newAuth,
+		PasswordRef:   h.PasswordRef,
+		Pinned:        h.Pinned,
+		LastUsedAt:    h.LastUsedAt,
+		HostKeyPolicy: newHostKeyPolicy,
+		JumpHost:      newJumpHost,
 	}
 	if errs := updated.Validate(); len(errs) > 0 {
 		for _, e := range errs {
@@ -62,6 +64,8 @@ func (app *App) cmdEdit(args []string) error {
 		}
 	}
 
+	var newPassword *string
+	var vault *secret.FileStore
 	if h.PasswordRef != "" {
 		fmt.Printf("\n当前主机已保存密码。\n")
 		changePass := ui.ReadYesNo("是否修改密码？[y/N]: ")
@@ -69,21 +73,13 @@ func (app *App) cmdEdit(args []string) error {
 			fs, fsErr := app.requireSecretStore()
 			if fsErr != nil {
 				return fmt.Errorf("无法访问密码存储: %w", fsErr)
-			} else if fs != nil {
-				if err := app.changeHostPasswordWithStore(fs, h.ID, h.Alias); err != nil {
-					return fmt.Errorf("修改密码失败: %w", err)
-				} else {
-					updated.PasswordRef = h.ID
-					ui.PrintSuccess("密码已更新")
-				}
 			}
-		} else if aliasChanged && h.PasswordRef != h.ID {
-			fs := app.tryGetSecretStore()
-			if fs != nil {
-				if _, err := fs.GetPassword(h.ID); err == nil {
-					updated.PasswordRef = h.ID
-				}
+			password, err := readConfirmedSSHPassword()
+			if err != nil {
+				return fmt.Errorf("修改密码失败: %w", err)
 			}
+			newPassword, vault = &password, fs
+			updated.PasswordRef = h.ID
 		}
 	} else {
 		savePass := ui.ReadYesNo("\n是否保存 SSH 密码？[y/N]: ")
@@ -91,23 +87,47 @@ func (app *App) cmdEdit(args []string) error {
 			fs, fsErr := app.requireSecretStore()
 			if fsErr != nil {
 				return fmt.Errorf("无法访问密码存储: %w", fsErr)
-			} else if fs != nil {
-				if err := app.changeHostPasswordWithStore(fs, h.ID, h.Alias); err != nil {
-					return fmt.Errorf("保存密码失败: %w", err)
-				} else {
-					updated.PasswordRef = h.ID
-					ui.PrintSuccess("密码已加密保存")
-				}
 			}
+			password, err := readConfirmedSSHPassword()
+			if err != nil {
+				return fmt.Errorf("保存密码失败: %w", err)
+			}
+			newPassword, vault = &password, fs
+			updated.PasswordRef = h.ID
 		}
 	}
 
-	if err := app.Store.Update(idx, updated); err != nil {
+	updateHost := func(doc *config.Document) error {
+		for i := range doc.Hosts {
+			if doc.Hosts[i].ID == h.ID {
+				doc.Hosts[i] = updated
+				return nil
+			}
+		}
+		return fmt.Errorf("未找到主机: %s", h.Alias)
+	}
+	if newPassword != nil {
+		if err := vault.UpdateDocument(func(doc *config.Document, entries map[string]string) error {
+			delete(entries, "password:"+h.PasswordRef)
+			entries["password:"+h.ID] = *newPassword
+			return updateHost(doc)
+		}); err != nil {
+			return err
+		}
+		ui.PrintSuccess("密码已加密保存")
+	} else if err := app.Store.Repository().Update(updateHost); err != nil {
 		return err
 	}
 
 	ui.PrintSuccess("已更新主机：%s", newAlias)
 	return nil
+}
+
+func managedIdentityDisplay(identity string) string {
+	if name, ok := config.ManagedKeyName(identity); ok {
+		return name
+	}
+	return identity
 }
 
 func readEditableValue(label, current string) string {
@@ -125,23 +145,18 @@ func readEditableValue(label, current string) string {
 	return value
 }
 
-func (app *App) changeHostPasswordWithStore(fs *secret.FileStore, id, alias string) error {
+func readConfirmedSSHPassword() (string, error) {
 	pass1, err := ui.ReadPassword("请输入 SSH 密码: ")
 	if err != nil {
-		return fmt.Errorf("读取密码失败: %w", err)
+		return "", fmt.Errorf("读取密码失败: %w", err)
 	}
 	pass2, err := ui.ReadPassword("再次输入 SSH 密码: ")
 	if err != nil {
-		return fmt.Errorf("读取密码失败: %w", err)
+		return "", fmt.Errorf("读取密码失败: %w", err)
 	}
 
 	if pass1 != pass2 {
-		return fmt.Errorf("两次密码不一致")
+		return "", fmt.Errorf("两次密码不一致")
 	}
-
-	if err := fs.SetPasswordByID(id, alias, pass1); err != nil {
-		return fmt.Errorf("保存密码失败: %w", err)
-	}
-
-	return nil
+	return pass1, nil
 }

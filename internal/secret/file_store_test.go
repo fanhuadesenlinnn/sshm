@@ -7,10 +7,12 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+
+	"github.com/fanhuadesenlinnn/sshm/v4/internal/config"
 )
 
 func TestFileStorePersistsAndVerifiesPassword(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "secrets.yaml")
+	path := filepath.Join(t.TempDir(), "sshm.yaml")
 	store := NewFileStore(path, "master-password")
 
 	if err := store.SetPassword("server", " ssh:password "); err != nil {
@@ -30,8 +32,24 @@ func TestFileStorePersistsAndVerifiesPassword(t *testing.T) {
 	}
 }
 
+func TestFileStorePreservesArbitraryPasswordCharacters(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sshm.yaml")
+	store := NewFileStore(path, "master-password")
+	want := "line one\nline two:with:colons\x00end"
+	if err := store.SetPassword("server", want); err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.GetPassword("server")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Fatalf("password = %q, want %q", got, want)
+	}
+}
+
 func TestFileStoreWrongPassphraseDoesNotOverwriteExistingFile(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "secrets.yaml")
+	path := filepath.Join(t.TempDir(), "sshm.yaml")
 	store := NewFileStore(path, "correct-password")
 	if err := store.SetPassword("server", "original-password"); err != nil {
 		t.Fatalf("SetPassword() error = %v", err)
@@ -52,7 +70,7 @@ func TestFileStoreWrongPassphraseDoesNotOverwriteExistingFile(t *testing.T) {
 		t.Fatalf("os.ReadFile() error = %v", err)
 	}
 	if string(after) != string(before) {
-		t.Fatal("SetPassword() with a wrong passphrase overwrote secrets.yaml")
+		t.Fatal("SetPassword() with a wrong passphrase overwrote sshm.yaml")
 	}
 
 	password, err := store.GetPassword("server")
@@ -65,8 +83,8 @@ func TestFileStoreWrongPassphraseDoesNotOverwriteExistingFile(t *testing.T) {
 }
 
 func TestFileStoreCorruptFileDoesNotGetOverwritten(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "secrets.yaml")
-	original := []byte("not a valid secrets file")
+	path := filepath.Join(t.TempDir(), "sshm.yaml")
+	original := []byte("not a valid sshm config")
 	if err := os.WriteFile(path, original, 0600); err != nil {
 		t.Fatalf("os.WriteFile() error = %v", err)
 	}
@@ -81,114 +99,12 @@ func TestFileStoreCorruptFileDoesNotGetOverwritten(t *testing.T) {
 		t.Fatalf("os.ReadFile() error = %v", err)
 	}
 	if string(after) != string(original) {
-		t.Fatal("SetPassword() overwrote a corrupt secrets.yaml")
+		t.Fatal("SetPassword() overwrote a corrupt sshm.yaml")
 	}
 }
 
-func TestFileStoreSetPasswordByID(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "secrets.yaml")
-	store := NewFileStore(path, "master-password")
-
-	// Save with SetPasswordByID — should use ID and clear alias
-	if err := store.SetPasswordByID("abc123", "old-alias", "secret123"); err != nil {
-		t.Fatalf("SetPasswordByID() error = %v", err)
-	}
-
-	// Verify can get by ID
-	pass, err := store.GetPassword("abc123")
-	if err != nil {
-		t.Fatalf("GetPassword(abc123) error = %v", err)
-	}
-	if pass != "secret123" {
-		t.Fatalf("GetPassword(abc123) = %q, want secret123", pass)
-	}
-
-	// Verify old alias is gone
-	_, err = store.GetPassword("old-alias")
-	if err == nil {
-		t.Fatal("GetPassword(old-alias) should fail after SetPasswordByID")
-	}
-}
-
-func TestFileStoreSetPasswordByIDRemovesEmptyAliasPassword(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "secrets.yaml")
-	store := NewFileStore(path, "master-password")
-	if err := store.SetPassword("old-alias", ""); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.SetPasswordByID("stable-id", "old-alias", ""); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.GetPassword("old-alias"); err == nil {
-		t.Fatal("empty alias password was not removed")
-	}
-}
-
-func TestFileStoreMigrateAliasToID(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "secrets.yaml")
-	store := NewFileStore(path, "master-password")
-
-	// First save via old alias
-	if err := store.SetPassword("old-alias", "migrate-me"); err != nil {
-		t.Fatalf("SetPassword() error = %v", err)
-	}
-
-	// Migrate
-	migrated, err := store.MigrateAliasToID("old-alias", "new-id-123")
-	if err != nil {
-		t.Fatalf("MigrateAliasToID() error = %v", err)
-	}
-	if !migrated {
-		t.Fatal("MigrateAliasToID() returned false, want true")
-	}
-
-	// Verify by new ID
-	pass, err := store.GetPassword("new-id-123")
-	if err != nil {
-		t.Fatalf("GetPassword(new-id-123) error = %v", err)
-	}
-	if pass != "migrate-me" {
-		t.Fatalf("GetPassword() = %q, want migrate-me", pass)
-	}
-
-	// Verify old alias is gone
-	_, err = store.GetPassword("old-alias")
-	if err == nil {
-		t.Fatal("GetPassword(old-alias) should fail after migration")
-	}
-}
-
-func TestFileStoreMigrateNonExistentAlias(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "secrets.yaml")
-	store := NewFileStore(path, "master-password")
-
-	migrated, err := store.MigrateAliasToID("nonexistent", "some-id")
-	if err != nil {
-		t.Fatalf("MigrateAliasToID() error = %v", err)
-	}
-	if migrated {
-		t.Fatal("MigrateAliasToID() returned true for nonexistent alias")
-	}
-}
-
-func TestFileStoreCopyPasswordsKeepsOldReference(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "secrets.yaml")
-	store := NewFileStore(path, "master-password")
-	if err := store.SetPassword("old", "secret"); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.CopyPasswords(map[string]string{"new": "old"}); err != nil {
-		t.Fatal(err)
-	}
-	for _, ref := range []string{"old", "new"} {
-		if got, err := store.GetPassword(ref); err != nil || got != "secret" {
-			t.Fatalf("GetPassword(%q) = %q, %v", ref, got, err)
-		}
-	}
-}
-
-func TestFileStoreBackupBehavior(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "secrets.yaml")
+func TestFileStoreDoesNotCreateBackup(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sshm.yaml")
 	store := NewFileStore(path, "master-password")
 
 	if err := store.SetPassword("server", "pass1"); err != nil {
@@ -218,17 +134,13 @@ func TestFileStoreBackupBehavior(t *testing.T) {
 		}
 	}
 
-	backup, err := os.ReadFile(path + ".bak")
-	if err != nil {
-		t.Fatalf("backup missing: %v", err)
-	}
-	if string(backup) != string(data1) {
-		t.Fatal("backup does not contain previous encrypted file")
+	if _, err := os.Stat(path + ".bak"); !os.IsNotExist(err) {
+		t.Fatalf("unexpected backup file: %v", err)
 	}
 }
 
 func TestFileStoreConcurrentWritesDoNotLosePasswords(t *testing.T) {
-	store := NewFileStore(filepath.Join(t.TempDir(), "secrets.yaml"), "master-password")
+	store := NewFileStore(filepath.Join(t.TempDir(), "sshm.yaml"), "master-password")
 	var wg sync.WaitGroup
 	for i := 0; i < 10; i++ {
 		wg.Add(1)
@@ -250,7 +162,7 @@ func TestFileStoreConcurrentWritesDoNotLosePasswords(t *testing.T) {
 }
 
 func TestFileStoreManagedKeyAndPasswordCoexist(t *testing.T) {
-	store := NewFileStore(filepath.Join(t.TempDir(), "secrets.yaml"), "master-password")
+	store := NewFileStore(filepath.Join(t.TempDir(), "sshm.yaml"), "master-password")
 	privateKey := []byte("private:key:data")
 	if err := store.SetPassword("server", "password:with:colons"); err != nil {
 		t.Fatal(err)
@@ -276,5 +188,68 @@ func TestFileStoreManagedKeyAndPasswordCoexist(t *testing.T) {
 	}
 	if got, err := store.GetPassword("server"); err != nil || got != "password:with:colons" {
 		t.Fatalf("password was affected by key removal: %q, %v", got, err)
+	}
+}
+
+func TestUpdateDocumentFailureLeavesHostAndVaultUnchanged(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sshm.yaml")
+	store := NewFileStore(path, "master-password")
+	if err := store.SetPassword("stable-id", "original"); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = store.UpdateDocument(func(doc *config.Document, entries map[string]string) error {
+		doc.Hosts = append(doc.Hosts, config.Host{ID: config.NewID(), Alias: "new", User: "root", Host: "new", Port: 22, Auth: "auto"})
+		entries["password:stable-id"] = "changed"
+		return errors.New("injected failure")
+	})
+	if err == nil {
+		t.Fatal("mutation failure should be returned")
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(before) {
+		t.Fatal("failed transaction changed sshm.yaml")
+	}
+	if password, err := store.GetPassword("stable-id"); err != nil || password != "original" {
+		t.Fatalf("password = %q, err = %v", password, err)
+	}
+}
+
+func TestCopiedSingleConfigRetainsHostsAndCredentials(t *testing.T) {
+	sourcePath := filepath.Join(t.TempDir(), "sshm.yaml")
+	host := config.DefaultHost()
+	host.Alias, host.User, host.Host, host.PasswordRef = "portable", "root", "example.test", host.ID
+	store := NewFileStore(sourcePath, "master-password")
+	if err := store.UpdateDocument(func(doc *config.Document, entries map[string]string) error {
+		doc.Hosts = []config.Host{host}
+		entries["password:"+host.ID] = "secret"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(sourcePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	destinationPath := filepath.Join(t.TempDir(), "sshm.yaml")
+	if err := os.WriteFile(destinationPath, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	loaded, _, _, err := config.NewStoreWithPath(destinationPath).FindHost(host.Alias)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.ID != host.ID {
+		t.Fatalf("copied host ID = %q, want %q", loaded.ID, host.ID)
+	}
+	password, err := NewFileStore(destinationPath, "master-password").GetPassword(host.ID)
+	if err != nil || password != "secret" {
+		t.Fatalf("copied password = %q, err = %v", password, err)
 	}
 }

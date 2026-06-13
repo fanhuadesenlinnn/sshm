@@ -7,21 +7,17 @@ import (
 	"testing"
 )
 
-func TestWriteCreatesBackup(t *testing.T) {
+func TestWriteDoesNotCreateBackup(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "data.yaml")
-	if err := Write(path, []byte("first"), 0600, true); err != nil {
+	if err := Write(path, []byte("first"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := Write(path, []byte("second"), 0600, true); err != nil {
+	if err := Write(path, []byte("second"), 0600); err != nil {
 		t.Fatal(err)
 	}
 
-	backup, err := os.ReadFile(path + ".bak")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(backup) != "first" {
-		t.Fatalf("backup = %q, want first", backup)
+	if _, err := os.Stat(path + ".bak"); !os.IsNotExist(err) {
+		t.Fatalf("unexpected backup file: %v", err)
 	}
 }
 

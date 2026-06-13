@@ -1,140 +1,98 @@
 package config
 
 import (
+	"bytes"
 	"fmt"
-	"os"
 
-	"github.com/fanhuadesenlinnn/sshm/internal/safefile"
 	"gopkg.in/yaml.v3"
 )
 
-const CurrentVersion = 3
+const CurrentVersion = DocumentVersion
 
-// Store manages host configuration persistence.
+// Store is a host-focused view over the single sshm.yaml repository.
 type Store struct {
-	path string
+	repo *Repository
 }
 
-// NewStore creates a new Store using the default hosts.yaml path.
 func NewStore() *Store {
-	return &Store{path: HostsFilePath()}
+	return &Store{repo: NewRepository()}
 }
 
-// NewStoreWithPath creates a Store with an explicit file path.
 func NewStoreWithPath(path string) *Store {
-	return &Store{path: path}
+	return &Store{repo: NewRepositoryWithPath(path)}
 }
 
-// Path returns the store file path.
-func (s *Store) Path() string { return s.path }
+func (s *Store) Path() string { return s.repo.Path() }
 
-// Load reads and parses hosts.yaml.  Missing IDs are filled automatically.
-// v1 configs (without IDs) are migrated transparently.
+func (s *Store) Repository() *Repository { return s.repo }
+
 func (s *Store) Load() (*HostsFile, error) {
-	var hf *HostsFile
-	err := safefile.WithLock(s.path, func() error {
-		var err error
-		hf, err = s.loadUnlocked(true)
-		return err
-	})
-	return hf, err
-}
-
-func (s *Store) loadUnlocked(persistMigration bool) (*HostsFile, error) {
-	data, err := os.ReadFile(s.path)
+	doc, err := s.repo.Load()
 	if err != nil {
-		if os.IsNotExist(err) {
-			return &HostsFile{Version: CurrentVersion, Hosts: []Host{}}, nil
-		}
-		return nil, fmt.Errorf("读取配置文件失败（可检查备份 %s.bak）: %w", s.path, err)
+		return nil, err
 	}
-	var hf HostsFile
-	if err := yaml.Unmarshal(data, &hf); err != nil {
-		return nil, fmt.Errorf("解析配置文件失败（主文件未修改，可检查备份 %s.bak）: %w", s.path, err)
+	hosts := append([]Host(nil), doc.Hosts...)
+	for i := range hosts {
+		hosts[i].ConfigPath = s.repo.Path()
+		hosts[i].ResolvedHostKeyPolicy = hosts[i].EffectiveHostKeyPolicy(doc.Defaults)
 	}
-	if hf.Hosts == nil {
-		hf.Hosts = []Host{}
-	}
-	changed := hf.EnsureIDs()
-	if hf.EnsureDefaults() {
-		changed = true
-	}
-	if hf.Version < CurrentVersion {
-		hf.Version = CurrentVersion
-		changed = true
-	}
-	if changed && persistMigration {
-		if err := s.saveUnlocked(&hf); err != nil {
-			return nil, fmt.Errorf("迁移配置到 v%d 失败，原文件已保留: %w", CurrentVersion, err)
-		}
-	}
-	return &hf, nil
+	return &HostsFile{Version: CurrentVersion, Hosts: hosts}, nil
 }
 
-// Save writes hosts.yaml with a backup and atomic rename.
 func (s *Store) Save(hf *HostsFile) error {
-	return safefile.WithLock(s.path, func() error {
-		return s.saveUnlocked(hf)
+	hosts := append([]Host(nil), hf.Hosts...)
+	return s.repo.Update(func(doc *Document) error {
+		doc.Hosts = hosts
+		return nil
 	})
 }
 
-func (s *Store) saveUnlocked(hf *HostsFile) error {
-	hf.Version = CurrentVersion
-	hf.EnsureIDs()
-	hf.EnsureDefaults()
-	if dups := hf.DuplicateAliases(); len(dups) > 0 {
-		return fmt.Errorf("配置包含重复别名: %v", dups)
-	}
-	for _, host := range hf.Hosts {
-		if errs := host.Validate(); len(errs) > 0 {
-			return fmt.Errorf("主机 %s 配置无效: %v", host.Alias, errs)
-		}
-	}
-	data, err := yaml.Marshal(hf)
-	if err != nil {
-		return fmt.Errorf("序列化配置失败: %w", err)
-	}
-	return safefile.Write(s.path, data, 0600, true)
-}
-
-// ValidateHostsData parses and validates hosts.yaml content without modifying files.
 func ValidateHostsData(data []byte) (*HostsFile, error) {
 	var hf HostsFile
-	if err := yaml.Unmarshal(data, &hf); err != nil {
+	decoder := yaml.NewDecoder(bytes.NewReader(data))
+	decoder.KnownFields(true)
+	if err := decoder.Decode(&hf); err != nil {
 		return nil, fmt.Errorf("解析配置失败: %w", err)
 	}
 	if hf.Hosts == nil {
 		hf.Hosts = []Host{}
 	}
-	hf.EnsureIDs()
-	hf.EnsureDefaults()
-	hf.Version = CurrentVersion
-	if dups := hf.DuplicateAliases(); len(dups) > 0 {
-		return nil, fmt.Errorf("配置包含重复别名: %v", dups)
-	}
-	for _, host := range hf.Hosts {
-		if errs := host.Validate(); len(errs) > 0 {
-			return nil, fmt.Errorf("主机 %s 配置无效: %v", host.Alias, errs)
+	seenAlias := map[string]bool{}
+	seenID := map[string]bool{}
+	for i := range hf.Hosts {
+		hf.Hosts[i].EnsureDefaults()
+		if hf.Hosts[i].ID == "" {
+			hf.Hosts[i].ID = NewID()
+		}
+		if seenAlias[hf.Hosts[i].Alias] {
+			return nil, fmt.Errorf("配置包含重复别名: %s", hf.Hosts[i].Alias)
+		}
+		if seenID[hf.Hosts[i].ID] {
+			return nil, fmt.Errorf("配置包含重复稳定 ID: %s", hf.Hosts[i].ID)
+		}
+		seenAlias[hf.Hosts[i].Alias] = true
+		seenID[hf.Hosts[i].ID] = true
+		if errs := hf.Hosts[i].Validate(); len(errs) > 0 {
+			return nil, fmt.Errorf("主机 %s 配置无效: %v", hf.Hosts[i].Alias, errs)
 		}
 	}
+	hf.Version = CurrentVersion
 	return &hf, nil
 }
 
-// FindByAlias searches for a host by alias.
 func (s *Store) FindByAlias(alias string) (*Host, int, error) {
 	hf, err := s.Load()
 	if err != nil {
 		return nil, -1, err
 	}
-	for i, h := range hf.Hosts {
-		if h.Alias == alias {
+	for i := range hf.Hosts {
+		if hf.Hosts[i].Alias == alias {
 			return &hf.Hosts[i], i, nil
 		}
 	}
 	return nil, -1, nil
 }
 
-// FindByID searches for a host by numeric ID (1-based index in the list).
 func (s *Store) FindByID(id int) (*Host, int, error) {
 	hf, err := s.Load()
 	if err != nil {
@@ -146,28 +104,22 @@ func (s *Store) FindByID(id int) (*Host, int, error) {
 	return &hf.Hosts[id-1], id - 1, nil
 }
 
-// FindHost resolves an alias or ID string to a host entry.
 func (s *Store) FindHost(aliasOrID string) (*Host, int, *HostsFile, error) {
 	hf, err := s.Load()
 	if err != nil {
 		return nil, -1, nil, err
 	}
-
-	// Try numeric ID first
 	if id := parseID(aliasOrID); id > 0 {
 		if id > len(hf.Hosts) {
 			return nil, -1, nil, fmt.Errorf("ID %d 超出范围 (1-%d)", id, len(hf.Hosts))
 		}
 		return &hf.Hosts[id-1], id - 1, hf, nil
 	}
-
-	// Try alias
-	for i, h := range hf.Hosts {
-		if h.Alias == aliasOrID {
+	for i := range hf.Hosts {
+		if hf.Hosts[i].Alias == aliasOrID {
 			return &hf.Hosts[i], i, hf, nil
 		}
 	}
-
 	return nil, -1, nil, fmt.Errorf("未找到主机: %s", aliasOrID)
 }
 
@@ -175,26 +127,19 @@ func parseID(s string) int {
 	if s == "" {
 		return 0
 	}
+	n := 0
 	for _, ch := range s {
 		if ch < '0' || ch > '9' {
 			return 0
 		}
-	}
-	var n int
-	for _, ch := range s {
 		n = n*10 + int(ch-'0')
 	}
 	return n
 }
 
-// Add appends a host to the store after checking for duplicate aliases.
 func (s *Store) Add(h Host) error {
-	return safefile.WithLock(s.path, func() error {
-		hf, err := s.loadUnlocked(false)
-		if err != nil {
-			return err
-		}
-		for _, existing := range hf.Hosts {
+	return s.repo.Update(func(doc *Document) error {
+		for _, existing := range doc.Hosts {
 			if existing.Alias == h.Alias {
 				return fmt.Errorf("别名 '%s' 已存在", h.Alias)
 			}
@@ -202,57 +147,44 @@ func (s *Store) Add(h Host) error {
 		if h.ID == "" {
 			h.ID = NewID()
 		}
-		hf.Hosts = append(hf.Hosts, h)
-		return s.saveUnlocked(hf)
+		h.EnsureDefaults()
+		doc.Hosts = append(doc.Hosts, h)
+		return nil
 	})
 }
 
-// Update replaces a host at the given index after duplicate check.
 func (s *Store) Update(idx int, h Host) error {
-	return safefile.WithLock(s.path, func() error {
-		hf, err := s.loadUnlocked(false)
-		if err != nil {
-			return err
-		}
-		if idx < 0 || idx >= len(hf.Hosts) {
+	return s.repo.Update(func(doc *Document) error {
+		if idx < 0 || idx >= len(doc.Hosts) {
 			return fmt.Errorf("索引 %d 超出范围", idx)
 		}
-		for i, existing := range hf.Hosts {
+		for i, existing := range doc.Hosts {
 			if i != idx && existing.Alias == h.Alias {
 				return fmt.Errorf("别名 '%s' 已存在", h.Alias)
 			}
 		}
-		hf.Hosts[idx] = h
-		return s.saveUnlocked(hf)
+		h.EnsureDefaults()
+		doc.Hosts[idx] = h
+		return nil
 	})
 }
 
-// Remove deletes a host at the given index.
 func (s *Store) Remove(idx int) error {
-	return safefile.WithLock(s.path, func() error {
-		hf, err := s.loadUnlocked(false)
-		if err != nil {
-			return err
-		}
-		if idx < 0 || idx >= len(hf.Hosts) {
+	return s.repo.Update(func(doc *Document) error {
+		if idx < 0 || idx >= len(doc.Hosts) {
 			return fmt.Errorf("索引 %d 超出范围", idx)
 		}
-		hf.Hosts = append(hf.Hosts[:idx], hf.Hosts[idx+1:]...)
-		return s.saveUnlocked(hf)
+		doc.Hosts = append(doc.Hosts[:idx], doc.Hosts[idx+1:]...)
+		return nil
 	})
 }
 
-// MarkUsed records the most recent successful connection time for a stable host ID.
 func (s *Store) MarkUsed(id, timestamp string) error {
-	return safefile.WithLock(s.path, func() error {
-		hf, err := s.loadUnlocked(false)
-		if err != nil {
-			return err
-		}
-		for i := range hf.Hosts {
-			if hf.Hosts[i].ID == id {
-				hf.Hosts[i].LastUsedAt = timestamp
-				return s.saveUnlocked(hf)
+	return s.repo.Update(func(doc *Document) error {
+		for i := range doc.Hosts {
+			if doc.Hosts[i].ID == id {
+				doc.Hosts[i].LastUsedAt = timestamp
+				return nil
 			}
 		}
 		return fmt.Errorf("未找到主机 ID: %s", id)

@@ -3,11 +3,12 @@ package command
 import (
 	"fmt"
 
-	"github.com/fanhuadesenlinnn/sshm/internal/ui"
+	"github.com/fanhuadesenlinnn/sshm/v4/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v4/internal/ui"
 )
 
 func (app *App) cmdPasswd(args []string) error {
-	h, idx, hf, err := app.resolveHost(args, "请输入主机别名或ID: ")
+	h, _, _, err := app.resolveHost(args, "请输入主机别名或ID: ")
 	if err != nil {
 		return err
 	}
@@ -19,11 +20,6 @@ func (app *App) cmdPasswd(args []string) error {
 	if fs == nil {
 		return fmt.Errorf("无法访问密码存储")
 	}
-	h, idx, hf, err = app.Store.FindHost(h.Alias)
-	if err != nil {
-		return fmt.Errorf("重新加载迁移后的主机配置失败: %w", err)
-	}
-
 	pass1, err := ui.ReadPassword("请输入 SSH 密码: ")
 	if err != nil {
 		return fmt.Errorf("读取密码失败: %w", err)
@@ -37,25 +33,22 @@ func (app *App) cmdPasswd(args []string) error {
 		return fmt.Errorf("两次密码不一致")
 	}
 
-	// Save by stable ID if available, else by alias
-	if h.ID != "" {
-		if err := fs.SetPasswordByID(h.ID, h.Alias, pass1); err != nil {
-			return fmt.Errorf("保存密码失败: %w", err)
+	if err := fs.UpdateDocument(func(doc *config.Document, entries map[string]string) error {
+		for i := range doc.Hosts {
+			if doc.Hosts[i].ID != h.ID {
+				continue
+			}
+			delete(entries, "password:"+h.Alias)
+			entries["password:"+h.ID] = pass1
+			doc.Hosts[i].PasswordRef = h.ID
+			if doc.Hosts[i].Auth == "" {
+				doc.Hosts[i].Auth = "auto"
+			}
+			return nil
 		}
-		hf.Hosts[idx].PasswordRef = h.ID
-	} else {
-		if err := fs.SetPassword(h.Alias, pass1); err != nil {
-			return fmt.Errorf("保存密码失败: %w", err)
-		}
-		hf.Hosts[idx].PasswordRef = h.Alias
-	}
-
-	if hf.Hosts[idx].Auth == "" {
-		hf.Hosts[idx].Auth = "auto"
-	}
-
-	if err := app.Store.Save(hf); err != nil {
-		return fmt.Errorf("更新主机配置失败: %w", err)
+		return fmt.Errorf("未找到主机: %s", h.Alias)
+	}); err != nil {
+		return fmt.Errorf("保存密码失败: %w", err)
 	}
 
 	ui.PrintSuccess("密码已加密保存：%s", h.Alias)
@@ -63,7 +56,7 @@ func (app *App) cmdPasswd(args []string) error {
 }
 
 func (app *App) cmdForgetPass(args []string) error {
-	h, idx, hf, err := app.resolveHost(args, "请输入主机别名或ID: ")
+	h, _, _, err := app.resolveHost(args, "请输入主机别名或ID: ")
 	if err != nil {
 		return err
 	}
@@ -85,20 +78,23 @@ func (app *App) cmdForgetPass(args []string) error {
 	if fs == nil {
 		return fmt.Errorf("无法访问密码存储")
 	}
-	h, idx, hf, err = app.Store.FindHost(h.Alias)
-	if err != nil {
-		return fmt.Errorf("重新加载迁移后的主机配置失败: %w", err)
-	}
-
-	hf.Hosts[idx].PasswordRef = ""
-	if hf.Hosts[idx].Auth == "password" {
-		hf.Hosts[idx].Auth = "auto"
-	}
-	if err := app.Store.Save(hf); err != nil {
-		return fmt.Errorf("更新主机配置失败: %w", err)
-	}
-	if err := fs.RemovePasswords(h.Alias, h.ID, h.PasswordRef); err != nil {
-		return fmt.Errorf("主机配置已更新，但清理保存密码失败: %w", err)
+	if err := fs.UpdateDocument(func(doc *config.Document, entries map[string]string) error {
+		for i := range doc.Hosts {
+			if doc.Hosts[i].ID != h.ID {
+				continue
+			}
+			delete(entries, "password:"+h.Alias)
+			delete(entries, "password:"+h.ID)
+			delete(entries, "password:"+h.PasswordRef)
+			doc.Hosts[i].PasswordRef = ""
+			if doc.Hosts[i].Auth == "password" {
+				doc.Hosts[i].Auth = "auto"
+			}
+			return nil
+		}
+		return fmt.Errorf("未找到主机: %s", h.Alias)
+	}); err != nil {
+		return fmt.Errorf("删除密码失败: %w", err)
 	}
 
 	ui.PrintSuccess("密码已删除：%s", h.Alias)

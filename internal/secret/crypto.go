@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/fanhuadesenlinnn/sshm/v4/internal/config"
 	"golang.org/x/crypto/scrypt"
 )
 
@@ -29,24 +30,8 @@ type CryptoConfig struct {
 	Salt   []byte
 }
 
-// ScryptConfig is the on-disk scrypt configuration.
-type ScryptConfig struct {
-	N      int `yaml:"n"`
-	R      int `yaml:"r"`
-	P      int `yaml:"p"`
-	KeyLen int `yaml:"key_len"`
-}
-
-// EncryptedFile is the on-disk structure of secrets.yaml.
-type EncryptedFile struct {
-	Version       int          `yaml:"version"`
-	KDF           string       `yaml:"kdf"`
-	Cipher        string       `yaml:"cipher"`
-	Scrypt        ScryptConfig `yaml:"scrypt"`
-	SaltB64       string       `yaml:"salt"`
-	NonceB64      string       `yaml:"nonce"`
-	CiphertextB64 string       `yaml:"ciphertext"`
-}
+type ScryptConfig = config.ScryptConfig
+type EncryptedFile = config.EncryptedVault
 
 // deriveKey derives an encryption key from a passphrase and salt.
 func deriveKey(passphrase string, salt []byte, cfg CryptoConfig) ([]byte, error) {
@@ -123,7 +108,7 @@ func Encrypt(plaintext string, passphrase string, salt []byte) (*EncryptedFile, 
 // Decrypt decrypts an EncryptedFile back to plaintext.
 func Decrypt(ef *EncryptedFile, passphrase string) (string, error) {
 	if ef.Version != 1 {
-		return "", fmt.Errorf("不支持的 secrets 文件版本: %d", ef.Version)
+		return "", fmt.Errorf("不支持的 vault 版本: %d", ef.Version)
 	}
 	if ef.KDF != "scrypt" {
 		return "", fmt.Errorf("不支持的 KDF: %s", ef.KDF)

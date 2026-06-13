@@ -1,0 +1,33 @@
+# v4 Release Checklist
+
+## Behavior
+
+- First use creates only `sshm.yaml` as authoritative configuration.
+- Repeated writes do not create `.bak`.
+- Global and per-host `strict`, `accept-new`, and `insecure` policies work as documented.
+- Connection, ping, execution, key operations, forwarding, SFTP, and optional rsync use consistent authentication and host trust.
+- Batch operations confirm targets, report per-host failures, and write operation logs.
+
+## Verification
+
+```bash
+go test ./...
+go test -race ./...
+go vet ./...
+go test -cover ./...
+
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build ./...
+GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build ./...
+GOOS=darwin GOARCH=amd64 go build ./...
+GOOS=darwin GOARCH=arm64 go build ./...
+GOOS=windows GOARCH=amd64 go build ./...
+GOOS=windows GOARCH=arm64 go build ./...
+```
+
+## Publication
+
+- Build with `internal/command.Version=v4.0.0` and verify `sshm --version`.
+- Verify a clean temporary `SSHM_HOME` creates the documented config.
+- Push the release commit and `v4.0.0` tag.
+- Confirm the GitHub release contains all six platform artifacts and checksums.
+- Verify `go install github.com/fanhuadesenlinnn/sshm/v4@latest`.

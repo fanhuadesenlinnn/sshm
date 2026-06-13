@@ -8,8 +8,8 @@ import (
 
 var completionCommands = []string{
 	"add", "add-batch", "auth", "completion", "config-edit", "connect", "delete", "doctor", "edit", "exec", "exec-all",
-	"exec-tag", "export-ssh-config", "forget-pass", "push", "pull", "tag",
-	"help", "host", "import-ssh-config", "key", "list", "lock", "passwd", "pin",
+	"exec-tag", "export-ssh-config", "forget-pass", "push", "pull", "forward", "tag",
+	"help", "host", "import-ssh-config", "key", "list", "lock", "logs", "config", "passwd", "pin",
 	"pick", "ping", "recent", "search", "show", "show-pubkey", "unpin",
 }
 

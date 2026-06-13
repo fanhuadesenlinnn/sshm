@@ -44,23 +44,11 @@ func WithLock(path string, fn func() error) error {
 	}
 }
 
-// Write atomically writes data and optionally preserves the previous file as .bak.
-func Write(path string, data []byte, perm os.FileMode, backup bool) error {
+// Write atomically replaces a file without creating backup copies.
+func Write(path string, data []byte, perm os.FileMode) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return fmt.Errorf("创建目录失败: %w", err)
-	}
-
-	if backup {
-		old, err := os.ReadFile(path)
-		switch {
-		case err == nil:
-			if err := writeAtomic(path+".bak", old, perm); err != nil {
-				return fmt.Errorf("创建备份失败: %w", err)
-			}
-		case !errors.Is(err, os.ErrNotExist):
-			return fmt.Errorf("读取旧文件以创建备份失败: %w", err)
-		}
 	}
 
 	return writeAtomic(path, data, perm)

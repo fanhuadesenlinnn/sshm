@@ -12,25 +12,35 @@ import (
 
 // Host represents a single SSH host entry.
 type Host struct {
-	ID          string   `yaml:"id"` // stable UUID, auto-generated if empty
-	Alias       string   `yaml:"alias"`
-	User        string   `yaml:"user"`
-	Host        string   `yaml:"host"`
-	Port        int      `yaml:"port"`
-	Identity    string   `yaml:"identity"`
-	Note        string   `yaml:"note"`
-	Tags        []string `yaml:"tags"`
-	Auth        string   `yaml:"auth"`
-	PasswordRef string   `yaml:"password_ref"`
-	Pinned      bool     `yaml:"pinned,omitempty"`
-	LastUsedAt  string   `yaml:"last_used_at,omitempty"`
+	ID                    string   `yaml:"id"` // stable UUID, auto-generated if empty
+	Alias                 string   `yaml:"alias"`
+	User                  string   `yaml:"user"`
+	Host                  string   `yaml:"host"`
+	Port                  int      `yaml:"port"`
+	Identity              string   `yaml:"identity"`
+	Note                  string   `yaml:"note"`
+	Tags                  []string `yaml:"tags"`
+	Auth                  string   `yaml:"auth"`
+	PasswordRef           string   `yaml:"password_ref"`
+	Pinned                bool     `yaml:"pinned,omitempty"`
+	LastUsedAt            string   `yaml:"last_used_at,omitempty"`
+	HostKeyPolicy         string   `yaml:"host_key_policy,omitempty"`
+	JumpHost              string   `yaml:"jump_host,omitempty"`
+	ConfigPath            string   `yaml:"-"`
+	ResolvedHostKeyPolicy string   `yaml:"-"`
 }
 
-// HostsFile is the top-level structure of hosts.yaml.
+// HostsFile is the host-focused view used by command code.
 type HostsFile struct {
 	Version int    `yaml:"version"`
 	Hosts   []Host `yaml:"hosts"`
 }
+
+const (
+	HostKeyPolicyStrict    = "strict"
+	HostKeyPolicyAcceptNew = "accept-new"
+	HostKeyPolicyInsecure  = "insecure"
+)
 
 var aliasRegexp = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 var fallbackIDCounter uint64
@@ -125,8 +135,45 @@ func (h *Host) Validate() []string {
 	if !validAuth[h.Auth] {
 		errs = append(errs, fmt.Sprintf("无效的认证策略: %s", h.Auth))
 	}
+	if h.Identity != "" {
+		if _, managed := ManagedKeyName(h.Identity); !managed {
+			errs = append(errs, "identity 仅支持 sshm 托管密钥")
+		}
+	}
+	if h.HostKeyPolicy != "" && !ValidHostKeyPolicy(h.HostKeyPolicy) {
+		errs = append(errs, fmt.Sprintf("无效的主机信任策略: %s", h.HostKeyPolicy))
+	}
 
 	return errs
+}
+
+func (h *Host) EnsureDefaults() {
+	if h.Port == 0 {
+		h.Port = 22
+	}
+	if h.Auth == "" {
+		h.Auth = "auto"
+	}
+	if h.Tags == nil {
+		h.Tags = []string{}
+	}
+}
+
+func ValidHostKeyPolicy(policy string) bool {
+	return policy == HostKeyPolicyStrict || policy == HostKeyPolicyAcceptNew || policy == HostKeyPolicyInsecure
+}
+
+func (h Host) EffectiveHostKeyPolicy(defaults Defaults) string {
+	if h.ResolvedHostKeyPolicy != "" {
+		return h.ResolvedHostKeyPolicy
+	}
+	if h.HostKeyPolicy != "" {
+		return h.HostKeyPolicy
+	}
+	if defaults.HostKeyPolicy != "" {
+		return defaults.HostKeyPolicy
+	}
+	return HostKeyPolicyStrict
 }
 
 // DefaultHost returns a Host with default values.

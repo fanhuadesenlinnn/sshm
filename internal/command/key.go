@@ -3,8 +3,8 @@ package command
 import (
 	"fmt"
 
-	"github.com/fanhuadesenlinnn/sshm/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/internal/ui"
+	"github.com/fanhuadesenlinnn/sshm/v4/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v4/internal/ui"
 )
 
 func (app *App) cmdShowPubkey(args []string) error {

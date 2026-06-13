@@ -5,13 +5,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fanhuadesenlinnn/sshm/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/internal/secret"
+	"github.com/fanhuadesenlinnn/sshm/v4/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v4/internal/secret"
 )
 
 func TestManagedKeyCreateAndUse(t *testing.T) {
 	dir := t.TempDir()
-	hostStore := config.NewStoreWithPath(filepath.Join(dir, "hosts.yaml"))
+	configPath := filepath.Join(dir, "sshm.yaml")
+	hostStore := config.NewStoreWithPath(configPath)
 	host := config.DefaultHost()
 	host.Alias = "server"
 	host.User = "root"
@@ -19,11 +20,11 @@ func TestManagedKeyCreateAndUse(t *testing.T) {
 	if err := hostStore.Add(host); err != nil {
 		t.Fatal(err)
 	}
-	secretPath := filepath.Join(dir, "secrets.yaml")
+	secretPath := configPath
 	app := &App{
 		Store:       hostStore,
-		Keys:        config.NewKeyStoreWithPath(filepath.Join(dir, "keys.yaml")),
-		SecretPath:  secretPath,
+		Keys:        config.NewKeyStoreWithPath(configPath),
+		ConfigPath:  secretPath,
 		secretStore: secret.NewFileStore(secretPath, "master"),
 	}
 	if err := app.cmdKeyCreate([]string{"personal"}); err != nil {
@@ -46,7 +47,7 @@ func TestManagedKeyCreateAndUse(t *testing.T) {
 
 func TestSelectHostsSupportsTagAndAlias(t *testing.T) {
 	dir := t.TempDir()
-	store := config.NewStoreWithPath(filepath.Join(dir, "hosts.yaml"))
+	store := config.NewStoreWithPath(filepath.Join(dir, "sshm.yaml"))
 	for _, host := range []config.Host{
 		{ID: config.NewID(), Alias: "one", User: "root", Host: "one", Port: 22, Auth: "auto", Tags: []string{"prod"}},
 		{ID: config.NewID(), Alias: "two", User: "root", Host: "two", Port: 22, Auth: "auto", Tags: []string{"linux"}},

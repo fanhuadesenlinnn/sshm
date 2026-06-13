@@ -1,10 +1,10 @@
 package command
 
 import (
-	"errors"
 	"fmt"
 
-	"github.com/fanhuadesenlinnn/sshm/internal/ui"
+	"github.com/fanhuadesenlinnn/sshm/v4/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v4/internal/ui"
 )
 
 func (app *App) cmdDelete(args []string) error {
@@ -21,21 +21,29 @@ func (app *App) cmdDelete(args []string) error {
 		return nil
 	}
 
-	if err := app.Store.Remove(idx); err != nil {
-		return err
-	}
-
-	var cleanupErrs []error
-	if h.PasswordRef != "" {
-		fs := app.tryGetSecretStore()
-		if fs == nil {
-			ui.PrintWarn("主机已删除，但密码库未解锁；可能仍有残留密码引用")
-		} else if err := fs.RemovePasswords(h.Alias, h.ID, h.PasswordRef); err != nil {
-			cleanupErrs = append(cleanupErrs, fmt.Errorf("清理保存密码失败: %w", err))
+	removeHost := func(doc *config.Document) error {
+		for i := range doc.Hosts {
+			if doc.Hosts[i].ID == h.ID {
+				doc.Hosts = append(doc.Hosts[:i], doc.Hosts[i+1:]...)
+				return nil
+			}
 		}
+		return fmt.Errorf("未找到主机: %s", h.Alias)
 	}
-	if len(cleanupErrs) > 0 {
-		return fmt.Errorf("主机已删除，但清理附属数据失败: %w", errors.Join(cleanupErrs...))
+	if h.PasswordRef != "" {
+		fs, err := app.requireSecretStore()
+		if err != nil {
+			return fmt.Errorf("删除前解锁密码库失败，未修改配置: %w", err)
+		}
+		if err := fs.UpdateDocument(func(doc *config.Document, entries map[string]string) error {
+			delete(entries, "password:"+h.ID)
+			delete(entries, "password:"+h.PasswordRef)
+			return removeHost(doc)
+		}); err != nil {
+			return fmt.Errorf("删除主机失败，配置未修改: %w", err)
+		}
+	} else if err := app.Store.Repository().Update(removeHost); err != nil {
+		return err
 	}
 
 	ui.PrintSuccess("已删除主机：%s", h.Alias)

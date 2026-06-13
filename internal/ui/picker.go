@@ -8,7 +8,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/fanhuadesenlinnn/sshm/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v4/internal/config"
 	"golang.org/x/term"
 )
 
@@ -137,8 +137,13 @@ func renderHostPickerTo(w io.Writer, hosts []config.Host, query string, selected
 		return
 	}
 	limit := min(12, len(hosts))
+	start := 0
+	if selected >= limit {
+		start = selected - limit + 1
+	}
+	end := min(start+limit, len(hosts))
 	contentWidth := max(2, width-8)
-	for i := 0; i < limit; i++ {
+	for i := start; i < end; i++ {
 		prefix := "  "
 		if i == selected {
 			prefix = "> "
@@ -151,7 +156,7 @@ func renderHostPickerTo(w io.Writer, hosts []config.Host, query string, selected
 		fmt.Fprintf(w, "%s%s\r\n", prefix, truncateToWidth(label, contentWidth))
 	}
 	if len(hosts) > limit {
-		fmt.Fprintf(w, "\r\n  另有 %d 台匹配主机，请继续输入缩小范围\r\n", len(hosts)-limit)
+		fmt.Fprintf(w, "\r\n  显示 %d-%d / %d\r\n", start+1, end, len(hosts))
 	}
 }
 

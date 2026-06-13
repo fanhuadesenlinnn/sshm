@@ -3,69 +3,80 @@ package secret
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
-	"os"
-	"sort"
-	"strings"
 
-	"github.com/fanhuadesenlinnn/sshm/internal/safefile"
-	"gopkg.in/yaml.v3"
+	"github.com/fanhuadesenlinnn/sshm/v4/internal/config"
 )
 
-// FileStore manages encrypted password storage.
+// FileStore is a credential-focused view over the vault in sshm.yaml.
 type FileStore struct {
 	path       string
 	passphrase string
+	repo       *config.Repository
 }
 
-// NewFileStore creates a FileStore for the given path and master passphrase.
 func NewFileStore(path string, passphrase string) *FileStore {
-	return &FileStore{path: path, passphrase: passphrase}
+	return &FileStore{
+		path:       path,
+		passphrase: passphrase,
+		repo:       config.NewRepositoryWithPath(path),
+	}
 }
 
-func passwordKey(ref string) string {
-	return fmt.Sprintf("password:%s", ref)
-}
-
-func managedKey(name string) string {
-	return fmt.Sprintf("managed-key:%s", name)
-}
-
-// readRaw loads the encrypted file and returns namespaced plaintext entries.
-func (fs *FileStore) readRaw() (map[string]string, []byte, error) {
-	data, err := os.ReadFile(fs.path)
+func VaultExists(path string) (bool, error) {
+	doc, err := config.NewRepositoryWithPath(path).Load()
 	if err != nil {
-		if os.IsNotExist(err) {
-			return map[string]string{}, nil, nil
+		return false, err
+	}
+	return doc.Vault != nil, nil
+}
+
+func passwordKey(ref string) string { return "password:" + ref }
+func managedKey(name string) string { return "managed-key:" + name }
+
+func decodeEntries(vault *config.EncryptedVault, passphrase string) (map[string]string, error) {
+	if vault == nil {
+		return map[string]string{}, nil
+	}
+	plain, err := Decrypt(vault, passphrase)
+	if err != nil {
+		return nil, err
+	}
+	entries := map[string]string{}
+	if err := json.Unmarshal([]byte(plain), &entries); err != nil {
+		return nil, fmt.Errorf("解析 vault 内容失败: %w", err)
+	}
+	return entries, nil
+}
+
+func encodeEntries(entries map[string]string, passphrase string, old *config.EncryptedVault) (*config.EncryptedVault, error) {
+	plain, err := json.Marshal(entries)
+	if err != nil {
+		return nil, fmt.Errorf("序列化 vault 内容失败: %w", err)
+	}
+	var salt []byte
+	if old != nil {
+		salt, _ = base64.StdEncoding.DecodeString(old.SaltB64)
+	}
+	if salt == nil {
+		salt = make([]byte, 32)
+		if _, err := rand.Read(salt); err != nil {
+			return nil, fmt.Errorf("生成 salt 失败: %w", err)
 		}
-		return nil, nil, fmt.Errorf("读取 secrets 文件失败（可检查备份 %s.bak）: %w", fs.path, err)
 	}
+	return Encrypt(string(plain), passphrase, salt)
+}
 
-	var ef EncryptedFile
-	if err := yaml.Unmarshal(data, &ef); err != nil {
-		return nil, nil, fmt.Errorf("解析 secrets 文件失败（主文件未修改，可检查备份 %s.bak）: %w", fs.path, err)
-	}
-
-	plain, err := Decrypt(&ef, fs.passphrase)
+func (fs *FileStore) readRaw() (map[string]string, *config.EncryptedVault, error) {
+	doc, err := fs.repo.Load()
 	if err != nil {
 		return nil, nil, err
 	}
-
-	entries := map[string]string{}
-	for _, line := range strings.Split(plain, "\n") {
-		if line == "" {
-			continue
-		}
-		parts := strings.SplitN(line, ":", 3)
-		if len(parts) == 3 && (parts[0] == "password" || parts[0] == "managed-key") {
-			entries[parts[0]+":"+parts[1]] = parts[2]
-		}
-	}
-
-	return entries, data, nil
+	entries, err := decodeEntries(doc.Vault, fs.passphrase)
+	return entries, doc.Vault, err
 }
 
-// GetPassword retrieves the saved SSH password for a ref (alias or ID).
 func (fs *FileStore) GetPassword(ref string) (string, error) {
 	entries, _, err := fs.readRaw()
 	if err != nil {
@@ -78,124 +89,34 @@ func (fs *FileStore) GetPassword(ref string) (string, error) {
 	return pass, nil
 }
 
-// SetPassword saves or replaces the SSH password for a ref.
-func (fs *FileStore) SetPassword(ref string, password string) error {
-	return fs.writeSecrets(func(entries map[string]string) {
+func (fs *FileStore) SetPassword(ref, password string) error {
+	return fs.writeSecrets(func(entries map[string]string) error {
 		entries[passwordKey(ref)] = password
-	})
-}
-
-// SetPasswordByID saves a password keyed by stable ID,
-// and migrates an existing alias-keyed entry if present.
-func (fs *FileStore) SetPasswordByID(id string, alias string, password string) error {
-	return fs.writeSecrets(func(entries map[string]string) {
-		if alias != "" {
-			delete(entries, passwordKey(alias))
-		}
-		entries[passwordKey(id)] = password
-	})
-}
-
-// RemovePassword deletes the SSH password for a ref.
-func (fs *FileStore) RemovePassword(ref string) error {
-	return fs.RemovePasswords(ref)
-}
-
-// RemovePasswords deletes multiple references in one encrypted-file transaction.
-func (fs *FileStore) RemovePasswords(refs ...string) error {
-	return fs.writeSecrets(func(entries map[string]string) {
-		for _, ref := range refs {
-			delete(entries, passwordKey(ref))
-		}
-	})
-}
-
-// MigrateAliasToID re-keys a password from alias to stable ID.
-// Returns true if a migration was performed.
-func (fs *FileStore) MigrateAliasToID(alias string, id string) (bool, error) {
-	migrated := false
-	err := fs.writeSecrets(func(entries map[string]string) {
-		if pass, ok := entries[passwordKey(alias)]; ok && alias != id {
-			delete(entries, passwordKey(alias))
-			entries[passwordKey(id)] = pass
-			migrated = true
-		}
-	})
-	return migrated, err
-}
-
-// CopyPasswords copies old references to stable IDs without deleting the old
-// references. Callers can safely update hosts.yaml before cleaning up old keys.
-func (fs *FileStore) CopyPasswords(destToSource map[string]string) error {
-	return fs.writeSecretsE(func(entries map[string]string) error {
-		for dest, source := range destToSource {
-			pass, ok := entries[passwordKey(source)]
-			if !ok {
-				return fmt.Errorf("未找到旧密码引用 %s", source)
-			}
-			entries[passwordKey(dest)] = pass
-		}
 		return nil
 	})
 }
 
-// writeSecrets serializes, encrypts, and writes the secrets file atomically.
-func (fs *FileStore) writeSecrets(mutate func(map[string]string)) error {
-	return fs.writeSecretsE(func(entries map[string]string) error {
-		mutate(entries)
-		return nil
+func (fs *FileStore) writeSecrets(mutate func(map[string]string) error) error {
+	return fs.UpdateDocument(func(_ *config.Document, entries map[string]string) error {
+		return mutate(entries)
 	})
 }
 
-func (fs *FileStore) writeSecretsE(mutate func(map[string]string) error) error {
-	return safefile.WithLock(fs.path, func() error {
-		entries, rawData, err := fs.readRaw()
+// UpdateDocument atomically changes public configuration and encrypted entries.
+func (fs *FileStore) UpdateDocument(mutate func(*config.Document, map[string]string) error) error {
+	return fs.repo.Update(func(doc *config.Document) error {
+		entries, err := decodeEntries(doc.Vault, fs.passphrase)
 		if err != nil {
-			return fmt.Errorf("无法读取现有 secrets，已拒绝覆盖: %w", err)
+			return fmt.Errorf("无法读取现有 vault，已拒绝覆盖: %w", err)
 		}
-
-		if err := mutate(entries); err != nil {
+		if err := mutate(doc, entries); err != nil {
 			return err
 		}
-
-		keys := make([]string, 0, len(entries))
-		for key := range entries {
-			keys = append(keys, key)
-		}
-		sort.Strings(keys)
-		lines := make([]string, 0, len(keys))
-		for _, key := range keys {
-			lines = append(lines, key+":"+entries[key])
-		}
-		plaintext := strings.Join(lines, "\n")
-
-		var salt []byte
-		if rawData != nil {
-			var ef EncryptedFile
-			if err := yaml.Unmarshal(rawData, &ef); err == nil {
-				salt, _ = base64.StdEncoding.DecodeString(ef.SaltB64)
-			}
-		}
-		if salt == nil {
-			salt = make([]byte, 32)
-			if _, err := rand.Read(salt); err != nil {
-				return fmt.Errorf("生成 salt 失败: %w", err)
-			}
-		}
-
-		ef, err := Encrypt(plaintext, fs.passphrase, salt)
-		if err != nil {
-			return err
-		}
-		data, err := yaml.Marshal(ef)
-		if err != nil {
-			return fmt.Errorf("序列化 secrets 文件失败: %w", err)
-		}
-		return safefile.Write(fs.path, data, 0600, true)
+		doc.Vault, err = encodeEntries(entries, fs.passphrase, doc.Vault)
+		return err
 	})
 }
 
-// GetManagedKey retrieves a managed private key.
 func (fs *FileStore) GetManagedKey(name string) ([]byte, error) {
 	entries, _, err := fs.readRaw()
 	if err != nil {
@@ -212,24 +133,23 @@ func (fs *FileStore) GetManagedKey(name string) ([]byte, error) {
 	return data, nil
 }
 
-// SetManagedKey saves a private key protected by the sshm master password.
 func (fs *FileStore) SetManagedKey(name string, privateKey []byte) error {
 	value := base64.StdEncoding.EncodeToString(privateKey)
-	return fs.writeSecrets(func(entries map[string]string) {
+	return fs.writeSecrets(func(entries map[string]string) error {
 		entries[managedKey(name)] = value
+		return nil
 	})
 }
 
-// RemoveManagedKeys deletes private keys in one encrypted-file transaction.
 func (fs *FileStore) RemoveManagedKeys(names ...string) error {
-	return fs.writeSecrets(func(entries map[string]string) {
+	return fs.writeSecrets(func(entries map[string]string) error {
 		for _, name := range names {
 			delete(entries, managedKey(name))
 		}
+		return nil
 	})
 }
 
-// VerifyPassphrase checks whether the master passphrase is correct.
 func (fs *FileStore) VerifyPassphrase() error {
 	_, _, err := fs.readRaw()
 	return err

@@ -8,10 +8,8 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/fanhuadesenlinnn/sshm/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/internal/secret"
-	"github.com/fanhuadesenlinnn/sshm/internal/ui"
-	"gopkg.in/yaml.v3"
+	"github.com/fanhuadesenlinnn/sshm/v4/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v4/internal/ui"
 )
 
 func (app *App) cmdHost(args []string) error {
@@ -69,7 +67,7 @@ func (app *App) printHostHelp() {
 	fmt.Println("  ab/add-batch [别名=目标...]     批量添加主机")
 	fmt.Println("  e/edit <别名|ID>               交互式编辑主机")
 	fmt.Println("  d/delete <别名|ID>             删除主机")
-	fmt.Println("  config-edit                    使用 $EDITOR 校验后更新 hosts.yaml")
+	fmt.Println("  config-edit                    使用 $EDITOR 校验后更新 sshm.yaml")
 	fmt.Println("  import-ssh-config [路径]       导入 OpenSSH 配置")
 	fmt.Println()
 	fmt.Println("  输入 back/q 返回主命令页")
@@ -123,11 +121,6 @@ func (app *App) cmdAddBatch(args []string) error {
 		added = append(added, h)
 		ui.PrintSuccess("已添加：%s", alias)
 	}
-	if len(added) > 0 && ui.IsTerminal() && ui.ReadYesNo("是否逐台保存 SSH 密码？[y/N]: ") {
-		if err := app.saveBatchPasswords(added); err != nil {
-			return err
-		}
-	}
 	fmt.Printf("批量添加完成：成功 %d，失败 %d\n", len(added), failed)
 	if failed > 0 {
 		return fmt.Errorf("有 %d 台主机添加失败", failed)
@@ -135,51 +128,19 @@ func (app *App) cmdAddBatch(args []string) error {
 	return nil
 }
 
-func (app *App) saveBatchPasswords(hosts []config.Host) error {
-	var fs *secret.FileStore
-	for _, host := range hosts {
-		password, err := ui.ReadPassword(fmt.Sprintf("%s 的 SSH 密码（留空跳过）: ", host.Alias))
-		if err != nil {
-			return fmt.Errorf("读取 %s 密码失败: %w", host.Alias, err)
-		}
-		if password == "" {
-			continue
-		}
-		if fs == nil {
-			fs, err = app.requireSecretStore()
-			if err != nil {
-				return err
-			}
-		}
-		if err := fs.SetPasswordByID(host.ID, host.Alias, password); err != nil {
-			return fmt.Errorf("保存 %s 密码失败: %w", host.Alias, err)
-		}
-		current, idx, hf, err := app.Store.FindHost(host.Alias)
-		if err != nil {
-			return err
-		}
-		hf.Hosts[idx].PasswordRef = current.ID
-		if err := app.Store.Save(hf); err != nil {
-			return fmt.Errorf("更新 %s 密码引用失败: %w", host.Alias, err)
-		}
-	}
-	return nil
-}
-
 func (app *App) cmdConfigEdit(_ []string) error {
-	hf, err := app.Store.Load()
-	if err != nil {
-		return err
+	if _, err := app.Store.Repository().Load(); err != nil {
+		return fmt.Errorf("初始化配置失败: %w", err)
 	}
-	data, err := yaml.Marshal(hf)
+	data, err := os.ReadFile(app.Store.Path())
 	if err != nil {
-		return fmt.Errorf("序列化当前配置失败: %w", err)
+		return fmt.Errorf("读取当前配置失败: %w", err)
 	}
 	dir := filepath.Dir(app.Store.Path())
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return fmt.Errorf("创建配置目录失败: %w", err)
 	}
-	tmp, err := os.CreateTemp(dir, ".hosts-edit-*.yaml")
+	tmp, err := os.CreateTemp(dir, ".sshm-edit-*.yaml")
 	if err != nil {
 		return fmt.Errorf("创建临时编辑文件失败: %w", err)
 	}
@@ -218,13 +179,13 @@ func (app *App) cmdConfigEdit(_ []string) error {
 	if err != nil {
 		return fmt.Errorf("读取编辑后配置失败: %w", err)
 	}
-	validated, err := config.ValidateHostsData(edited)
+	validated, err := config.ValidateDocumentData(edited)
 	if err != nil {
 		return fmt.Errorf("配置校验失败，原配置未修改: %w", err)
 	}
-	if err := app.Store.Save(validated); err != nil {
+	if err := app.Store.Repository().Replace(validated); err != nil {
 		return fmt.Errorf("保存配置失败: %w", err)
 	}
-	ui.PrintSuccess("主机配置已校验并更新：%s", app.Store.Path())
+	ui.PrintSuccess("配置已校验并更新：%s", app.Store.Path())
 	return nil
 }

@@ -1,14 +1,16 @@
 package command
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
-	"github.com/fanhuadesenlinnn/sshm/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/internal/keymgr"
-	"github.com/fanhuadesenlinnn/sshm/internal/ui"
+	"github.com/fanhuadesenlinnn/sshm/v4/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v4/internal/keymgr"
+	"github.com/fanhuadesenlinnn/sshm/v4/internal/ui"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -84,9 +86,9 @@ func (app *App) printKeyHelp() {
 	fmt.Println("  default [名称|-]               查看、设置或取消默认密钥")
 	fmt.Println("  show [名称|default]            显示公钥")
 	fmt.Println("  use <密钥> <目标...>           将主机绑定到密钥")
-	fmt.Println("  push <密钥> <目标...>          推送公钥到远端")
-	fmt.Println("  setup <密钥> <目标...>         推送、验证并绑定")
-	fmt.Println("  revoke <密钥> <目标...>        从远端撤销公钥")
+	fmt.Println("  push <密钥> <目标...> [--yes] [--quiet]   推送公钥到远端")
+	fmt.Println("  setup <密钥> <目标...> [--yes] [--quiet]  推送、验证并绑定")
+	fmt.Println("  revoke <密钥> <目标...> [--yes] [--quiet] 从远端撤销公钥")
 	fmt.Println("  status [密钥]                  显示主机绑定状态")
 	fmt.Println("  delete <名称...>               删除本地托管密钥")
 	fmt.Println("  delete-unused                  删除未绑定且非默认的密钥")
@@ -205,19 +207,29 @@ func (app *App) cmdKeyImportBatch(args []string) error {
 }
 
 func (app *App) saveManagedKey(name string, privateKey []byte, publicKey string, makeDefault bool) error {
-	if _, err := app.keyStore().Find(name); err == nil {
-		return fmt.Errorf("托管密钥 %q 已存在，拒绝覆盖", name)
-	}
 	fs, err := app.requireSecretStore()
 	if err != nil {
 		return err
 	}
-	if err := fs.SetManagedKey(name, privateKey); err != nil {
-		return fmt.Errorf("加密保存私钥失败: %w", err)
-	}
-	if err := app.keyStore().Add(name, publicKey, makeDefault); err != nil {
-		_ = fs.RemoveManagedKeys(name)
-		return fmt.Errorf("保存密钥元数据失败: %w", err)
+	err = fs.UpdateDocument(func(doc *config.Document, entries map[string]string) error {
+		for _, key := range doc.ManagedKeys.Keys {
+			if key.Name == name {
+				return fmt.Errorf("托管密钥 %q 已存在，拒绝覆盖", name)
+			}
+		}
+		entries["managed-key:"+name] = base64.StdEncoding.EncodeToString(privateKey)
+		doc.ManagedKeys.Keys = append(doc.ManagedKeys.Keys, config.ManagedKey{
+			Name:      name,
+			PublicKey: strings.TrimSpace(publicKey),
+			CreatedAt: time.Now().Format(time.RFC3339),
+		})
+		if makeDefault || doc.ManagedKeys.Default == "" {
+			doc.ManagedKeys.Default = name
+		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("保存托管密钥失败: %w", err)
 	}
 	ui.PrintSuccess("托管密钥已加密保存：%s", name)
 	return nil
@@ -314,11 +326,33 @@ func (app *App) cmdKeyDelete(args []string) error {
 	if err != nil {
 		return fmt.Errorf("解锁密码库失败，未删除任何密钥: %w", err)
 	}
-	if err := app.keyStore().Remove(args...); err != nil {
-		return err
+	remove := map[string]bool{}
+	for _, name := range args {
+		remove[name] = true
 	}
-	if err := fs.RemoveManagedKeys(args...); err != nil {
-		return fmt.Errorf("密钥元数据已删除，但清理加密私钥失败: %w", err)
+	if err := fs.UpdateDocument(func(doc *config.Document, entries map[string]string) error {
+		if remove[doc.ManagedKeys.Default] {
+			return fmt.Errorf("不能删除默认密钥 %q，请先设置其他默认密钥", doc.ManagedKeys.Default)
+		}
+		found := map[string]bool{}
+		keys := doc.ManagedKeys.Keys[:0]
+		for _, key := range doc.ManagedKeys.Keys {
+			if remove[key.Name] {
+				found[key.Name] = true
+				delete(entries, "managed-key:"+key.Name)
+			} else {
+				keys = append(keys, key)
+			}
+		}
+		for name := range remove {
+			if !found[name] {
+				return fmt.Errorf("未找到托管密钥: %s", name)
+			}
+		}
+		doc.ManagedKeys.Keys = keys
+		return nil
+	}); err != nil {
+		return err
 	}
 	ui.PrintSuccess("已删除托管密钥：%s", strings.Join(args, ", "))
 	return nil

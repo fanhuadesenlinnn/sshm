@@ -1,15 +1,20 @@
 package command
 
 import (
+	"context"
 	"fmt"
+	"time"
 
-	"github.com/fanhuadesenlinnn/sshm/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/internal/secret"
-	"github.com/fanhuadesenlinnn/sshm/internal/sshx"
-	"github.com/fanhuadesenlinnn/sshm/internal/ui"
+	"github.com/fanhuadesenlinnn/sshm/v4/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v4/internal/operation"
+	"github.com/fanhuadesenlinnn/sshm/v4/internal/secret"
+	"github.com/fanhuadesenlinnn/sshm/v4/internal/sshx"
+	"github.com/fanhuadesenlinnn/sshm/v4/internal/ui"
 )
 
 func (app *App) cmdPing(args []string) error {
+	yes, args := removeFlag(args, "--yes")
+	quiet, args := removeFlag(args, "--quiet")
 	hf, err := app.Store.Load()
 	if err != nil {
 		return err
@@ -22,11 +27,15 @@ func (app *App) cmdPing(args []string) error {
 			return err
 		}
 		fs := app.getSecretStoreForHost(h)
-		ok, msg := sshx.CheckPing(*h, fs)
-		if ok {
+		start := time.Now()
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		output, pingErr := sshx.CheckPingContext(ctx, *h, fs)
+		cancel()
+		result := newOperationResult(*h, output, pingErr, operation.StageExecute, fmt.Sprintf("sshm ping %s", h.Alias), time.Since(start))
+		if pingErr == nil {
 			ui.PrintSuccess("%s (%s@%s:%d) 连接成功", h.Alias, h.User, h.Host, h.Port)
 		} else {
-			ui.PrintError("%s (%s@%s:%d) 连接失败: %s", h.Alias, h.User, h.Host, h.Port, msg)
+			printOperationFailure(result)
 			return fmt.Errorf("主机 %s 连接失败", h.Alias)
 		}
 	} else {
@@ -34,6 +43,19 @@ func (app *App) cmdPing(args []string) error {
 		if len(hf.Hosts) == 0 {
 			ui.PrintWarn("暂无主机")
 			return nil
+		}
+		if !yes {
+			if !ui.IsTerminal() {
+				return fmt.Errorf("多主机 ping 需要确认；非交互环境请使用 --yes")
+			}
+			fmt.Printf("即将测试 %d 台主机:\n", len(hf.Hosts))
+			for _, host := range hf.Hosts {
+				fmt.Printf("  - %s (%s)\n", host.Alias, host.Host)
+			}
+			if !ui.ReadYesNo("确认执行? [y/N]: ") {
+				ui.PrintWarn("已取消")
+				return nil
+			}
 		}
 
 		fmt.Println()
@@ -44,19 +66,38 @@ func (app *App) cmdPing(args []string) error {
 		fs := app.getSecretStoreForPing(hf.Hosts)
 
 		failed := 0
+		results := make([]operation.Result, 0, len(hf.Hosts))
 		for _, h := range hf.Hosts {
 			fmt.Printf("  %-18s ", h.Alias)
-			ok, msg := sshx.CheckPing(h, fs)
-			if ok {
+			start := time.Now()
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			output, pingErr := sshx.CheckPingContext(ctx, h, fs)
+			cancel()
+			result := newOperationResult(h, output, pingErr, operation.StageExecute, fmt.Sprintf("sshm ping %s", h.Alias), time.Since(start))
+			results = append(results, result)
+			if pingErr == nil {
 				fmt.Println(ui.Success("ok"))
 			} else {
 				failed++
-				fmt.Println(ui.ErrorMsg("fail - %s", msg))
+				fmt.Println(ui.ErrorMsg("fail"))
+				if !quiet {
+					printOperationFailure(result)
+				}
 			}
 		}
 		fmt.Println()
 		fmt.Printf("连接测试完成：成功 %d，失败 %d\n", len(hf.Hosts)-failed, failed)
+		if err := writeOperationLog("ping-batch", "连接测试", results); err != nil {
+			return err
+		}
 		if failed > 0 {
+			if quiet {
+				for _, result := range results {
+					if result.Err != nil {
+						printOperationFailure(result)
+					}
+				}
+			}
 			return fmt.Errorf("有 %d 台主机连接失败", failed)
 		}
 	}

@@ -4,13 +4,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"testing"
 )
 
 func TestStoreLoadEmpty(t *testing.T) {
-	store := NewStoreWithPath(filepath.Join(t.TempDir(), "hosts.yaml"))
+	store := NewStoreWithPath(filepath.Join(t.TempDir(), "sshm.yaml"))
 	hf, err := store.Load()
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
@@ -24,7 +23,7 @@ func TestStoreLoadEmpty(t *testing.T) {
 }
 
 func TestStoreSaveAndLoadRoundTrip(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "hosts.yaml")
+	path := filepath.Join(t.TempDir(), "sshm.yaml")
 	store := NewStoreWithPath(path)
 
 	h := DefaultHost()
@@ -64,7 +63,7 @@ func TestStoreSaveAndLoadRoundTrip(t *testing.T) {
 }
 
 func TestStoreDuplicateAliasRejected(t *testing.T) {
-	store := NewStoreWithPath(filepath.Join(t.TempDir(), "hosts.yaml"))
+	store := NewStoreWithPath(filepath.Join(t.TempDir(), "sshm.yaml"))
 
 	h1 := DefaultHost()
 	h1.Alias = "server"
@@ -83,46 +82,13 @@ func TestStoreDuplicateAliasRejected(t *testing.T) {
 	}
 }
 
-func TestStoreV1MigrationFillsIDs(t *testing.T) {
-	// Simulate a v1 hosts.yaml without ID fields
-	path := filepath.Join(t.TempDir(), "hosts.yaml")
-	v1Data := `version: 1
-hosts:
-  - alias: old-server
-    user: root
-    host: 10.0.0.1
-    port: 22
-    auth: auto
-`
-	if err := os.WriteFile(path, []byte(v1Data), 0600); err != nil {
+func TestRepositoryRejectsUnsupportedVersion(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sshm.yaml")
+	if err := os.WriteFile(path, []byte("version: 99\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-
-	store := NewStoreWithPath(path)
-	hf, err := store.Load()
-	if err != nil {
-		t.Fatalf("Load() error = %v", err)
-	}
-	if len(hf.Hosts) != 1 {
-		t.Fatalf("len(Hosts) = %d, want 1", len(hf.Hosts))
-	}
-	if hf.Hosts[0].ID == "" {
-		t.Fatal("v1 migration did not fill ID")
-	}
-	if hf.Version != CurrentVersion {
-		t.Fatalf("Version = %d, want %d", hf.Version, CurrentVersion)
-	}
-	if hf.Hosts[0].Alias != "old-server" {
-		t.Fatalf("Alias = %q, want old-server", hf.Hosts[0].Alias)
-	}
-
-	// Reload — should still have the ID
-	hf2, err := store.Load()
-	if err != nil {
-		t.Fatalf("Load() error = %v", err)
-	}
-	if hf2.Hosts[0].ID != hf.Hosts[0].ID {
-		t.Fatal("ID changed on reload")
+	if _, err := NewRepositoryWithPath(path).Load(); err == nil {
+		t.Fatal("Load() should reject unsupported versions")
 	}
 }
 
@@ -143,7 +109,7 @@ func TestStoreDuplicateAliasesDetected(t *testing.T) {
 
 func TestStoreEnsuresDirsOnSave(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "new-dir", "sub")
-	store := NewStoreWithPath(filepath.Join(dir, "hosts.yaml"))
+	store := NewStoreWithPath(filepath.Join(dir, "sshm.yaml"))
 
 	h := DefaultHost()
 	h.Alias = "test"
@@ -155,12 +121,12 @@ func TestStoreEnsuresDirsOnSave(t *testing.T) {
 
 	// Verify the file exists
 	if _, err := os.Stat(store.Path()); os.IsNotExist(err) {
-		t.Fatal("hosts.yaml was not created")
+		t.Fatal("sshm.yaml was not created")
 	}
 }
 
 func TestStoreUpdateChecksDuplicate(t *testing.T) {
-	store := NewStoreWithPath(filepath.Join(t.TempDir(), "hosts.yaml"))
+	store := NewStoreWithPath(filepath.Join(t.TempDir(), "sshm.yaml"))
 
 	h1 := DefaultHost()
 	h1.Alias = "server1"
@@ -187,7 +153,7 @@ func TestStoreUpdateChecksDuplicate(t *testing.T) {
 }
 
 func TestStoreAtomicWriteSurvives(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "hosts.yaml")
+	path := filepath.Join(t.TempDir(), "sshm.yaml")
 	store := NewStoreWithPath(path)
 
 	h := DefaultHost()
@@ -211,14 +177,14 @@ func TestStoreAtomicWriteSurvives(t *testing.T) {
 	// No temp files left behind
 	entries, _ := os.ReadDir(filepath.Dir(path))
 	for _, e := range entries {
-		if filepath.Ext(e.Name()) == ".yaml" && e.Name() != "hosts.yaml" {
+		if filepath.Ext(e.Name()) == ".yaml" && e.Name() != "sshm.yaml" {
 			t.Fatalf("Temp file left behind: %s", e.Name())
 		}
 	}
 }
 
-func TestStoreSaveCreatesBackup(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "hosts.yaml")
+func TestStoreSaveDoesNotCreateBackup(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sshm.yaml")
 	store := NewStoreWithPath(path)
 	first := &HostsFile{Hosts: []Host{{ID: NewID(), Alias: "one", User: "root", Host: "one", Port: 22, Auth: "auto"}}}
 	if err := store.Save(first); err != nil {
@@ -228,17 +194,13 @@ func TestStoreSaveCreatesBackup(t *testing.T) {
 	if err := store.Save(second); err != nil {
 		t.Fatal(err)
 	}
-	backup, err := os.ReadFile(path + ".bak")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(backup), "alias: one") {
-		t.Fatalf("backup does not contain previous config: %s", backup)
+	if _, err := os.Stat(path + ".bak"); !os.IsNotExist(err) {
+		t.Fatalf("unexpected backup file: %v", err)
 	}
 }
 
 func TestStoreCorruptConfigIsNotOverwritten(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "hosts.yaml")
+	path := filepath.Join(t.TempDir(), "sshm.yaml")
 	original := []byte("hosts: [not valid")
 	if err := os.WriteFile(path, original, 0600); err != nil {
 		t.Fatal(err)
@@ -257,7 +219,7 @@ func TestStoreCorruptConfigIsNotOverwritten(t *testing.T) {
 }
 
 func TestStoreConcurrentAddsDoNotLoseUpdates(t *testing.T) {
-	store := NewStoreWithPath(filepath.Join(t.TempDir(), "hosts.yaml"))
+	store := NewStoreWithPath(filepath.Join(t.TempDir(), "sshm.yaml"))
 	var wg sync.WaitGroup
 	for i := 0; i < 12; i++ {
 		wg.Add(1)
@@ -346,7 +308,7 @@ func TestEnsureIDs(t *testing.T) {
 }
 
 func TestStoreMarkUsed(t *testing.T) {
-	store := NewStoreWithPath(filepath.Join(t.TempDir(), "hosts.yaml"))
+	store := NewStoreWithPath(filepath.Join(t.TempDir(), "sshm.yaml"))
 	h := DefaultHost()
 	h.Alias = "recent"
 	h.User = "root"

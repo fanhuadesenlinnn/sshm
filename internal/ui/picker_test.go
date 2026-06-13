@@ -2,10 +2,11 @@ package ui
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 	"testing"
 
-	"github.com/fanhuadesenlinnn/sshm/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v4/internal/config"
 )
 
 func TestFilterPickerHostsFiltersAndPrioritizesPinned(t *testing.T) {
@@ -36,5 +37,18 @@ func TestRenderHostPickerUsesRawModeSafeNewlines(t *testing.T) {
 	withoutCRLF := strings.ReplaceAll(output.String(), "\r\n", "")
 	if strings.Contains(withoutCRLF, "\n") {
 		t.Fatalf("picker output contains bare newline in raw mode: %q", output.String())
+	}
+}
+
+func TestRenderHostPickerKeepsLargeSelectionVisible(t *testing.T) {
+	hosts := make([]config.Host, 20)
+	for i := range hosts {
+		hosts[i] = config.Host{Alias: fmt.Sprintf("host-%02d", i), User: "root", Host: "example.com", Port: 22}
+	}
+	var output bytes.Buffer
+	renderHostPickerTo(&output, hosts, "", 15, 100)
+	text := output.String()
+	if !strings.Contains(text, "> host-15") || !strings.Contains(text, "显示 5-16 / 20") {
+		t.Fatalf("selected host is not visible: %q", text)
 	}
 }

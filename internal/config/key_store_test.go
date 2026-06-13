@@ -6,7 +6,7 @@ import (
 )
 
 func TestKeyStoreLifecycle(t *testing.T) {
-	store := NewKeyStoreWithPath(filepath.Join(t.TempDir(), "keys.yaml"))
+	store := NewKeyStoreWithPath(filepath.Join(t.TempDir(), "sshm.yaml"))
 	if err := store.Add("personal", "ssh-ed25519 AAAA personal", false); err != nil {
 		t.Fatal(err)
 	}
