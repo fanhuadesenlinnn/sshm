@@ -44,11 +44,11 @@ func TestManagedKeyCreateAndUse(t *testing.T) {
 	}
 }
 
-func TestSelectHostsSupportsGroupTagAndAlias(t *testing.T) {
+func TestSelectHostsSupportsTagAndAlias(t *testing.T) {
 	dir := t.TempDir()
 	store := config.NewStoreWithPath(filepath.Join(dir, "hosts.yaml"))
 	for _, host := range []config.Host{
-		{ID: config.NewID(), Alias: "one", User: "root", Host: "one", Port: 22, Auth: "auto", Group: "prod"},
+		{ID: config.NewID(), Alias: "one", User: "root", Host: "one", Port: 22, Auth: "auto", Tags: []string{"prod"}},
 		{ID: config.NewID(), Alias: "two", User: "root", Host: "two", Port: 22, Auth: "auto", Tags: []string{"linux"}},
 	} {
 		if err := store.Add(host); err != nil {
@@ -56,7 +56,7 @@ func TestSelectHostsSupportsGroupTagAndAlias(t *testing.T) {
 		}
 	}
 	app := &App{Store: store}
-	hosts, err := app.selectHosts([]string{"--group", "prod", "--tag", "linux"})
+	hosts, err := app.selectHosts([]string{"--tag", "prod", "--tag", "linux"})
 	if err != nil {
 		t.Fatal(err)
 	}

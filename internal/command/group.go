@@ -5,20 +5,27 @@ import (
 	"github.com/fanhuadesenlinnn/sshm/internal/ui"
 )
 
-func (app *App) cmdGroup(args []string) error {
+func (app *App) cmdTag(args []string) error {
 	hf, err := app.Store.Load()
 	if err != nil {
 		return err
 	}
 
-	groups := map[string][]config.Host{}
-	for _, h := range hf.Hosts {
-		if len(args) > 0 && h.Group != args[0] {
-			continue
-		}
-		groups[h.Group] = append(groups[h.Group], h)
+	tagFilter := ""
+	if len(args) > 0 {
+		tagFilter = args[0]
 	}
 
-	ui.RenderGroupList(groups)
+	tags := map[string][]config.Host{}
+	for _, h := range hf.Hosts {
+		for _, t := range h.Tags {
+			if tagFilter != "" && t != tagFilter {
+				continue
+			}
+			tags[t] = append(tags[t], h)
+		}
+	}
+
+	ui.RenderTagList(tags)
 	return nil
 }

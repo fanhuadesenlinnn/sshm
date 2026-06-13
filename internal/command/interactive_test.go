@@ -104,7 +104,6 @@ func TestMatchHost(t *testing.T) {
 		Host:  "10.0.0.1",
 		User:  "admin",
 		Note:  "production web server",
-		Group: "prod",
 		Tags:  []string{"web", "nginx"},
 	}
 
@@ -117,7 +116,6 @@ func TestMatchHost(t *testing.T) {
 		{"10.0", true},       // matches host
 		{"admin", true},      // matches user
 		{"production", true}, // matches note
-		{"prod", true},       // matches group
 		{"nginx", true},      // matches tag
 		{"nonexistent", false},
 		{"database", false},

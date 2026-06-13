@@ -30,7 +30,7 @@ func (app *App) cmdKeyUse(args []string) error {
 	for i := range hf.Hosts {
 		if selected[hf.Hosts[i].ID] {
 			hf.Hosts[i].Identity = config.ManagedIdentity(key.Name)
-			if hf.Hosts[i].Auth == "password" || hf.Hosts[i].Auth == "system" || hf.Hosts[i].Auth == "ask" {
+			if hf.Hosts[i].Auth == "password" {
 				hf.Hosts[i].Auth = "auto"
 			}
 		}
@@ -53,6 +53,19 @@ func (app *App) cmdKeyRemote(args []string, revoke bool) error {
 		action = "撤销"
 		command = revokePublicKeyCommand(key.PublicKey)
 	}
+
+	// List affected hosts and ask for confirmation.
+	fmt.Println()
+	fmt.Printf("即将%s公钥到 %d 台主机:\n", action, len(hosts))
+	for _, h := range hosts {
+		fmt.Printf("  - %s (%s@%s:%d)\n", h.Alias, h.User, h.Host, h.Port)
+	}
+	fmt.Println()
+	if !ui.ReadYesNo(fmt.Sprintf("确认%s? [y/N]: ", action)) {
+		ui.PrintWarn("已取消")
+		return nil
+	}
+
 	return app.runKeyRemoteBatch(action, hosts, command)
 }
 
@@ -118,7 +131,7 @@ func (app *App) cmdKeyStatus(args []string) error {
 
 func (app *App) resolveKeyAndTargets(args []string) (*config.ManagedKey, []config.Host, error) {
 	if len(args) < 2 {
-		return nil, nil, fmt.Errorf("需要指定密钥和目标；目标支持别名...、--group 分组、--tag 标签、--all")
+		return nil, nil, fmt.Errorf("需要指定密钥和目标；目标支持别名...、--tag 标签、--all")
 	}
 	key, err := app.keyStore().Find(args[0])
 	if err != nil {
@@ -134,19 +147,12 @@ func (app *App) selectHosts(args []string) ([]config.Host, error) {
 		return nil, err
 	}
 	aliases := map[string]bool{}
-	groups := map[string]bool{}
 	tags := map[string]bool{}
 	all := false
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--all":
 			all = true
-		case "--group":
-			if i+1 >= len(args) {
-				return nil, fmt.Errorf("--group 缺少分组名")
-			}
-			i++
-			groups[args[i]] = true
 		case "--tag":
 			if i+1 >= len(args) {
 				return nil, fmt.Errorf("--tag 缺少标签")
@@ -161,9 +167,6 @@ func (app *App) selectHosts(args []string) ([]config.Host, error) {
 	for index, host := range hf.Hosts {
 		displayID := strconv.Itoa(index + 1)
 		matched := all || aliases[host.Alias] || aliases[host.ID] || aliases[displayID]
-		if groups[host.Group] {
-			matched = true
-		}
 		for _, tag := range host.Tags {
 			if tags[tag] {
 				matched = true

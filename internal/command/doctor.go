@@ -2,8 +2,6 @@ package command
 
 import (
 	"fmt"
-	"os"
-	"os/exec"
 
 	"github.com/fanhuadesenlinnn/sshm/internal/config"
 	"github.com/fanhuadesenlinnn/sshm/internal/ui"
@@ -24,12 +22,6 @@ func (app *App) cmdDoctor(_ []string) error {
 	fmt.Printf("  %-14s %s\n", "密钥目录", config.KeysDir())
 	fmt.Printf("  %-14s %d\n", "主机数量", len(hf.Hosts))
 
-	if sshPath, err := exec.LookPath("ssh"); err == nil {
-		fmt.Printf("  %-14s %s\n", "系统 SSH", sshPath)
-	} else {
-		ui.PrintWarn("未找到系统 ssh 命令，system/auto 连接可能不可用")
-	}
-
 	missingKeys := 0
 	managedKeys := 0
 	for _, host := range hf.Hosts {
@@ -43,11 +35,6 @@ func (app *App) cmdDoctor(_ []string) error {
 			} else {
 				managedKeys++
 			}
-			continue
-		}
-		if _, err := os.Stat(config.ExpandPath(host.Identity)); err != nil {
-			missingKeys++
-			ui.PrintWarn("%s 的密钥不存在: %s", host.Alias, config.ExpandPath(host.Identity))
 		}
 	}
 	if missingKeys == 0 {

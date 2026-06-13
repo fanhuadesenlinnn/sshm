@@ -354,8 +354,6 @@ const (
 	AuthAuto     AuthStrategy = iota
 	AuthKey      AuthStrategy = iota
 	AuthPassword AuthStrategy = iota
-	AuthAsk      AuthStrategy = iota
-	AuthSystem   AuthStrategy = iota
 )
 
 // GetAuthStrategy maps a string to AuthStrategy.
@@ -365,10 +363,6 @@ func GetAuthStrategy(auth string) AuthStrategy {
 		return AuthKey
 	case "password":
 		return AuthPassword
-	case "ask":
-		return AuthAsk
-	case "system":
-		return AuthSystem
 	default:
 		return AuthAuto
 	}

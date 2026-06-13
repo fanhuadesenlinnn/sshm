@@ -23,8 +23,6 @@ func TestGetAuthStrategy(t *testing.T) {
 		{"auto", AuthAuto},
 		{"key", AuthKey},
 		{"password", AuthPassword},
-		{"ask", AuthAsk},
-		{"system", AuthSystem},
 		{"", AuthAuto},
 		{"unknown", AuthAuto},
 	}
@@ -124,15 +122,9 @@ func TestAppendToKnownHostsUsesBracketedNonDefaultPort(t *testing.T) {
 	}
 }
 
-func TestHasIdentityAbsent(t *testing.T) {
-	if HasIdentity(config.Host{Alias: "test"}) {
-		t.Fatal("HasIdentity() should be false for empty identity")
-	}
-}
-
 func TestAuthStrategyConsts(t *testing.T) {
 	seen := map[AuthStrategy]bool{}
-	for _, s := range []AuthStrategy{AuthAuto, AuthKey, AuthPassword, AuthAsk, AuthSystem} {
+	for _, s := range []AuthStrategy{AuthAuto, AuthKey, AuthPassword} {
 		if seen[s] {
 			t.Errorf("Duplicate AuthStrategy value: %v", s)
 		}

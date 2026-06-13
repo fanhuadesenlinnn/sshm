@@ -11,7 +11,7 @@ import (
 	"github.com/fanhuadesenlinnn/sshm/internal/ui"
 )
 
-var Version = "dev"
+var Version = "0.2.0"
 
 // App holds shared state for all commands.
 type App struct {
@@ -64,14 +64,12 @@ func Run(args []string) error {
 		return app.cmdEdit(args[1:])
 	case "--delete", "-d", "--del", "delete", "del", "rm":
 		return app.cmdDelete(args[1:])
-	case "--copy", "--cp", "copy", "cp":
-		return app.cmdCopy(args[1:])
 	case "--show", "show", "info":
 		return app.cmdShow(args[1:])
 	case "--search", "-s", "--find", "search", "find":
 		return app.cmdSearch(args[1:])
-	case "--group", "-g", "group":
-		return app.cmdGroup(args[1:])
+	case "tag", "tags":
+		return app.cmdTag(args[1:])
 	case "recent":
 		return app.cmdRecent(args[1:])
 	case "pin":
@@ -92,10 +90,14 @@ func Run(args []string) error {
 		return app.cmdPing(args[1:])
 	case "--exec", "-x", "exec":
 		return app.cmdExec(args[1:])
-	case "--exec-group", "--xg", "exec-group":
-		return app.cmdExecGroup(args[1:])
+	case "--exec-tag", "--xt", "exec-tag":
+		return app.cmdExecTag(args[1:])
 	case "--exec-all", "--xa", "exec-all":
 		return app.cmdExecAll(args[1:])
+	case "push":
+		return app.cmdPush(args[1:])
+	case "pull":
+		return app.cmdPull(args[1:])
 	case "--export-ssh-config", "export-ssh-config":
 		return app.cmdExportSSHConfig(args[1:])
 	case "--import-ssh-config", "import-ssh-config":
@@ -104,10 +106,6 @@ func Run(args []string) error {
 		return app.cmdPasswd(args[1:])
 	case "--forget-pass", "forget-pass":
 		return app.cmdForgetPass(args[1:])
-	case "--import-key", "import-key":
-		return app.cmdImportKey(args[1:])
-	case "--gen-key", "gen-key":
-		return app.cmdGenKey(args[1:])
 	case "--show-pubkey", "show-pubkey":
 		return app.cmdShowPubkey(args[1:])
 	case "--auth", "auth":
@@ -134,8 +132,8 @@ func Run(args []string) error {
 func unknownOptionError(option string) error {
 	commands := []string{
 		"--list", "--add", "--edit", "--delete", "--copy", "--show", "--search",
-		"--group", "--ping", "--exec", "--exec-group", "--exec-all", "--passwd",
-		"--forget-pass", "--import-key", "--gen-key", "--show-pubkey", "--auth",
+		"--tag", "--ping", "--exec", "--exec-tag", "--exec-all", "--passwd",
+		"--forget-pass", "--show-pubkey", "--auth",
 		"--lock", "--export-ssh-config", "--import-ssh-config", "--help", "--version",
 		"host", "key", "add-batch", "config-edit",
 	}
@@ -191,10 +189,9 @@ func (app *App) printHelp() {
 	fmt.Println("  add-batch [别名=目标...]        批量添加主机")
 	fmt.Println("  edit <别名|ID>                编辑主机")
 	fmt.Println("  delete <别名|ID>              删除主机")
-	fmt.Println("  copy <别名|ID>                复制连接命令")
 	fmt.Println("  show <别名|ID>                显示主机详情")
 	fmt.Println("  search <关键词...>            搜索主机")
-	fmt.Println("  group [分组名]                列出分组")
+	fmt.Println("  tag [标签名]                  列出标签")
 	fmt.Println("  recent [数量]                 显示收藏和最近连接")
 	fmt.Println("  pin/unpin <别名|ID>           收藏或取消收藏")
 	fmt.Println("  completion <bash|zsh|fish>     生成 Shell 自动补全脚本")
@@ -203,12 +200,10 @@ func (app *App) printHelp() {
 	fmt.Println("  doctor                        检查配置、SSH 与密钥环境")
 	fmt.Println("  ping [别名|ID]                测试连接")
 	fmt.Println("  exec <目标> <命令>             执行命令")
-	fmt.Println("  exec-group <分组> <命令>       分组执行命令")
+	fmt.Println("  exec-tag <标签> <命令>         按标签执行命令")
 	fmt.Println("  exec-all <命令>                所有主机执行命令")
 	fmt.Println("  passwd <别名|ID>              设置 SSH 密码")
 	fmt.Println("  forget-pass <别名|ID>         删除 SSH 密码")
-	fmt.Println("  import-key <别名|ID> <路径>    导入密钥")
-	fmt.Println("  gen-key <别名|ID>             生成密钥")
 	fmt.Println("  show-pubkey <别名|ID>         显示公钥")
 	fmt.Println("  auth <别名|ID>                修改认证策略")
 	fmt.Println("  lock                           锁定当前会话密码库")
@@ -235,8 +230,7 @@ func (app *App) printInteractiveHelp() {
 	fmt.Printf("    %-14s %-24s %s\n", "del, delete, rm, d", "删除主机", "del <别名|ID>")
 	fmt.Printf("    %-14s %-24s %s\n", "show, info", "显示主机详情", "show <别名|ID>")
 	fmt.Printf("    %-14s %-24s %s\n", "search, find, s", "搜索主机", "search <关键词>")
-	fmt.Printf("    %-14s %-24s %s\n", "group, g", "分组管理", "group [分组名]")
-	fmt.Printf("    %-14s %-24s %s\n", "copy, cp", "复制连接信息", "copy <别名|ID>")
+	fmt.Printf("    %-14s %-24s %s\n", "tag, tags", "标签管理", "tag [标签名]")
 	fmt.Printf("    %-14s %-24s %s\n", "recent, r", "收藏与最近连接", "")
 	fmt.Printf("    %-14s %-24s %s\n", "pin, unpin", "收藏或取消收藏", "pin <别名|ID>")
 	fmt.Println()
@@ -245,15 +239,13 @@ func (app *App) printInteractiveHelp() {
 	fmt.Printf("    %-14s %-24s %s\n", "pick, p", "打开可搜索主机选择器", "")
 	fmt.Printf("    %-14s %-24s %s\n", "ping", "测试连通性", "ping [别名|ID]")
 	fmt.Printf("    %-14s %-24s %s\n", "exec, x", "远程执行命令", "x <别名|ID> <命令>")
-	fmt.Printf("    %-14s %-24s %s\n", "exec-group, xg", "分组执行命令", "xg <分组> <命令>")
+	fmt.Printf("    %-14s %-24s %s\n", "exec-tag, xt", "按标签执行命令", "xt <标签> <命令>")
 	fmt.Printf("    %-14s %-24s %s\n", "exec-all, xa", "所有主机执行", "xa <命令>")
 	fmt.Println()
 	fmt.Println("  认证与密钥")
 	fmt.Printf("    %-14s %-24s %s\n", "key, k", "进入托管密钥中心", "")
 	fmt.Printf("    %-14s %-24s %s\n", "passwd", "设置 SSH 密码", "passwd <别名|ID>")
 	fmt.Printf("    %-14s %-24s %s\n", "forget-pass", "删除已存密码", "forget-pass <别名|ID>")
-	fmt.Printf("    %-14s %-24s %s\n", "import-key", "导入 SSH 密钥", "import-key <别名|ID>")
-	fmt.Printf("    %-14s %-24s %s\n", "gen-key", "生成 SSH 密钥", "gen-key <别名|ID>")
 	fmt.Printf("    %-14s %-24s %s\n", "show-pubkey", "显示公钥", "show-pubkey <别名|ID>")
 	fmt.Printf("    %-14s %-24s %s\n", "auth", "修改认证策略", "auth <别名|ID>")
 	fmt.Printf("    %-14s %-24s %s\n", "lock", "锁定当前会话密码库", "")

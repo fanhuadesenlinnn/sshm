@@ -19,7 +19,6 @@ type Host struct {
 	Port        int      `yaml:"port"`
 	Identity    string   `yaml:"identity"`
 	Note        string   `yaml:"note"`
-	Group       string   `yaml:"group"`
 	Tags        []string `yaml:"tags"`
 	Auth        string   `yaml:"auth"`
 	PasswordRef string   `yaml:"password_ref"`
@@ -104,7 +103,6 @@ func (h *Host) Validate() []string {
 	} else if !aliasRegexp.MatchString(h.Alias) {
 		errs = append(errs, "别名只能包含字母、数字、点、下划线、短横线")
 	}
-	// Check alias is not purely numeric
 	if h.Alias != "" {
 		if _, err := strconv.Atoi(h.Alias); err == nil {
 			errs = append(errs, "别名不能是纯数字")
@@ -122,7 +120,7 @@ func (h *Host) Validate() []string {
 	}
 
 	validAuth := map[string]bool{
-		"auto": true, "key": true, "password": true, "ask": true, "system": true,
+		"auto": true, "key": true, "password": true,
 	}
 	if !validAuth[h.Auth] {
 		errs = append(errs, fmt.Sprintf("无效的认证策略: %s", h.Auth))
@@ -139,6 +137,26 @@ func DefaultHost() Host {
 		Auth: "auto",
 		Tags: []string{},
 	}
+}
+
+// HasTag reports whether a host has a specific tag.
+func (h *Host) HasTag(tag string) bool {
+	for _, t := range h.Tags {
+		if t == tag {
+			return true
+		}
+	}
+	return false
+}
+
+// MatchTags reports whether a host has all specified tags (intersection).
+func (h *Host) MatchTags(tags []string) bool {
+	for _, want := range tags {
+		if !h.HasTag(want) {
+			return false
+		}
+	}
+	return true
 }
 
 // ParseTags converts a comma-separated or space-separated string to a tag slice.
@@ -176,6 +194,21 @@ func TagsToString(tags []string) string {
 			result += " "
 		}
 		result += t
+	}
+	return result
+}
+
+// AllTags collects and deduplicates all tags from a list of hosts.
+func AllTags(hosts []Host) []string {
+	seen := map[string]bool{}
+	var result []string
+	for _, h := range hosts {
+		for _, t := range h.Tags {
+			if !seen[t] {
+				seen[t] = true
+				result = append(result, t)
+			}
+		}
 	}
 	return result
 }

@@ -40,11 +40,10 @@ func TestMatchHostTerms(t *testing.T) {
 		Alias: "prod-web",
 		User:  "deploy",
 		Host:  "10.0.0.1",
-		Group: "production",
 		Tags:  []string{"nginx", "public"},
 		Note:  "main site",
 	}
-	if !matchHostTerms(h, []string{"web", "group:prod", "tag:nginx"}) {
+	if !matchHostTerms(h, []string{"web", "tag:nginx"}) {
 		t.Fatal("expected all search terms to match")
 	}
 	if matchHostTerms(h, []string{"web", "tag:database"}) {
@@ -87,7 +86,6 @@ func TestCmdQuickAddPersistsDefaultsAndOptions(t *testing.T) {
 	app := &App{Store: store, SecretPath: filepath.Join(t.TempDir(), "secrets.yaml")}
 	err := app.cmdQuickAdd([]string{
 		"prod", "deploy@example.com:2222",
-		"--group", "production",
 		"--tags", "web,linux",
 	})
 	if err != nil {
@@ -100,7 +98,7 @@ func TestCmdQuickAddPersistsDefaultsAndOptions(t *testing.T) {
 	if host.User != "deploy" || host.Host != "example.com" || host.Port != 2222 {
 		t.Fatalf("unexpected target: %+v", host)
 	}
-	if host.Auth != "auto" || host.Group != "production" || !reflect.DeepEqual(host.Tags, []string{"web", "linux"}) {
+	if host.Auth != "auto" || !reflect.DeepEqual(host.Tags, []string{"web", "linux"}) {
 		t.Fatalf("unexpected options: %+v", host)
 	}
 }
@@ -134,7 +132,6 @@ func TestShouldPromptForPassword(t *testing.T) {
 		{"auto without key", config.Host{Auth: "auto"}, true},
 		{"auto with key", config.Host{Auth: "auto", Identity: "~/.ssh/id_ed25519"}, false},
 		{"password with key", config.Host{Auth: "password", Identity: "~/.ssh/id_ed25519"}, true},
-		{"system without key", config.Host{Auth: "system"}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

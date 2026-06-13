@@ -32,7 +32,6 @@ func (app *App) interactiveMode() error {
 		cmd := strings.ToLower(parts[0])
 		args := parts[1:]
 
-		// All commands return errors that we display without exiting
 		var err error
 		switch cmd {
 		case "host":
@@ -49,16 +48,14 @@ func (app *App) interactiveMode() error {
 			err = app.cmdEdit(args)
 		case "del", "delete", "rm", "d":
 			err = app.cmdDelete(args)
-		case "copy", "cp":
-			err = app.cmdCopy(args)
 		case "conn", "connect", "c":
 			err = app.cmdConnect(args)
 		case "show", "info":
 			err = app.cmdShow(args)
 		case "search", "find", "s":
 			err = app.cmdSearch(args)
-		case "group", "g":
-			err = app.cmdGroup(args)
+		case "tag", "tags":
+			err = app.cmdTag(args)
 		case "recent", "r":
 			err = app.cmdRecent(args)
 		case "pin":
@@ -73,20 +70,20 @@ func (app *App) interactiveMode() error {
 			err = app.cmdPing(args)
 		case "exec", "x":
 			err = app.cmdInteractiveExec(args)
-		case "exec-group", "xg":
-			err = app.cmdInteractiveExecGroup(args)
+		case "exec-tag", "xt":
+			err = app.cmdInteractiveExecTag(args)
 		case "exec-all", "xa":
 			err = app.cmdInteractiveExecAll(args)
+		case "push":
+			err = app.cmdPush(args)
+		case "pull":
+			err = app.cmdPull(args)
 		case "ssh-config", "sc":
 			err = app.cmdInteractiveSSHConfig(args)
 		case "passwd":
 			err = app.cmdPasswd(args)
 		case "forget-pass":
 			err = app.cmdForgetPass(args)
-		case "import-key":
-			err = app.cmdImportKey(args)
-		case "gen-key":
-			err = app.cmdGenKey(args)
 		case "show-pubkey":
 			err = app.cmdShowPubkey(args)
 		case "auth":
@@ -100,25 +97,21 @@ func (app *App) interactiveMode() error {
 			fmt.Println("bye.")
 			return nil
 		default:
-			// Try numeric or alias connect
 			err = app.cmdConnect(parts)
 		}
 
-		// Display errors but keep the shell alive
 		if err != nil {
 			fmt.Fprintln(os.Stderr, ui.ErrorMsg("%v", err))
 		}
 	}
 }
 
-// cmdConnect connects to a host by alias or ID.
 func (app *App) cmdConnect(args []string) (err error) {
 	if len(args) == 0 {
 		return fmt.Errorf("请指定主机别名或ID")
 	}
 
 	aliasOrID := args[0]
-	extraArgs := args[1:]
 
 	h, _, _, err := app.Store.FindHost(aliasOrID)
 	if err != nil {
@@ -141,7 +134,7 @@ func (app *App) cmdConnect(args []string) (err error) {
 		if storeErr != nil {
 			return storeErr
 		}
-		return sshx.Connect(*h, fs, extraArgs)
+		return sshx.Connect(*h, fs)
 	}
 
 	var fs *secret.FileStore
@@ -149,96 +142,28 @@ func (app *App) cmdConnect(args []string) (err error) {
 		fs = app.tryGetSecretStore()
 	}
 
-	strategy := sshx.GetAuthStrategy(h.Auth)
-
-	// If user wants system SSH or ask-each-time, delegate directly
-	if strategy == sshx.AuthSystem || strategy == sshx.AuthAsk {
-		return sshx.ConnectSystem(*h, extraArgs)
-	}
-
-	// If user wants key-only auth
-	if strategy == sshx.AuthKey {
-		if !sshx.HasIdentity(*h) {
-			return fmt.Errorf("主机 %s 未配置密钥", h.Alias)
-		}
-		code := sshx.ConnectOpenSSHKey(*h, extraArgs)
-		if code != 0 {
-			return fmt.Errorf("密钥认证失败 (exit %d)", code)
-		}
+	err = sshx.Connect(*h, fs)
+	if err == nil {
 		return nil
 	}
 
-	// If user wants password-only auth
-	if strategy == sshx.AuthPassword {
-		return app.connectWithPassword(*h, fs, extraArgs)
+	if h.PasswordRef == "" || fs == nil {
+		return app.promptAndConnect(*h, fs)
 	}
 
-	// AuthAuto: try key first, then password, then prompt
-	hasKey := sshx.HasIdentity(*h)
-
-	if hasKey {
-		code := sshx.ConnectOpenSSHKey(*h, extraArgs)
-		if code == 0 {
-			return nil
-		}
-		fmt.Fprintf(os.Stderr, "密钥认证未通过，尝试密码连接...\n")
-	}
-
-	// Try saved password
-	if h.PasswordRef != "" && fs != nil {
-		pass, perr := fs.GetPassword(h.PasswordRef)
-		if perr == nil {
-			if len(extraArgs) > 0 {
-				fmt.Fprintln(os.Stderr, "密码连接不支持额外 SSH 参数，回退到系统 SSH...")
-				return sshx.ConnectSystem(*h, extraArgs)
-			}
-			if connErr := sshx.NativeConnectPassword(*h, pass); connErr == nil {
-				return nil
-			} else {
-				fmt.Fprintf(os.Stderr, "密码连接失败: %v\n", connErr)
-			}
-		} else {
-			fmt.Fprintf(os.Stderr, "读取保存密码失败: %v\n", perr)
-		}
-	}
-
-	// Prompt for SSH password interactively
-	return app.promptAndConnect(*h, fs, extraArgs)
+	return err
 }
 
-// connectWithPassword handles AuthPassword strategy.
-func (app *App) connectWithPassword(h config.Host, fs *secret.FileStore, extraArgs []string) error {
-	if len(extraArgs) > 0 {
-		return fmt.Errorf("password 认证不支持额外 SSH 参数；请改用 system/ask 认证策略")
-	}
-	if h.PasswordRef != "" && fs != nil {
-		pass, err := fs.GetPassword(h.PasswordRef)
-		if err == nil {
-			return sshx.NativeConnectPassword(h, pass)
-		}
-		fmt.Fprintf(os.Stderr, "读取密码失败: %v\n", err)
-	}
-	return app.promptAndConnect(h, fs, extraArgs)
-}
-
-// promptAndConnect prompts for SSH password, connects, and offers to save.
-func (app *App) promptAndConnect(h config.Host, fs *secret.FileStore, extraArgs []string) error {
-	if len(extraArgs) > 0 {
-		return fmt.Errorf("密码连接不支持额外 SSH 参数；请改用 system/ask 认证策略")
-	}
+func (app *App) promptAndConnect(h config.Host, fs *secret.FileStore) error {
 	pass, err := ui.ReadPassword("请输入 SSH 密码: ")
 	if err != nil {
-		ui.PrintWarn("读取密码失败，回退到系统 SSH")
-		return sshx.ConnectSystem(h, extraArgs)
+		return fmt.Errorf("读取密码失败: %w", err)
 	}
 
-	err = sshx.NativeConnectPassword(h, pass)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "密码连接失败: %v，回退到系统 SSH\n", err)
-		return sshx.ConnectSystem(h, extraArgs)
+	if err := sshx.NativeConnectPassword(h, pass); err != nil {
+		return fmt.Errorf("密码认证失败: %w", err)
 	}
 
-	// Connection successful — ask whether to save the password
 	fmt.Println()
 	if ui.ReadYesNo("是否保存此密码以供下次使用？[y/N]: ") {
 		if fs == nil {
@@ -249,7 +174,6 @@ func (app *App) promptAndConnect(h config.Host, fs *secret.FileStore, extraArgs 
 			}
 		}
 		if fs != nil {
-			// Use stable ID as the key
 			ref := h.ID
 			if ref == "" {
 				ref = h.Alias
@@ -257,13 +181,12 @@ func (app *App) promptAndConnect(h config.Host, fs *secret.FileStore, extraArgs 
 			if err := fs.SetPassword(ref, pass); err != nil {
 				ui.PrintWarn("保存密码失败: %v", err)
 			} else {
-				// Update host config with stable ID as password ref
 				hf, loadErr := app.Store.Load()
 				if loadErr == nil {
 					for i := range hf.Hosts {
 						if hf.Hosts[i].Alias == h.Alias {
 							hf.Hosts[i].PasswordRef = ref
-							if hf.Hosts[i].Auth == "" || hf.Hosts[i].Auth == "auto" {
+							if hf.Hosts[i].Auth == "" {
 								hf.Hosts[i].Auth = "auto"
 							}
 							if err := app.Store.Save(hf); err != nil {
@@ -281,7 +204,6 @@ func (app *App) promptAndConnect(h config.Host, fs *secret.FileStore, extraArgs 
 	return nil
 }
 
-// Interactive variants for exec commands in interactive mode.
 func (app *App) cmdInteractiveExec(args []string) error {
 	if len(args) < 2 {
 		alias := ui.ReadLine("目标主机 (别名/ID): ")
@@ -291,13 +213,13 @@ func (app *App) cmdInteractiveExec(args []string) error {
 	return app.cmdExec(args)
 }
 
-func (app *App) cmdInteractiveExecGroup(args []string) error {
+func (app *App) cmdInteractiveExecTag(args []string) error {
 	if len(args) < 2 {
-		group := ui.ReadLine("分组名: ")
+		tag := ui.ReadLine("标签名: ")
 		cmd := ui.ReadLine("命令: ")
-		return app.cmdExecGroup([]string{group, cmd})
+		return app.cmdExecTag([]string{tag, cmd})
 	}
-	return app.cmdExecGroup(args)
+	return app.cmdExecTag(args)
 }
 
 func (app *App) cmdInteractiveExecAll(args []string) error {
@@ -333,7 +255,6 @@ func (app *App) cmdInteractiveSSHConfig(args []string) error {
 	}
 }
 
-// parseArgs splits a command line string into arguments.
 func parseArgs(input string) []string {
 	var args []string
 	current := ""

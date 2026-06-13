@@ -14,7 +14,7 @@ type indexedHost struct {
 }
 
 func (app *App) cmdList(args []string) error {
-	group := ""
+	var tagFilters []string
 	sortBy := ""
 	options := ui.HostTableOptions{}
 	for i := 0; i < len(args); i++ {
@@ -23,12 +23,12 @@ func (app *App) cmdList(args []string) error {
 			options.Compact = true
 		case "--wide":
 			options.Wide = true
-		case "--group", "-g":
+		case "--tag", "-t":
 			if i+1 >= len(args) {
-				return fmt.Errorf("选项 %s 缺少分组名", args[i])
+				return fmt.Errorf("选项 %s 缺少标签名", args[i])
 			}
 			i++
-			group = args[i]
+			tagFilters = config.ParseTags(args[i])
 		case "--sort":
 			if i+1 >= len(args) {
 				return fmt.Errorf("选项 --sort 缺少排序字段")
@@ -47,7 +47,7 @@ func (app *App) cmdList(args []string) error {
 
 	rows := make([]indexedHost, 0, len(hf.Hosts))
 	for i, host := range hf.Hosts {
-		if group == "" || host.Group == group {
+		if len(tagFilters) == 0 || host.MatchTags(tagFilters) {
 			rows = append(rows, indexedHost{host: host, index: i})
 		}
 	}
@@ -55,15 +55,8 @@ func (app *App) cmdList(args []string) error {
 	case "", "id":
 	case "alias":
 		sort.SliceStable(rows, func(i, j int) bool { return rows[i].host.Alias < rows[j].host.Alias })
-	case "group":
-		sort.SliceStable(rows, func(i, j int) bool {
-			if rows[i].host.Group == rows[j].host.Group {
-				return rows[i].host.Alias < rows[j].host.Alias
-			}
-			return rows[i].host.Group < rows[j].host.Group
-		})
 	default:
-		return fmt.Errorf("不支持的排序字段 %q，可使用 id、alias 或 group", sortBy)
+		return fmt.Errorf("不支持的排序字段 %q，可使用 id 或 alias", sortBy)
 	}
 
 	if len(rows) == 0 {

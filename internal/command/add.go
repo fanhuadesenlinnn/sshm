@@ -21,7 +21,7 @@ func (app *App) cmdAdd(args []string) error {
 
 func (app *App) cmdQuickAdd(args []string) error {
 	if len(args) < 2 {
-		return fmt.Errorf("用法: sshm add <别名> <用户@主机[:端口]> [--identity 路径] [--group 分组] [--tags 标签]")
+		return fmt.Errorf("用法: sshm add <别名> <用户@主机[:端口]> [--identity 托管密钥] [--tags 标签]")
 	}
 
 	h := config.DefaultHost()
@@ -40,8 +40,6 @@ func (app *App) cmdQuickAdd(args []string) error {
 		switch args[i] {
 		case "--identity", "-i":
 			h.Identity = value
-		case "--group", "-g":
-			h.Group = value
 		case "--tags":
 			h.Tags = config.ParseTags(value)
 		case "--note":
@@ -118,18 +116,10 @@ func (app *App) cmdAddWizard() error {
 	}
 
 	fmt.Println()
-	fmt.Println("  认证方式: auto（推荐）/ key / password / system")
+	fmt.Println("  认证方式: auto（推荐）/ key / password")
 	h.Auth = ui.ReadLineDefault("认证方式 [auto]: ", "auto")
 
-	h.Identity = ui.ReadLine("密钥路径，可留空: ")
-	if h.Identity != "" && ui.ReadYesNo("是否导入密钥到 sshm keys 目录？[y/N]: ") {
-		relPath, err := keymgr.ImportKey(h.Alias, h.Identity)
-		if err != nil {
-			ui.PrintWarn("导入密钥失败: %v", err)
-		} else {
-			h.Identity = relPath
-		}
-	}
+	h.Identity = ui.ReadLine("托管密钥名称，可留空（使用 sshm key create 创建）: ")
 
 	var sshPassword string
 	savePass := false
@@ -146,7 +136,6 @@ func (app *App) cmdAddWizard() error {
 	}
 
 	h.Note = ui.ReadLine("备注，可留空: ")
-	h.Group = ui.ReadLine("分组，可留空: ")
 	h.Tags = config.ParseTags(ui.ReadLine("标签（空格或逗号分隔），可留空: "))
 
 	if err := validateHost(h); err != nil {

@@ -10,9 +10,9 @@ import (
 
 func TestFilterPickerHostsFiltersAndPrioritizesPinned(t *testing.T) {
 	hosts := []config.Host{
-		{Alias: "web-old", Group: "prod", LastUsedAt: "2026-01-01T00:00:00Z"},
-		{Alias: "db", Group: "prod", Pinned: true},
-		{Alias: "web-new", Group: "prod", LastUsedAt: "2026-06-01T00:00:00Z"},
+		{Alias: "web-old", Tags: []string{"prod"}, LastUsedAt: "2026-01-01T00:00:00Z"},
+		{Alias: "db", Tags: []string{"prod"}, Pinned: true},
+		{Alias: "web-new", Tags: []string{"prod"}, LastUsedAt: "2026-06-01T00:00:00Z"},
 	}
 	got := filterPickerHosts(hosts, "prod")
 	if len(got) != 3 || got[0].Alias != "db" || got[1].Alias != "web-new" {

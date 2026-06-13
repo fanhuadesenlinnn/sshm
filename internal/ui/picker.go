@@ -98,7 +98,7 @@ func filterPickerHosts(hosts []config.Host, query string) []config.Host {
 	matches := make([]config.Host, 0, len(hosts))
 	for _, host := range hosts {
 		text := strings.ToLower(strings.Join([]string{
-			host.Alias, host.User, host.Host, host.Group, host.Note, strings.Join(host.Tags, " "),
+			host.Alias, host.User, host.Host, host.Note, strings.Join(host.Tags, " "),
 		}, " "))
 		matched := true
 		for _, term := range terms {
@@ -145,8 +145,8 @@ func renderHostPickerTo(w io.Writer, hosts []config.Host, query string, selected
 		}
 		host := hosts[i]
 		label := fmt.Sprintf("%-18s %s@%s:%d", displayAlias(host), host.User, host.Host, host.Port)
-		if host.Group != "" {
-			label += "  [" + host.Group + "]"
+		if len(host.Tags) > 0 {
+			label += "  [" + strings.Join(host.Tags, ",") + "]"
 		}
 		fmt.Fprintf(w, "%s%s\r\n", prefix, truncateToWidth(label, contentWidth))
 	}

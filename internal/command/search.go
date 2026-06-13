@@ -40,10 +40,6 @@ func (app *App) cmdSearch(args []string) error {
 func matchHostTerms(h config.Host, terms []string) bool {
 	for _, term := range terms {
 		switch {
-		case strings.HasPrefix(term, "group:"):
-			if !strings.Contains(strings.ToLower(h.Group), strings.TrimPrefix(term, "group:")) {
-				return false
-			}
 		case strings.HasPrefix(term, "tag:"):
 			if !matchTag(h.Tags, strings.TrimPrefix(term, "tag:")) {
 				return false
@@ -77,9 +73,6 @@ func matchHost(h config.Host, keyword string) bool {
 		return true
 	}
 	if strings.Contains(strings.ToLower(h.Note), keyword) {
-		return true
-	}
-	if strings.Contains(strings.ToLower(h.Group), keyword) {
 		return true
 	}
 	return matchTag(h.Tags, keyword)

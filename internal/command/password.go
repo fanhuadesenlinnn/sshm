@@ -50,7 +50,7 @@ func (app *App) cmdPasswd(args []string) error {
 		hf.Hosts[idx].PasswordRef = h.Alias
 	}
 
-	if hf.Hosts[idx].Auth == "" || hf.Hosts[idx].Auth == "system" || hf.Hosts[idx].Auth == "ask" {
+	if hf.Hosts[idx].Auth == "" {
 		hf.Hosts[idx].Auth = "auto"
 	}
 

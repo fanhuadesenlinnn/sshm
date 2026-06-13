@@ -26,11 +26,10 @@ func (app *App) cmdEdit(args []string) error {
 	newPort := h.Port
 	fmt.Sscanf(portStr, "%d", &newPort)
 
-	newIdentity := readEditableValue("密钥路径", h.Identity)
+	newIdentity := readEditableValue("托管密钥", h.Identity)
 	newNote := readEditableValue("备注", h.Note)
-	newGroup := readEditableValue("分组", h.Group)
 
-	newAuth := ui.ReadLineDefault(fmt.Sprintf("认证策略 (auto/key/password/ask/system) [%s]: ", h.Auth), h.Auth)
+	newAuth := ui.ReadLineDefault(fmt.Sprintf("认证策略 (auto/key/password) [%s]: ", h.Auth), h.Auth)
 
 	tagsInput := readEditableValue("标签", config.TagsToString(h.Tags))
 	newTags := config.ParseTags(tagsInput)
@@ -45,7 +44,6 @@ func (app *App) cmdEdit(args []string) error {
 		Port:        newPort,
 		Identity:    newIdentity,
 		Note:        newNote,
-		Group:       newGroup,
 		Tags:        newTags,
 		Auth:        newAuth,
 		PasswordRef: h.PasswordRef,

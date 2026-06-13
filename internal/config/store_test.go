@@ -33,7 +33,6 @@ func TestStoreSaveAndLoadRoundTrip(t *testing.T) {
 	h.Host = "192.168.1.1"
 	h.Port = 22
 	h.Note = "test note"
-	h.Group = "prod"
 	h.Tags = []string{"web", "db"}
 
 	if h.ID == "" {
