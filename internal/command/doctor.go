@@ -19,7 +19,7 @@ func (app *App) cmdDoctor(_ []string) error {
 
 	ui.PrintHeader("sshm 环境检查")
 	fmt.Println()
-	fmt.Printf("  %-14s %s\n", "版本", Version)
+	fmt.Printf("  %-14s %s\n", "版本", CurrentVersion())
 	fmt.Printf("  %-14s %s\n", "配置文件", app.Store.Path())
 	fmt.Printf("  %-14s %d\n", "主机数量", len(hf.Hosts))
 

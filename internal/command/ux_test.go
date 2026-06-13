@@ -72,6 +72,24 @@ func TestUnknownOptionSuggestsClosestCommand(t *testing.T) {
 	}
 }
 
+func TestResolveVersion(t *testing.T) {
+	tests := []struct {
+		injected string
+		module   string
+		want     string
+	}{
+		{injected: "v4.0.1", module: "v4.0.0", want: "v4.0.1"},
+		{injected: "dev", module: "v4.0.1", want: "v4.0.1"},
+		{injected: "dev", module: "(devel)", want: "dev"},
+		{module: "", want: "dev"},
+	}
+	for _, tt := range tests {
+		if got := resolveVersion(tt.injected, tt.module); got != tt.want {
+			t.Fatalf("resolveVersion(%q, %q) = %q, want %q", tt.injected, tt.module, got, tt.want)
+		}
+	}
+}
+
 func TestCompletionScripts(t *testing.T) {
 	for _, shell := range []string{"bash", "zsh", "fish"} {
 		script := completionScript(shell)

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"runtime/debug"
 	"strings"
 
 	"github.com/fanhuadesenlinnn/sshm/v4/internal/config"
@@ -12,6 +13,27 @@ import (
 )
 
 var Version = "dev"
+
+func CurrentVersion() string {
+	moduleVersion := ""
+	if info, ok := debug.ReadBuildInfo(); ok {
+		moduleVersion = info.Main.Version
+	}
+	return resolveVersion(Version, moduleVersion)
+}
+
+func resolveVersion(injected, module string) string {
+	if injected != "" && injected != "dev" {
+		return injected
+	}
+	if module != "" && module != "(devel)" {
+		return module
+	}
+	if injected != "" {
+		return injected
+	}
+	return "dev"
+}
 
 // App holds shared state for all commands.
 type App struct {
@@ -128,7 +150,7 @@ func Run(args []string) error {
 		app.printHelp()
 		return nil
 	case "--version", "-v":
-		fmt.Printf("sshm %s\n", Version)
+		fmt.Printf("sshm %s\n", CurrentVersion())
 		return nil
 	default:
 		if strings.HasPrefix(args[0], "-") {

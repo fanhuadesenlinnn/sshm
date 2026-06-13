@@ -26,8 +26,8 @@ GOOS=windows GOARCH=arm64 go build ./...
 
 ## Publication
 
-- Build with `internal/command.Version=v4.0.0` and verify `sshm --version`.
+- Build with `internal/command.Version=<tag>` and verify `sshm --version`.
 - Verify a clean temporary `SSHM_HOME` creates the documented config.
-- Push the release commit and `v4.0.0` tag.
+- Push the release commit and version tag.
 - Confirm the GitHub release contains all six platform artifacts and checksums.
 - Verify `go install github.com/fanhuadesenlinnn/sshm/v4@latest`.
