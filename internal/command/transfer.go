@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/fanhuadesenlinnn/sshm/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/internal/sshx"
 	"github.com/fanhuadesenlinnn/sshm/internal/ui"
 	"golang.org/x/crypto/ssh"
 )

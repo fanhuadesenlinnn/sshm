@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/fanhuadesenlinnn/sshm/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/internal/keymgr"
 	"github.com/fanhuadesenlinnn/sshm/internal/secret"
 	"github.com/fanhuadesenlinnn/sshm/internal/ui"
 )
