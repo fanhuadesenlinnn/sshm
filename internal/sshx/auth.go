@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/fanhuadesenlinnn/sshm/internal/config"
 	"github.com/fanhuadesenlinnn/sshm/internal/secret"
+	"golang.org/x/crypto/ssh"
 )
 
 // Connect orchestrates the SSH connection based on auth strategy.
@@ -15,7 +17,7 @@ func Connect(h config.Host, store *secret.FileStore, extraArgs []string) error {
 
 	switch strategy {
 	case AuthKey:
-		return connectKey(h, extraArgs)
+		return connectKeyWithStore(h, store, extraArgs)
 	case AuthPassword:
 		return connectPassword(h, store, extraArgs)
 	case AuthAsk:
@@ -28,14 +30,20 @@ func Connect(h config.Host, store *secret.FileStore, extraArgs []string) error {
 }
 
 func connectAuto(h config.Host, store *secret.FileStore, extraArgs []string) error {
-	hasKey := HasIdentity(h)
+	hasKey := HasIdentity(h) || isManagedIdentity(h)
 	hasPasswordRef := h.PasswordRef != "" && store != nil
 	hasPassword := hasPasswordRef
 
 	// When both key and password are available, try key first then password.
 	if hasKey {
-		if code := ConnectOpenSSHKey(h, extraArgs); code == 0 {
-			return nil
+		if isManagedIdentity(h) {
+			if err := ConnectManagedKey(h, store, extraArgs); err == nil {
+				return nil
+			}
+		} else {
+			if code := ConnectOpenSSHKey(h, extraArgs); code == 0 {
+				return nil
+			}
 		}
 		if hasPassword {
 			fmt.Fprintf(os.Stderr, "密钥认证未通过，尝试密码连接...\n")
@@ -69,12 +77,45 @@ func connectAuto(h config.Host, store *secret.FileStore, extraArgs []string) err
 }
 
 func connectKey(h config.Host, extraArgs []string) error {
+	return connectKeyWithStore(h, nil, extraArgs)
+}
+
+func connectKeyWithStore(h config.Host, store *secret.FileStore, extraArgs []string) error {
+	if isManagedIdentity(h) {
+		return ConnectManagedKey(h, store, extraArgs)
+	}
 	if !HasIdentity(h) {
 		return fmt.Errorf("主机 %s 未配置密钥", h.Alias)
 	}
 	code := ConnectOpenSSHKey(h, extraArgs)
 	if code != 0 {
 		return fmt.Errorf("密钥认证失败 (exit %d)，请检查密钥路径和权限", code)
+	}
+	return nil
+}
+
+// ConnectManagedKey connects with a master-password-protected private key.
+func ConnectManagedKey(h config.Host, store *secret.FileStore, extraArgs []string) error {
+	privateKey, signer, err := managedKeyMaterial(h, store)
+	if err != nil {
+		return err
+	}
+	if len(extraArgs) == 0 {
+		return NativeConnectAuth(h, ssh.PublicKeys(signer), "托管密钥")
+	}
+	tempDir, err := os.MkdirTemp("", "sshm-key-*")
+	if err != nil {
+		return fmt.Errorf("创建临时密钥目录失败: %w", err)
+	}
+	defer os.RemoveAll(tempDir)
+	path := filepath.Join(tempDir, "identity")
+	if err := os.WriteFile(path, privateKey, 0600); err != nil {
+		return fmt.Errorf("写入会话临时密钥失败: %w", err)
+	}
+	tempHost := h
+	tempHost.Identity = path
+	if code := ConnectOpenSSHKey(tempHost, extraArgs); code != 0 {
+		return fmt.Errorf("托管密钥认证失败 (exit %d)", code)
 	}
 	return nil
 }
@@ -120,6 +161,13 @@ func ExecCommandContext(ctx context.Context, h config.Host, store *secret.FileSt
 
 	switch strategy {
 	case AuthKey:
+		if isManagedIdentity(h) {
+			_, signer, err := managedKeyMaterial(h, store)
+			if err != nil {
+				return "", err
+			}
+			return NativeExecAuthContext(ctx, h, ssh.PublicKeys(signer), "托管密钥", command)
+		}
 		if !HasIdentity(h) {
 			return "", fmt.Errorf("主机 %s 未配置可用密钥", h.Alias)
 		}
@@ -139,8 +187,18 @@ func ExecCommandContext(ctx context.Context, h config.Host, store *secret.FileSt
 
 	var keyErr error
 	var passwordErr error
-	if HasIdentity(h) {
-		output, err := ExecOpenSSHContext(ctx, h, command)
+	if HasIdentity(h) || isManagedIdentity(h) {
+		var output string
+		var err error
+		if isManagedIdentity(h) {
+			var signer ssh.Signer
+			_, signer, err = managedKeyMaterial(h, store)
+			if err == nil {
+				output, err = NativeExecAuthContext(ctx, h, ssh.PublicKeys(signer), "托管密钥", command)
+			}
+		} else {
+			output, err = ExecOpenSSHContext(ctx, h, command)
+		}
 		if err == nil {
 			return output, nil
 		}
@@ -171,6 +229,13 @@ func CheckPing(h config.Host, store *secret.FileStore) (bool, string) {
 
 	switch strategy {
 	case AuthKey:
+		if isManagedIdentity(h) {
+			_, signer, err := managedKeyMaterial(h, store)
+			if err != nil {
+				return false, "[托管密钥] " + err.Error()
+			}
+			return NativePingAuth(h, ssh.PublicKeys(signer), "托管密钥")
+		}
 		if !HasIdentity(h) {
 			return false, "[密钥] 未配置可用密钥"
 		}
@@ -199,11 +264,22 @@ func CheckPing(h config.Host, store *secret.FileStore) (bool, string) {
 		}
 		return ok, msg
 	default: // AuthAuto
-		hasKey := HasIdentity(h)
+		hasKey := HasIdentity(h) || isManagedIdentity(h)
 		hasPassword := h.PasswordRef != "" && store != nil
 
 		if hasKey {
-			ok, msg := Ping(h)
+			var ok bool
+			var msg string
+			if isManagedIdentity(h) {
+				_, signer, err := managedKeyMaterial(h, store)
+				if err != nil {
+					ok, msg = false, err.Error()
+				} else {
+					ok, msg = NativePingAuth(h, ssh.PublicKeys(signer), "托管密钥")
+				}
+			} else {
+				ok, msg = Ping(h)
+			}
 			if ok {
 				return true, msg
 			}
@@ -259,4 +335,28 @@ func CheckPing(h config.Host, store *secret.FileStore) (bool, string) {
 		}
 		return ok, msg
 	}
+}
+
+func isManagedIdentity(h config.Host) bool {
+	_, ok := config.ManagedKeyName(h.Identity)
+	return ok
+}
+
+func managedKeyMaterial(h config.Host, store *secret.FileStore) ([]byte, ssh.Signer, error) {
+	name, ok := config.ManagedKeyName(h.Identity)
+	if !ok {
+		return nil, nil, fmt.Errorf("主机 %s 未配置托管密钥", h.Alias)
+	}
+	if store == nil {
+		return nil, nil, fmt.Errorf("托管密钥 %s 需要先解锁 sshm 密码库", name)
+	}
+	privateKey, err := store.GetManagedKey(name)
+	if err != nil {
+		return nil, nil, err
+	}
+	signer, err := ssh.ParsePrivateKey(privateKey)
+	if err != nil {
+		return nil, nil, fmt.Errorf("解析托管密钥 %s 失败: %w", name, err)
+	}
+	return privateKey, signer, nil
 }

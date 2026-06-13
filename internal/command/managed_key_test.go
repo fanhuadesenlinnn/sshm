@@ -1,0 +1,87 @@
+package command
+
+import (
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/fanhuadesenlinnn/sshm/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/internal/secret"
+)
+
+func TestManagedKeyCreateAndUse(t *testing.T) {
+	dir := t.TempDir()
+	hostStore := config.NewStoreWithPath(filepath.Join(dir, "hosts.yaml"))
+	host := config.DefaultHost()
+	host.Alias = "server"
+	host.User = "root"
+	host.Host = "example.com"
+	if err := hostStore.Add(host); err != nil {
+		t.Fatal(err)
+	}
+	secretPath := filepath.Join(dir, "secrets.yaml")
+	app := &App{
+		Store:       hostStore,
+		Keys:        config.NewKeyStoreWithPath(filepath.Join(dir, "keys.yaml")),
+		SecretPath:  secretPath,
+		secretStore: secret.NewFileStore(secretPath, "master"),
+	}
+	if err := app.cmdKeyCreate([]string{"personal"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.cmdKeyUse([]string{"personal", "server"}); err != nil {
+		t.Fatal(err)
+	}
+	updated, _, _, err := hostStore.FindHost("server")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Identity != config.ManagedIdentity("personal") {
+		t.Fatalf("Identity = %q", updated.Identity)
+	}
+	if _, err := app.secretStore.GetManagedKey("personal"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSelectHostsSupportsGroupTagAndAlias(t *testing.T) {
+	dir := t.TempDir()
+	store := config.NewStoreWithPath(filepath.Join(dir, "hosts.yaml"))
+	for _, host := range []config.Host{
+		{ID: config.NewID(), Alias: "one", User: "root", Host: "one", Port: 22, Auth: "auto", Group: "prod"},
+		{ID: config.NewID(), Alias: "two", User: "root", Host: "two", Port: 22, Auth: "auto", Tags: []string{"linux"}},
+	} {
+		if err := store.Add(host); err != nil {
+			t.Fatal(err)
+		}
+	}
+	app := &App{Store: store}
+	hosts, err := app.selectHosts([]string{"--group", "prod", "--tag", "linux"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hosts) != 2 {
+		t.Fatalf("len(hosts) = %d, want 2", len(hosts))
+	}
+	hosts, err = app.selectHosts([]string{"1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hosts) != 1 || hosts[0].Alias != "one" {
+		t.Fatalf("display ID selection = %+v", hosts)
+	}
+}
+
+func TestInstallAndRevokeCommandsQuotePublicKey(t *testing.T) {
+	publicKey := "ssh-ed25519 AAAA comment's-key"
+	install := installPublicKeyCommand(publicKey)
+	revoke := revokePublicKeyCommand(publicKey)
+	for _, command := range []string{install, revoke} {
+		if !strings.Contains(command, "'\"'\"'") {
+			t.Fatalf("command does not safely quote apostrophe: %s", command)
+		}
+	}
+	if !strings.Contains(install, "grep -qxF") || !strings.Contains(revoke, "grep -Fvx") {
+		t.Fatal("commands are not idempotent/exact")
+	}
+}

@@ -3,6 +3,7 @@ package command
 import (
 	"fmt"
 
+	"github.com/fanhuadesenlinnn/sshm/internal/config"
 	"github.com/fanhuadesenlinnn/sshm/internal/keymgr"
 	"github.com/fanhuadesenlinnn/sshm/internal/ui"
 )
@@ -70,6 +71,17 @@ func (app *App) cmdShowPubkey(args []string) error {
 	h, _, _, err := app.resolveHost(args, "请输入主机别名或ID: ")
 	if err != nil {
 		return err
+	}
+
+	if name, managed := config.ManagedKeyName(h.Identity); managed {
+		key, err := app.keyStore().Find(name)
+		if err != nil {
+			return err
+		}
+		fmt.Println()
+		fmt.Println(key.PublicKey)
+		fmt.Println()
+		return nil
 	}
 
 	pubKey, err := keymgr.ShowPubKey(*h)

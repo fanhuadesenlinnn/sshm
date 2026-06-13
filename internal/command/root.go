@@ -16,6 +16,7 @@ var Version = "dev"
 // App holds shared state for all commands.
 type App struct {
 	Store       *config.Store
+	Keys        *config.KeyStore
 	SecretPath  string
 	secretStore *secret.FileStore
 }
@@ -24,8 +25,16 @@ type App struct {
 func NewApp() *App {
 	return &App{
 		Store:      config.NewStore(),
+		Keys:       config.NewKeyStore(),
 		SecretPath: config.SecretsFilePath(),
 	}
+}
+
+func (app *App) keyStore() *config.KeyStore {
+	if app.Keys == nil {
+		app.Keys = config.NewKeyStore()
+	}
+	return app.Keys
 }
 
 // Run parses args and dispatches to the appropriate command.
@@ -41,10 +50,16 @@ func Run(args []string) error {
 	}
 
 	switch args[0] {
+	case "host":
+		return app.cmdHost(args[1:])
+	case "key", "k":
+		return app.cmdKey(args[1:])
 	case "--list", "-l", "list", "ls":
 		return app.cmdList(args[1:])
 	case "--add", "-a", "add":
 		return app.cmdAdd(args[1:])
+	case "add-batch":
+		return app.cmdAddBatch(args[1:])
 	case "--edit", "-e", "edit":
 		return app.cmdEdit(args[1:])
 	case "--delete", "-d", "--del", "delete", "del", "rm":
@@ -67,6 +82,8 @@ func Run(args []string) error {
 		return app.cmdCompletion(args[1:])
 	case "pick":
 		return app.cmdPick(args[1:])
+	case "config-edit":
+		return app.cmdConfigEdit(args[1:])
 	case "doctor":
 		return app.cmdDoctor(args[1:])
 	case "connect", "conn":
@@ -120,6 +137,7 @@ func unknownOptionError(option string) error {
 		"--group", "--ping", "--exec", "--exec-group", "--exec-all", "--passwd",
 		"--forget-pass", "--import-key", "--gen-key", "--show-pubkey", "--auth",
 		"--lock", "--export-ssh-config", "--import-ssh-config", "--help", "--version",
+		"host", "key", "add-batch", "config-edit",
 	}
 	best := ""
 	bestDistance := 4
@@ -167,7 +185,10 @@ func (app *App) printHelp() {
 	fmt.Println()
 	fmt.Println("常用命令（旧版 --参数仍然兼容）:")
 	fmt.Println("  list                          列出所有主机")
+	fmt.Println("  host                          进入主机管理中心")
+	fmt.Println("  key                           进入托管密钥中心")
 	fmt.Println("  add [别名 user@主机[:端口]]    添加主机")
+	fmt.Println("  add-batch [别名=目标...]        批量添加主机")
 	fmt.Println("  edit <别名|ID>                编辑主机")
 	fmt.Println("  delete <别名|ID>              删除主机")
 	fmt.Println("  copy <别名|ID>                复制连接命令")
@@ -191,6 +212,7 @@ func (app *App) printHelp() {
 	fmt.Println("  show-pubkey <别名|ID>         显示公钥")
 	fmt.Println("  auth <别名|ID>                修改认证策略")
 	fmt.Println("  lock                           锁定当前会话密码库")
+	fmt.Println("  config-edit                    校验后编辑 hosts.yaml")
 	fmt.Println("  export-ssh-config [文件]      导出 SSH 配置")
 	fmt.Println("  import-ssh-config [文件]      导入 SSH 配置")
 	fmt.Println("  --help, -h                    显示帮助")
@@ -205,8 +227,10 @@ func (app *App) printInteractiveHelp() {
 	fmt.Println("  进入交互模式后，可直接输入以下命令：")
 	fmt.Println()
 	fmt.Println("  主机管理")
+	fmt.Printf("    %-14s %-24s %s\n", "host", "进入主机管理中心", "")
 	fmt.Printf("    %-14s %-24s %s\n", "list, ls, l", "列出所有主机", "")
 	fmt.Printf("    %-14s %-24s %s\n", "add, a", "添加主机", "")
+	fmt.Printf("    %-14s %-24s %s\n", "add-batch, ab", "批量添加主机", "")
 	fmt.Printf("    %-14s %-24s %s\n", "edit, e", "编辑主机", "edit <别名|ID>")
 	fmt.Printf("    %-14s %-24s %s\n", "del, delete, rm, d", "删除主机", "del <别名|ID>")
 	fmt.Printf("    %-14s %-24s %s\n", "show, info", "显示主机详情", "show <别名|ID>")
@@ -218,13 +242,14 @@ func (app *App) printInteractiveHelp() {
 	fmt.Println()
 	fmt.Println("  连接与执行")
 	fmt.Printf("    %-14s %-24s %s\n", "conn, connect, c", "连接到主机", "c <别名|ID>")
-	fmt.Printf("    %-14s %-24s %s\n", "pick", "打开可搜索主机选择器", "")
-	fmt.Printf("    %-14s %-24s %s\n", "ping, p", "测试连通性", "ping [别名|ID]")
+	fmt.Printf("    %-14s %-24s %s\n", "pick, p", "打开可搜索主机选择器", "")
+	fmt.Printf("    %-14s %-24s %s\n", "ping", "测试连通性", "ping [别名|ID]")
 	fmt.Printf("    %-14s %-24s %s\n", "exec, x", "远程执行命令", "x <别名|ID> <命令>")
 	fmt.Printf("    %-14s %-24s %s\n", "exec-group, xg", "分组执行命令", "xg <分组> <命令>")
 	fmt.Printf("    %-14s %-24s %s\n", "exec-all, xa", "所有主机执行", "xa <命令>")
 	fmt.Println()
 	fmt.Println("  认证与密钥")
+	fmt.Printf("    %-14s %-24s %s\n", "key, k", "进入托管密钥中心", "")
 	fmt.Printf("    %-14s %-24s %s\n", "passwd", "设置 SSH 密码", "passwd <别名|ID>")
 	fmt.Printf("    %-14s %-24s %s\n", "forget-pass", "删除已存密码", "forget-pass <别名|ID>")
 	fmt.Printf("    %-14s %-24s %s\n", "import-key", "导入 SSH 密钥", "import-key <别名|ID>")
@@ -235,6 +260,7 @@ func (app *App) printInteractiveHelp() {
 	fmt.Println()
 	fmt.Println("  配置")
 	fmt.Printf("    %-14s %-24s %s\n", "ssh-config, sc", "导入/导出 SSH 配置", "")
+	fmt.Printf("    %-14s %-24s %s\n", "config-edit", "校验后编辑 hosts.yaml", "")
 	fmt.Printf("    %-14s %-24s %s\n", "doctor", "检查本机环境", "")
 	fmt.Println()
 	fmt.Println("  其他")

@@ -23,12 +23,15 @@ func NewFileStore(path string, passphrase string) *FileStore {
 	return &FileStore{path: path, passphrase: passphrase}
 }
 
-// makeKey builds the plaintext key for a password entry.
-func makeKey(ref string) string {
+func passwordKey(ref string) string {
 	return fmt.Sprintf("password:%s", ref)
 }
 
-// readRaw loads the encrypted file and returns the raw plaintext key-value lines.
+func managedKey(name string) string {
+	return fmt.Sprintf("managed-key:%s", name)
+}
+
+// readRaw loads the encrypted file and returns namespaced plaintext entries.
 func (fs *FileStore) readRaw() (map[string]string, []byte, error) {
 	data, err := os.ReadFile(fs.path)
 	if err != nil {
@@ -53,9 +56,9 @@ func (fs *FileStore) readRaw() (map[string]string, []byte, error) {
 		if line == "" {
 			continue
 		}
-		parts := strings.SplitN(line, ":", 3) // "password:ref:value"
-		if len(parts) == 3 && parts[0] == "password" {
-			entries[parts[1]] = parts[2]
+		parts := strings.SplitN(line, ":", 3)
+		if len(parts) == 3 && (parts[0] == "password" || parts[0] == "managed-key") {
+			entries[parts[0]+":"+parts[1]] = parts[2]
 		}
 	}
 
@@ -68,7 +71,7 @@ func (fs *FileStore) GetPassword(ref string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	pass, ok := entries[ref]
+	pass, ok := entries[passwordKey(ref)]
 	if !ok {
 		return "", fmt.Errorf("未找到 %s 的密码", ref)
 	}
@@ -78,7 +81,7 @@ func (fs *FileStore) GetPassword(ref string) (string, error) {
 // SetPassword saves or replaces the SSH password for a ref.
 func (fs *FileStore) SetPassword(ref string, password string) error {
 	return fs.writeSecrets(func(entries map[string]string) {
-		entries[ref] = password
+		entries[passwordKey(ref)] = password
 	})
 }
 
@@ -87,9 +90,9 @@ func (fs *FileStore) SetPassword(ref string, password string) error {
 func (fs *FileStore) SetPasswordByID(id string, alias string, password string) error {
 	return fs.writeSecrets(func(entries map[string]string) {
 		if alias != "" {
-			delete(entries, alias)
+			delete(entries, passwordKey(alias))
 		}
-		entries[id] = password
+		entries[passwordKey(id)] = password
 	})
 }
 
@@ -102,7 +105,7 @@ func (fs *FileStore) RemovePassword(ref string) error {
 func (fs *FileStore) RemovePasswords(refs ...string) error {
 	return fs.writeSecrets(func(entries map[string]string) {
 		for _, ref := range refs {
-			delete(entries, ref)
+			delete(entries, passwordKey(ref))
 		}
 	})
 }
@@ -112,9 +115,9 @@ func (fs *FileStore) RemovePasswords(refs ...string) error {
 func (fs *FileStore) MigrateAliasToID(alias string, id string) (bool, error) {
 	migrated := false
 	err := fs.writeSecrets(func(entries map[string]string) {
-		if pass, ok := entries[alias]; ok && alias != id {
-			delete(entries, alias)
-			entries[id] = pass
+		if pass, ok := entries[passwordKey(alias)]; ok && alias != id {
+			delete(entries, passwordKey(alias))
+			entries[passwordKey(id)] = pass
 			migrated = true
 		}
 	})
@@ -126,11 +129,11 @@ func (fs *FileStore) MigrateAliasToID(alias string, id string) (bool, error) {
 func (fs *FileStore) CopyPasswords(destToSource map[string]string) error {
 	return fs.writeSecretsE(func(entries map[string]string) error {
 		for dest, source := range destToSource {
-			pass, ok := entries[source]
+			pass, ok := entries[passwordKey(source)]
 			if !ok {
 				return fmt.Errorf("未找到旧密码引用 %s", source)
 			}
-			entries[dest] = pass
+			entries[passwordKey(dest)] = pass
 		}
 		return nil
 	})
@@ -155,14 +158,14 @@ func (fs *FileStore) writeSecretsE(mutate func(map[string]string) error) error {
 			return err
 		}
 
-		refs := make([]string, 0, len(entries))
-		for ref := range entries {
-			refs = append(refs, ref)
+		keys := make([]string, 0, len(entries))
+		for key := range entries {
+			keys = append(keys, key)
 		}
-		sort.Strings(refs)
-		lines := make([]string, 0, len(refs))
-		for _, ref := range refs {
-			lines = append(lines, makeKey(ref)+":"+entries[ref])
+		sort.Strings(keys)
+		lines := make([]string, 0, len(keys))
+		for _, key := range keys {
+			lines = append(lines, key+":"+entries[key])
 		}
 		plaintext := strings.Join(lines, "\n")
 
@@ -189,6 +192,40 @@ func (fs *FileStore) writeSecretsE(mutate func(map[string]string) error) error {
 			return fmt.Errorf("序列化 secrets 文件失败: %w", err)
 		}
 		return safefile.Write(fs.path, data, 0600, true)
+	})
+}
+
+// GetManagedKey retrieves a managed private key.
+func (fs *FileStore) GetManagedKey(name string) ([]byte, error) {
+	entries, _, err := fs.readRaw()
+	if err != nil {
+		return nil, err
+	}
+	value, ok := entries[managedKey(name)]
+	if !ok {
+		return nil, fmt.Errorf("未找到托管密钥: %s", name)
+	}
+	data, err := base64.StdEncoding.DecodeString(value)
+	if err != nil {
+		return nil, fmt.Errorf("解码托管密钥 %s 失败: %w", name, err)
+	}
+	return data, nil
+}
+
+// SetManagedKey saves a private key protected by the sshm master password.
+func (fs *FileStore) SetManagedKey(name string, privateKey []byte) error {
+	value := base64.StdEncoding.EncodeToString(privateKey)
+	return fs.writeSecrets(func(entries map[string]string) {
+		entries[managedKey(name)] = value
+	})
+}
+
+// RemoveManagedKeys deletes private keys in one encrypted-file transaction.
+func (fs *FileStore) RemoveManagedKeys(names ...string) error {
+	return fs.writeSecrets(func(entries map[string]string) {
+		for _, name := range names {
+			delete(entries, managedKey(name))
+		}
 	})
 }
 

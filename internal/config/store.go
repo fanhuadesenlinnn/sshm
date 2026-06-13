@@ -56,6 +56,9 @@ func (s *Store) loadUnlocked(persistMigration bool) (*HostsFile, error) {
 		hf.Hosts = []Host{}
 	}
 	changed := hf.EnsureIDs()
+	if hf.EnsureDefaults() {
+		changed = true
+	}
 	if hf.Version < CurrentVersion {
 		hf.Version = CurrentVersion
 		changed = true
@@ -78,14 +81,43 @@ func (s *Store) Save(hf *HostsFile) error {
 func (s *Store) saveUnlocked(hf *HostsFile) error {
 	hf.Version = CurrentVersion
 	hf.EnsureIDs()
+	hf.EnsureDefaults()
 	if dups := hf.DuplicateAliases(); len(dups) > 0 {
 		return fmt.Errorf("配置包含重复别名: %v", dups)
+	}
+	for _, host := range hf.Hosts {
+		if errs := host.Validate(); len(errs) > 0 {
+			return fmt.Errorf("主机 %s 配置无效: %v", host.Alias, errs)
+		}
 	}
 	data, err := yaml.Marshal(hf)
 	if err != nil {
 		return fmt.Errorf("序列化配置失败: %w", err)
 	}
 	return safefile.Write(s.path, data, 0600, true)
+}
+
+// ValidateHostsData parses and validates hosts.yaml content without modifying files.
+func ValidateHostsData(data []byte) (*HostsFile, error) {
+	var hf HostsFile
+	if err := yaml.Unmarshal(data, &hf); err != nil {
+		return nil, fmt.Errorf("解析配置失败: %w", err)
+	}
+	if hf.Hosts == nil {
+		hf.Hosts = []Host{}
+	}
+	hf.EnsureIDs()
+	hf.EnsureDefaults()
+	hf.Version = CurrentVersion
+	if dups := hf.DuplicateAliases(); len(dups) > 0 {
+		return nil, fmt.Errorf("配置包含重复别名: %v", dups)
+	}
+	for _, host := range hf.Hosts {
+		if errs := host.Validate(); len(errs) > 0 {
+			return nil, fmt.Errorf("主机 %s 配置无效: %v", host.Alias, errs)
+		}
+	}
+	return &hf, nil
 }
 
 // FindByAlias searches for a host by alias.

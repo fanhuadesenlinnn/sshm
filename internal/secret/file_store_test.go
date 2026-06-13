@@ -248,3 +248,33 @@ func TestFileStoreConcurrentWritesDoNotLosePasswords(t *testing.T) {
 		}
 	}
 }
+
+func TestFileStoreManagedKeyAndPasswordCoexist(t *testing.T) {
+	store := NewFileStore(filepath.Join(t.TempDir(), "secrets.yaml"), "master-password")
+	privateKey := []byte("private:key:data")
+	if err := store.SetPassword("server", "password:with:colons"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetManagedKey("personal", privateKey); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := store.GetPassword("server"); err != nil || got != "password:with:colons" {
+		t.Fatalf("GetPassword() = %q, %v", got, err)
+	}
+	got, err := store.GetManagedKey("personal")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(privateKey) {
+		t.Fatalf("GetManagedKey() = %q, want %q", got, privateKey)
+	}
+	if err := store.RemoveManagedKeys("personal"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.GetManagedKey("personal"); err == nil {
+		t.Fatal("managed key was not removed")
+	}
+	if got, err := store.GetPassword("server"); err != nil || got != "password:with:colons" {
+		t.Fatalf("password was affected by key removal: %q, %v", got, err)
+	}
+}

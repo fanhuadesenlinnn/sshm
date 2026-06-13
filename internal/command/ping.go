@@ -67,15 +67,20 @@ func (app *App) cmdPing(args []string) error {
 // getSecretStoreForHost returns a secret store if the host has a password.
 func (app *App) getSecretStoreForHost(h *config.Host) *secret.FileStore {
 	if h.PasswordRef == "" {
-		return nil
+		if _, managed := config.ManagedKeyName(h.Identity); !managed {
+			return nil
+		}
 	}
 	return app.tryGetSecretStore()
 }
 
-// getSecretStoreForPing returns a secret store if any host has a password.
+// getSecretStoreForPing returns a secret store if any host needs one.
 func (app *App) getSecretStoreForPing(hosts []config.Host) *secret.FileStore {
 	for _, h := range hosts {
 		if h.PasswordRef != "" {
+			return app.tryGetSecretStore()
+		}
+		if _, managed := config.ManagedKeyName(h.Identity); managed {
 			return app.tryGetSecretStore()
 		}
 	}

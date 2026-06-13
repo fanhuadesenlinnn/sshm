@@ -32,8 +32,12 @@ func (app *App) cmdExportSSHConfig(args []string) error {
 		lines = append(lines, fmt.Sprintf("    User %s", h.User))
 		lines = append(lines, fmt.Sprintf("    Port %d", h.Port))
 		if h.Identity != "" {
-			identityPath := config.ExpandPath(h.Identity)
-			lines = append(lines, fmt.Sprintf("    IdentityFile %s", quoteSSHValue(identityPath)))
+			if _, managed := config.ManagedKeyName(h.Identity); managed {
+				lines = append(lines, "    # Managed key is available only through sshm")
+			} else {
+				identityPath := config.ExpandPath(h.Identity)
+				lines = append(lines, fmt.Sprintf("    IdentityFile %s", quoteSSHValue(identityPath)))
+			}
 		}
 		lines = append(lines, "")
 	}

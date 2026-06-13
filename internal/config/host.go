@@ -60,6 +60,26 @@ func (hf *HostsFile) EnsureIDs() bool {
 	return changed
 }
 
+// EnsureDefaults fills fields omitted by older or hand-written configs.
+func (hf *HostsFile) EnsureDefaults() bool {
+	changed := false
+	for i := range hf.Hosts {
+		if hf.Hosts[i].Port == 0 {
+			hf.Hosts[i].Port = 22
+			changed = true
+		}
+		if hf.Hosts[i].Auth == "" {
+			hf.Hosts[i].Auth = "auto"
+			changed = true
+		}
+		if hf.Hosts[i].Tags == nil {
+			hf.Hosts[i].Tags = []string{}
+			changed = true
+		}
+	}
+	return changed
+}
+
 // DuplicateAliases returns a list of duplicate alias strings.
 func (hf *HostsFile) DuplicateAliases() []string {
 	seen := map[string]int{}

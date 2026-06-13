@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/fanhuadesenlinnn/sshm/internal/config"
@@ -19,6 +20,8 @@ import (
 	"golang.org/x/crypto/ssh/knownhosts"
 	"golang.org/x/term"
 )
+
+var hostTrustPromptMu sync.Mutex
 
 // knownHostsPath returns the default known_hosts path.
 func knownHostsPath() string {
@@ -83,6 +86,16 @@ func classifyAndHandleHostKeyError(khPath, hostname string, remote net.Addr, key
 // handleUnknownHost handles the first-seen host case.
 // Interactive → ask user; non-interactive → reject.
 func handleUnknownHost(khPath, hostname string, remote net.Addr, key ssh.PublicKey) error {
+	hostTrustPromptMu.Lock()
+	defer hostTrustPromptMu.Unlock()
+
+	// Another concurrent connection may have trusted this host while waiting.
+	if cb, err := knownhosts.New(khPath); err == nil {
+		if err := cb(hostname, remote, key); err == nil {
+			return nil
+		}
+	}
+
 	fingerprint := ssh.FingerprintSHA256(key)
 	hostKeyType := key.Type()
 
@@ -156,16 +169,19 @@ func normalizedKnownHost(hostname string, remote net.Addr) string {
 
 // NativeConnectPassword connects using Go native SSH with password auth.
 func NativeConnectPassword(h config.Host, password string) error {
+	return NativeConnectAuth(h, ssh.Password(password), "密码")
+}
+
+// NativeConnectAuth connects using an in-memory SSH authentication method.
+func NativeConnectAuth(h config.Host, auth ssh.AuthMethod, label string) error {
 	hostKeyCB, err := createHostKeyCallback()
 	if err != nil {
 		return fmt.Errorf("主机密钥回调失败: %w", err)
 	}
 
 	sshConfig := &ssh.ClientConfig{
-		User: h.User,
-		Auth: []ssh.AuthMethod{
-			ssh.Password(password),
-		},
+		User:            h.User,
+		Auth:            []ssh.AuthMethod{auth},
 		HostKeyCallback: hostKeyCB,
 		Timeout:         10 * time.Second,
 	}
@@ -173,13 +189,13 @@ func NativeConnectPassword(h config.Host, password string) error {
 	addr := fmt.Sprintf("%s:%d", h.Host, h.Port)
 	client, err := ssh.Dial("tcp", addr, sshConfig)
 	if err != nil {
-		return fmt.Errorf("密码认证失败: %w", err)
+		return fmt.Errorf("%s认证失败: %w", label, err)
 	}
 	defer client.Close()
 
 	session, err := client.NewSession()
 	if err != nil {
-		return fmt.Errorf("密码认证 - 创建会话失败: %w", err)
+		return fmt.Errorf("%s认证 - 创建会话失败: %w", label, err)
 	}
 	defer session.Close()
 
@@ -247,16 +263,19 @@ func NativeExec(h config.Host, password string, command string) (string, error) 
 
 // NativeExecContext runs a password-authenticated command with cancellation.
 func NativeExecContext(ctx context.Context, h config.Host, password string, command string) (string, error) {
+	return NativeExecAuthContext(ctx, h, ssh.Password(password), "密码", command)
+}
+
+// NativeExecAuthContext runs a command using an in-memory SSH authentication method.
+func NativeExecAuthContext(ctx context.Context, h config.Host, auth ssh.AuthMethod, label string, command string) (string, error) {
 	hostKeyCB, err := createHostKeyCallback()
 	if err != nil {
 		return "", fmt.Errorf("主机密钥回调失败: %w", err)
 	}
 
 	sshConfig := &ssh.ClientConfig{
-		User: h.User,
-		Auth: []ssh.AuthMethod{
-			ssh.Password(password),
-		},
+		User:            h.User,
+		Auth:            []ssh.AuthMethod{auth},
 		HostKeyCallback: hostKeyCB,
 		Timeout:         10 * time.Second,
 	}
@@ -264,13 +283,13 @@ func NativeExecContext(ctx context.Context, h config.Host, password string, comm
 	addr := fmt.Sprintf("%s:%d", h.Host, h.Port)
 	client, err := ssh.Dial("tcp", addr, sshConfig)
 	if err != nil {
-		return "", fmt.Errorf("密码认证失败: %w", err)
+		return "", fmt.Errorf("%s认证失败: %w", label, err)
 	}
 	defer client.Close()
 
 	session, err := client.NewSession()
 	if err != nil {
-		return "", fmt.Errorf("密码认证 - 创建会话失败: %w", err)
+		return "", fmt.Errorf("%s认证 - 创建会话失败: %w", label, err)
 	}
 	defer session.Close()
 
@@ -294,16 +313,19 @@ func NativeExecContext(ctx context.Context, h config.Host, password string, comm
 
 // NativePing checks connectivity using Go native SSH with password auth.
 func NativePing(h config.Host, password string) (bool, string) {
+	return NativePingAuth(h, ssh.Password(password), "密码")
+}
+
+// NativePingAuth checks connectivity using an in-memory SSH authentication method.
+func NativePingAuth(h config.Host, auth ssh.AuthMethod, label string) (bool, string) {
 	hostKeyCB, err := createHostKeyCallback()
 	if err != nil {
 		return false, err.Error()
 	}
 
 	sshConfig := &ssh.ClientConfig{
-		User: h.User,
-		Auth: []ssh.AuthMethod{
-			ssh.Password(password),
-		},
+		User:            h.User,
+		Auth:            []ssh.AuthMethod{auth},
 		HostKeyCallback: hostKeyCB,
 		Timeout:         5 * time.Second,
 	}
@@ -311,7 +333,7 @@ func NativePing(h config.Host, password string) (bool, string) {
 	addr := fmt.Sprintf("%s:%d", h.Host, h.Port)
 	client, err := ssh.Dial("tcp", addr, sshConfig)
 	if err != nil {
-		return false, err.Error()
+		return false, fmt.Sprintf("%s认证失败: %v", label, err)
 	}
 	defer client.Close()
 

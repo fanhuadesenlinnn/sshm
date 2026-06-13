@@ -20,6 +20,7 @@ func (app *App) cmdDoctor(_ []string) error {
 	fmt.Printf("  %-14s %s\n", "版本", Version)
 	fmt.Printf("  %-14s %s\n", "配置文件", app.Store.Path())
 	fmt.Printf("  %-14s %s\n", "密码文件", app.SecretPath)
+	fmt.Printf("  %-14s %s\n", "托管密钥", app.keyStore().Path())
 	fmt.Printf("  %-14s %s\n", "密钥目录", config.KeysDir())
 	fmt.Printf("  %-14s %d\n", "主机数量", len(hf.Hosts))
 
@@ -30,8 +31,18 @@ func (app *App) cmdDoctor(_ []string) error {
 	}
 
 	missingKeys := 0
+	managedKeys := 0
 	for _, host := range hf.Hosts {
 		if host.Identity == "" {
+			continue
+		}
+		if name, managed := config.ManagedKeyName(host.Identity); managed {
+			if _, err := app.keyStore().Find(name); err != nil {
+				missingKeys++
+				ui.PrintWarn("%s 的托管密钥不可用: %v", host.Alias, err)
+			} else {
+				managedKeys++
+			}
 			continue
 		}
 		if _, err := os.Stat(config.ExpandPath(host.Identity)); err != nil {
@@ -40,7 +51,7 @@ func (app *App) cmdDoctor(_ []string) error {
 		}
 	}
 	if missingKeys == 0 {
-		ui.PrintSuccess("环境检查完成，未发现明显问题")
+		ui.PrintSuccess("环境检查完成，未发现明显问题（%d 台主机使用托管密钥）", managedKeys)
 	} else {
 		ui.PrintWarn("环境检查完成：%d 个密钥路径需要处理", missingKeys)
 	}

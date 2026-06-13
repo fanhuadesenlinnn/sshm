@@ -13,24 +13,10 @@ import (
 )
 
 func (app *App) interactiveMode() error {
-	hf, err := app.Store.Load()
-	if err != nil {
+	if _, err := app.Store.Load(); err != nil {
 		return fmt.Errorf("加载主机配置失败: %w", err)
 	}
-	if len(hf.Hosts) > 0 && ui.IsTerminal() {
-		if alias, ok := ui.PickHost(hf.Hosts); ok {
-			if err := app.cmdConnect([]string{alias}); err != nil {
-				fmt.Fprintln(os.Stderr, ui.ErrorMsg("%v", err))
-			}
-		}
-	}
-
-	fmt.Println()
-	ui.PrintHeader("sshm - SSH 主机管理器")
-	fmt.Println()
-	ui.RenderHostsTable(hf.Hosts)
-
-	fmt.Printf("输入 %s 查看可用命令，输入 %s 退出\n", ui.CyanText("h"), ui.CyanText("q"))
+	app.printInteractiveHelp()
 
 	for {
 		input := ui.ReadLine(ui.CyanText("sshm> "))
@@ -49,10 +35,16 @@ func (app *App) interactiveMode() error {
 		// All commands return errors that we display without exiting
 		var err error
 		switch cmd {
+		case "host":
+			err = app.cmdHost(args)
+		case "key", "k":
+			err = app.cmdKey(args)
 		case "list", "ls", "l":
 			err = app.cmdList(args)
 		case "add", "a":
 			err = app.cmdAdd(args)
+		case "add-batch", "ab":
+			err = app.cmdAddBatch(args)
 		case "edit", "e":
 			err = app.cmdEdit(args)
 		case "del", "delete", "rm", "d":
@@ -73,11 +65,11 @@ func (app *App) interactiveMode() error {
 			err = app.cmdPin(args, true)
 		case "unpin":
 			err = app.cmdPin(args, false)
-		case "pick":
+		case "pick", "p":
 			err = app.cmdPick(args)
 		case "doctor":
 			err = app.cmdDoctor(args)
-		case "ping", "p":
+		case "ping":
 			err = app.cmdPing(args)
 		case "exec", "x":
 			err = app.cmdInteractiveExec(args)
@@ -143,6 +135,14 @@ func (app *App) cmdConnect(args []string) (err error) {
 	fmt.Println()
 	fmt.Printf("连接 %s (%s@%s:%d)...\n", h.Alias, h.User, h.Host, h.Port)
 	fmt.Println()
+
+	if _, managed := config.ManagedKeyName(h.Identity); managed {
+		fs, storeErr := app.requireSecretStore()
+		if storeErr != nil {
+			return storeErr
+		}
+		return sshx.Connect(*h, fs, extraArgs)
+	}
 
 	var fs *secret.FileStore
 	if h.PasswordRef != "" {

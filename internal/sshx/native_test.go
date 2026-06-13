@@ -3,6 +3,7 @@ package sshx
 import (
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/pem"
 	"net"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/fanhuadesenlinnn/sshm/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/internal/secret"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -145,5 +147,28 @@ func TestNativePingInvalidHost(t *testing.T) {
 	}
 	if msg == "" {
 		t.Fatal("NativePing should return an error message for invalid host")
+	}
+}
+
+func TestManagedKeyMaterialLoadsSigner(t *testing.T) {
+	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	block, err := ssh.MarshalPrivateKey(privateKey, "managed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := secret.NewFileStore(filepath.Join(t.TempDir(), "secrets.yaml"), "master")
+	if err := store.SetManagedKey("personal", pem.EncodeToMemory(block)); err != nil {
+		t.Fatal(err)
+	}
+	host := config.Host{Alias: "server", Identity: config.ManagedIdentity("personal")}
+	loaded, signer, err := managedKeyMaterial(host, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(loaded) == 0 || signer == nil {
+		t.Fatal("managed key material was not loaded")
 	}
 }

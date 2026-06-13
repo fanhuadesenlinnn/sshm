@@ -8,7 +8,7 @@
 
 - **主机管理** — 添加、编辑、删除、搜索、查看 SSH 主机配置
 - **分组管理** — 按分组组织主机，支持分组批量执行命令
-- **实时主机选择器** — 无参数启动即可输入过滤、上下选择并回车连接
+- **命令工作台** — 无参数启动直接进入带快捷提示的命令页，`p` 随时打开主机选择器
 - **收藏与最近连接** — 常用主机置顶，快速回到最近使用的服务器
 - **现代命令语法** — 支持 `sshm add/list/edit`，并兼容旧版 `--add/--list`
 - **Shell 自动补全** — 支持 bash、zsh、fish 的命令与主机别名补全
@@ -17,7 +17,10 @@
 - **连通性测试** — `ping` 命令快速检测主机可达性
 - **SSH 配置导入/导出** — 兼容 OpenSSH `~/.ssh/config` 格式
 - **密码管理** — 加密存储 SSH 密码，主密码保护
-- **密钥管理** — 导入、生成 SSH 密钥对，显示公钥
+- **托管密钥** — 自定义命名、默认密钥、批量创建/导入/绑定/删除
+- **主密码保护私钥** — 托管私钥只保存在加密密码库中，普通连接在内存中使用
+- **公钥部署** — 单机或按分组/标签批量推送、验证、撤销公钥
+- **批量主机管理** — 交互式批量添加，或使用 `$EDITOR` 校验后直接编辑配置
 - **认证策略** — 灵活配置密码/密钥/交互式认证
 - **跨平台** — 支持 Linux、macOS、Windows；Linux 发布包为静态二进制，不依赖 glibc
 
@@ -62,20 +65,41 @@ GLIBC_x.xx not found
 
 ## 🚀 快速开始
 
-### 选择并连接主机
+### 进入命令工作台
 
 ```bash
 sshm
 ```
 
-输入关键词实时过滤主机，使用上下键选择并按回车连接。按 `q` 或 `Ctrl+C` 可进入命令模式：
+启动后会显示与 `h` 相同的快捷命令提示：
 
 ```
-sshm> add
-sshm> list
-sshm> recent
-sshm> help
+sshm> a                 # 添加主机
+sshm> ab                # 批量添加主机
+sshm> p                 # 打开可搜索主机选择器
+sshm> k                 # 进入托管密钥中心
+sshm> host              # 进入主机管理中心
 ```
+
+### 推荐的托管密钥流程
+
+```bash
+# 1. 创建自己的默认密钥；私钥由 sshm 主密码加密
+sshm key create personal --default
+
+# 2. 批量添加主机，交互模式下可选择逐台保存 SSH 密码
+sshm add-batch web-1=root@10.0.0.11 web-2=root@10.0.0.12
+
+# 3. 向分组、标签或全部主机推送公钥，验证成功后再绑定
+sshm key setup default --group prod
+sshm key setup default --tag linux
+sshm key setup default --all
+
+# 4. 后续直接通过 sshm 连接；私钥不会以明文常驻磁盘
+sshm web-1
+```
+
+`key push` 只推送公钥，`key use` 只修改本地绑定，`key setup` 会依次执行推送、验证和绑定。批量操作默认 4 并发，并逐台输出结果。
 
 ### 添加主机
 
@@ -90,6 +114,8 @@ sshm add
 ```
 
 快速添加默认使用 `auto` 认证，不会询问密码或高级选项。需要保存密码时，可在添加后执行 `sshm passwd <别名>`。
+
+无参数添加向导在未填写密钥时会主动进入密码设置流程。批量添加在交互终端中也可选择逐台保存密码。
 
 ### 连接主机
 
@@ -147,11 +173,14 @@ sshm completion fish > ~/.config/fish/completions/sshm.fish
 | 命令 | 说明 |
 |------|------|
 | `sshm` | 进入交互模式 |
+| `sshm host` | 进入主机管理中心 |
+| `sshm key` | 进入托管密钥中心 |
 | `sshm <别名\|ID>` | 连接到指定主机 |
 | `sshm connect <别名\|ID>` | 显式连接主机，适用于别名与命令同名时 |
 | `sshm pick` | 打开实时主机选择器 |
 | `sshm list [--group 分组] [--sort id\|alias\|group]` | 列出、过滤和排序主机 |
 | `sshm add [别名 用户@主机[:端口]]` | 快速添加或进入添加向导 |
+| `sshm add-batch [别名=用户@主机[:端口] ...]` | 批量添加主机 |
 | `sshm edit <别名\|ID>` | 编辑主机配置，可输入 `-` 清空可选字段 |
 | `sshm delete <别名\|ID>` | 删除主机 |
 | `sshm show <别名\|ID>` | 显示主机详情 |
@@ -160,6 +189,7 @@ sshm completion fish > ~/.config/fish/completions/sshm.fish
 | `sshm copy <别名\|ID>` | 复制包含密钥参数的 SSH 连接命令 |
 | `sshm pin/unpin <别名\|ID>` | 收藏或取消收藏主机 |
 | `sshm recent [数量]` | 显示收藏与最近连接 |
+| `sshm config-edit` | 使用 `$EDITOR` 编辑，校验通过后原子更新配置 |
 
 ### 连接与执行
 
@@ -181,6 +211,27 @@ sshm completion fish > ~/.config/fish/completions/sshm.fish
 | `sshm show-pubkey <别名\|ID>` | 显示公钥内容 |
 | `sshm auth <别名\|ID>` | 修改认证策略 |
 | `sshm lock` | 锁定当前会话已解锁的密码库 |
+
+旧版 `import-key/gen-key/show-pubkey` 命令继续兼容。新项目推荐使用以下托管密钥命令：
+
+| 命令 | 说明 |
+|------|------|
+| `sshm key list` | 列出托管密钥、默认项和指纹 |
+| `sshm key create <名称> [--default]` | 在内存生成并加密保存 Ed25519 密钥 |
+| `sshm key create-batch <名称...>` | 批量生成托管密钥 |
+| `sshm key import <名称> <路径> [--default]` | 导入私钥，去除原密码后由 sshm 主密码保护 |
+| `sshm key import-batch <名称=路径...>` | 批量导入私钥 |
+| `sshm key default [名称\|-]` | 查看、设置或取消默认密钥 |
+| `sshm key show [名称\|default]` | 显示托管公钥 |
+| `sshm key use <密钥> <目标...>` | 修改本地主机密钥绑定 |
+| `sshm key push <密钥> <目标...>` | 幂等推送公钥到远端 |
+| `sshm key setup <密钥> <目标...>` | 推送、验证后绑定 |
+| `sshm key revoke <密钥> <目标...>` | 从远端精确撤销公钥 |
+| `sshm key status [密钥]` | 查看主机与密钥绑定 |
+| `sshm key delete <名称...>` | 批量删除本地托管密钥 |
+| `sshm key delete-unused` | 删除未绑定且非默认的托管密钥 |
+
+目标选择器支持主机别名、`--group 分组`、`--tag 标签` 和 `--all`。
 
 ### 配置管理
 
@@ -228,6 +279,7 @@ sshm/
 │   ├── config/              # 主机配置与存储
 │   │   ├── host.go          # 主机数据结构
 │   │   ├── store.go         # YAML 配置存储
+│   │   ├── key_store.go     # 托管密钥元数据
 │   │   └── paths.go         # 配置文件路径
 │   ├── sshx/                # SSH 连接处理
 │   │   ├── native.go        # Go 原生 SSH 客户端
@@ -258,10 +310,11 @@ sshm/
 
 ## 🔐 安全与恢复
 
-- 配置默认位于 `~/.config/sshm`，可通过 `SSHM_HOME` 修改。
+- 配置默认位于 `~/.config/sshm`，可通过 `SSHM_HOME` 修改。主机在 `hosts.yaml`，托管密钥元数据在 `keys.yaml`，密码与托管私钥在 `secrets.yaml`。
 - v2.3.0 会自动把配置版本升级到 v3，用于记录收藏和最近连接时间，无需手动迁移。
 - `hosts.yaml`、`secrets.yaml` 和导出的 SSH 配置在覆盖前保留最近一份 `.bak`。
-- 密码库使用主密码加密；主密码不会保存且无法恢复。交互会话只需解锁一次，可用 `lock` 立即锁定。
+- 密码库使用主密码加密；主密码不会保存且无法恢复。保存的 SSH 密码与托管私钥共用此保护，交互会话只需解锁一次，可用 `lock` 立即锁定。
+- 托管私钥不会导出到 OpenSSH 配置。普通连接、执行和 ping 在内存中使用；仅在传递高级 OpenSSH 参数时创建会话临时私钥，并在 SSH 退出后删除。
 - 原生密码连接严格校验 `~/.ssh/known_hosts`。首次连接仅在交互终端确认指纹后写入，非交互环境默认拒绝未知主机。
 - 如果主配置损坏，请先退出 sshm，检查同目录下的 `.bak`，确认内容后再手动恢复，程序不会静默覆盖损坏文件。
 

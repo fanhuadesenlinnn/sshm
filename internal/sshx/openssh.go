@@ -37,6 +37,9 @@ func buildConnectArgs(h config.Host, extraArgs []string, keyOnly bool) []string 
 
 // ConnectionCommand returns a copyable system SSH command for a host.
 func ConnectionCommand(h config.Host) string {
+	if _, managed := config.ManagedKeyName(h.Identity); managed {
+		return "sshm connect " + shellQuote(h.Alias)
+	}
 	args := []string{"ssh", "-p", fmt.Sprintf("%d", h.Port)}
 	strategy := GetAuthStrategy(h.Auth)
 	if h.Identity != "" && (strategy == AuthAuto || strategy == AuthKey) {

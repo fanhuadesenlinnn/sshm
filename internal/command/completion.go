@@ -7,9 +7,9 @@ import (
 )
 
 var completionCommands = []string{
-	"add", "auth", "completion", "connect", "copy", "delete", "doctor", "edit", "exec", "exec-all",
+	"add", "add-batch", "auth", "completion", "config-edit", "connect", "copy", "delete", "doctor", "edit", "exec", "exec-all",
 	"exec-group", "export-ssh-config", "forget-pass", "gen-key", "group",
-	"help", "import-key", "import-ssh-config", "list", "lock", "passwd", "pin",
+	"help", "host", "import-key", "import-ssh-config", "key", "list", "lock", "passwd", "pin",
 	"pick", "ping", "recent", "search", "show", "show-pubkey", "unpin",
 }
 

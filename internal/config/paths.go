@@ -34,6 +34,14 @@ func SecretsFilePath() string {
 	return filepath.Join(SSHMHome(), "secrets.yaml")
 }
 
+// ManagedKeysFilePath returns the path to managed key metadata.
+func ManagedKeysFilePath() string {
+	if v := os.Getenv("SSHM_MANAGED_KEYS_FILE"); v != "" {
+		return v
+	}
+	return filepath.Join(SSHMHome(), "keys.yaml")
+}
+
 // KeysDir returns the path to the keys directory.
 func KeysDir() string {
 	if v := os.Getenv("SSHM_KEYS_DIR"); v != "" {
