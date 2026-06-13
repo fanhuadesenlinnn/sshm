@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/fanhuadesenlinnn/sshm/internal/config"
 	"github.com/fanhuadesenlinnn/sshm/internal/secret"
@@ -12,15 +13,21 @@ import (
 )
 
 func (app *App) interactiveMode() error {
-	fmt.Println()
-	ui.PrintHeader("sshm - SSH 主机管理器")
-	fmt.Println()
-
-	// Show host list at startup
 	hf, err := app.Store.Load()
 	if err != nil {
 		return fmt.Errorf("加载主机配置失败: %w", err)
 	}
+	if len(hf.Hosts) > 0 && ui.IsTerminal() {
+		if alias, ok := ui.PickHost(hf.Hosts); ok {
+			if err := app.cmdConnect([]string{alias}); err != nil {
+				fmt.Fprintln(os.Stderr, ui.ErrorMsg("%v", err))
+			}
+		}
+	}
+
+	fmt.Println()
+	ui.PrintHeader("sshm - SSH 主机管理器")
+	fmt.Println()
 	ui.RenderHostsTable(hf.Hosts)
 
 	fmt.Printf("输入 %s 查看可用命令，输入 %s 退出\n", ui.CyanText("h"), ui.CyanText("q"))
@@ -60,6 +67,16 @@ func (app *App) interactiveMode() error {
 			err = app.cmdSearch(args)
 		case "group", "g":
 			err = app.cmdGroup(args)
+		case "recent", "r":
+			err = app.cmdRecent(args)
+		case "pin":
+			err = app.cmdPin(args, true)
+		case "unpin":
+			err = app.cmdPin(args, false)
+		case "pick":
+			err = app.cmdPick(args)
+		case "doctor":
+			err = app.cmdDoctor(args)
 		case "ping", "p":
 			err = app.cmdPing(args)
 		case "exec", "x":
@@ -103,7 +120,7 @@ func (app *App) interactiveMode() error {
 }
 
 // cmdConnect connects to a host by alias or ID.
-func (app *App) cmdConnect(args []string) error {
+func (app *App) cmdConnect(args []string) (err error) {
 	if len(args) == 0 {
 		return fmt.Errorf("请指定主机别名或ID")
 	}
@@ -115,6 +132,13 @@ func (app *App) cmdConnect(args []string) error {
 	if err != nil {
 		return err
 	}
+	defer func() {
+		if err == nil {
+			if markErr := app.Store.MarkUsed(h.ID, time.Now().Format(time.RFC3339)); markErr != nil {
+				ui.PrintWarn("连接成功，但记录最近使用失败: %v", markErr)
+			}
+		}
+	}()
 
 	fmt.Println()
 	fmt.Printf("连接 %s (%s@%s:%d)...\n", h.Alias, h.User, h.Host, h.Port)

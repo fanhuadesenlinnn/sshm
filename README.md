@@ -8,7 +8,10 @@
 
 - **主机管理** — 添加、编辑、删除、搜索、查看 SSH 主机配置
 - **分组管理** — 按分组组织主机，支持分组批量执行命令
-- **交互模式** — 无参数启动进入交互式 Shell，支持 UTF-8 输入、行编辑和命令历史
+- **实时主机选择器** — 无参数启动即可输入过滤、上下选择并回车连接
+- **收藏与最近连接** — 常用主机置顶，快速回到最近使用的服务器
+- **现代命令语法** — 支持 `sshm add/list/edit`，并兼容旧版 `--add/--list`
+- **Shell 自动补全** — 支持 bash、zsh、fish 的命令与主机别名补全
 - **快速连接** — 通过别名或 ID 一键连接远程主机
 - **批量执行** — 支持单机、分组、全部主机远程执行命令
 - **连通性测试** — `ping` 命令快速检测主机可达性
@@ -46,32 +49,34 @@ go install github.com/fanhuadesenlinnn/sshm@latest
 
 ## 🚀 快速开始
 
-### 启动交互模式
+### 选择并连接主机
 
 ```bash
 sshm
 ```
 
-进入交互式界面后，你可以使用以下命令：
+输入关键词实时过滤主机，使用上下键选择并按回车连接。按 `q` 或 `Ctrl+C` 可进入命令模式：
 
 ```
-sshm> add      # 添加新主机
-sshm> list     # 列出所有主机
-sshm> ping     # 测试连接
-sshm> help     # 查看帮助
+sshm> add
+sshm> list
+sshm> recent
+sshm> help
 ```
 
 ### 添加主机
 
 ```bash
-# 命令行方式
-sshm --add
+# 推荐：直接快速添加
+sshm add prod root@10.0.0.10
+sshm add prod-web deploy@example.com:2222 --group prod --tags web,linux
+sshm add bastion root@bastion.example.com --identity ~/.ssh/id_ed25519
 
-# 交互模式下
-sshm> add
+# 无参数时使用添加向导
+sshm add
 ```
 
-按提示输入主机别名、地址、用户名、端口等信息。
+快速添加默认使用 `auto` 认证，不会询问密码或高级选项。需要保存密码时，可在添加后执行 `sshm passwd <别名>`。
 
 ### 连接主机
 
@@ -89,7 +94,37 @@ sshm my-server -L 8080:localhost:8080
 ### 列出所有主机
 
 ```bash
-sshm --list
+sshm list
+sshm list --group prod --sort alias
+sshm list --wide
+```
+
+### 搜索、收藏与最近使用
+
+```bash
+sshm search web prod
+sshm search group:prod tag:nginx
+sshm pin prod-web
+sshm recent
+sshm unpin prod-web
+```
+
+### Shell 自动补全
+
+```bash
+# zsh
+mkdir -p ~/.zfunc
+sshm completion zsh > ~/.zfunc/_sshm
+fpath=(~/.zfunc $fpath)
+autoload -Uz compinit && compinit
+
+# bash
+mkdir -p ~/.local/share/bash-completion/completions
+sshm completion bash > ~/.local/share/bash-completion/completions/sshm
+
+# fish
+mkdir -p ~/.config/fish/completions
+sshm completion fish > ~/.config/fish/completions/sshm.fish
 ```
 
 ## 📖 命令参考
@@ -100,42 +135,48 @@ sshm --list
 |------|------|
 | `sshm` | 进入交互模式 |
 | `sshm <别名\|ID>` | 连接到指定主机 |
-| `sshm --list, -l` | 列出所有主机 |
-| `sshm --add, -a` | 添加新主机 |
-| `sshm --edit, -e <别名\|ID>` | 编辑主机配置 |
-| `sshm --delete, -d <别名\|ID>` | 删除主机 |
-| `sshm --show <别名\|ID>` | 显示主机详情 |
-| `sshm --search, -s <关键词>` | 搜索主机 |
-| `sshm --group, -g [分组名]` | 列出分组或分组内的主机 |
-| `sshm --copy, --cp <别名\|ID>` | 复制 SSH 连接信息 |
+| `sshm connect <别名\|ID>` | 显式连接主机，适用于别名与命令同名时 |
+| `sshm pick` | 打开实时主机选择器 |
+| `sshm list [--group 分组] [--sort id\|alias\|group]` | 列出、过滤和排序主机 |
+| `sshm add [别名 用户@主机[:端口]]` | 快速添加或进入添加向导 |
+| `sshm edit <别名\|ID>` | 编辑主机配置，可输入 `-` 清空可选字段 |
+| `sshm delete <别名\|ID>` | 删除主机 |
+| `sshm show <别名\|ID>` | 显示主机详情 |
+| `sshm search <关键词...>` | 多关键词搜索，支持 `group:` 和 `tag:` |
+| `sshm group [分组名]` | 列出分组或分组内的主机 |
+| `sshm copy <别名\|ID>` | 复制包含密钥参数的 SSH 连接命令 |
+| `sshm pin/unpin <别名\|ID>` | 收藏或取消收藏主机 |
+| `sshm recent [数量]` | 显示收藏与最近连接 |
 
 ### 连接与执行
 
 | 命令 | 说明 |
 |------|------|
-| `sshm --ping, -p [别名\|ID]` | 测试主机连通性 |
-| `sshm --exec, -x <目标> <命令>` | 在指定主机上执行命令 |
-| `sshm --exec-group, --xg <分组> <命令>` | 在分组内所有主机执行命令 |
-| `sshm --exec-all, --xa <命令>` | 在所有主机上执行命令 |
+| `sshm ping [别名\|ID]` | 测试主机连通性 |
+| `sshm exec <目标> <命令>` | 在指定主机上执行命令 |
+| `sshm exec-group <分组> <命令>` | 在分组内所有主机执行命令 |
+| `sshm exec-all <命令>` | 在所有主机上执行命令 |
 
 ### 认证与安全
 
 | 命令 | 说明 |
 |------|------|
-| `sshm --passwd <别名\|ID>` | 设置 SSH 密码（加密存储） |
-| `sshm --forget-pass <别名\|ID>` | 删除已存储的密码 |
-| `sshm --import-key <别名\|ID> <路径>` | 导入 SSH 私钥 |
-| `sshm --gen-key <别名\|ID>` | 生成新的 SSH 密钥对 |
-| `sshm --show-pubkey <别名\|ID>` | 显示公钥内容 |
-| `sshm --auth <别名\|ID>` | 修改认证策略 |
-| `sshm --lock` | 锁定当前会话已解锁的密码库 |
+| `sshm passwd <别名\|ID>` | 设置 SSH 密码（加密存储） |
+| `sshm forget-pass <别名\|ID>` | 删除已存储的密码 |
+| `sshm import-key <别名\|ID> <路径>` | 导入 SSH 私钥 |
+| `sshm gen-key <别名\|ID>` | 生成新的 SSH 密钥对 |
+| `sshm show-pubkey <别名\|ID>` | 显示公钥内容 |
+| `sshm auth <别名\|ID>` | 修改认证策略 |
+| `sshm lock` | 锁定当前会话已解锁的密码库 |
 
 ### 配置管理
 
 | 命令 | 说明 |
 |------|------|
-| `sshm --export-ssh-config [文件]` | 导出为 OpenSSH 配置格式 |
-| `sshm --import-ssh-config [文件]` | 从 OpenSSH 配置导入主机 |
+| `sshm export-ssh-config [文件]` | 导出为 OpenSSH 配置格式 |
+| `sshm import-ssh-config [文件]` | 从 OpenSSH 配置导入主机 |
+| `sshm doctor` | 检查配置路径、系统 SSH 和密钥文件 |
+| `sshm completion <bash\|zsh\|fish>` | 生成 Shell 自动补全脚本 |
 
 ### 全局选项
 
@@ -143,6 +184,8 @@ sshm --list
 |------|------|
 | `--help, -h` | 显示帮助信息 |
 | `--version, -v` | 显示版本信息 |
+
+所有旧版 `--list`、`--add`、`--edit` 等参数仍然兼容。
 
 ## 🛠 技术架构
 
@@ -153,6 +196,9 @@ sshm/
 │   ├── command/             # CLI 命令处理
 │   │   ├── root.go          # 命令路由 & 帮助
 │   │   ├── interactive.go   # 交互模式
+│   │   ├── favorites.go     # 收藏与最近使用
+│   │   ├── completion.go    # Shell 自动补全
+│   │   ├── doctor.go        # 环境检查
 │   │   ├── add.go           # 添加主机
 │   │   ├── edit.go          # 编辑主机
 │   │   ├── delete.go        # 删除主机
@@ -182,6 +228,7 @@ sshm/
 │   └── ui/                  # 终端 UI
 │       ├── format.go        # 格式化输出
 │       ├── table.go         # 表格渲染
+│       ├── picker.go        # 实时主机选择器
 │       └── prompt.go        # 交互提示
 ├── go.mod
 ├── go.sum
@@ -199,6 +246,7 @@ sshm/
 ## 🔐 安全与恢复
 
 - 配置默认位于 `~/.config/sshm`，可通过 `SSHM_HOME` 修改。
+- v2.3.0 会自动把配置版本升级到 v3，用于记录收藏和最近连接时间，无需手动迁移。
 - `hosts.yaml`、`secrets.yaml` 和导出的 SSH 配置在覆盖前保留最近一份 `.bak`。
 - 密码库使用主密码加密；主密码不会保存且无法恢复。交互会话只需解锁一次，可用 `lock` 立即锁定。
 - 原生密码连接严格校验 `~/.ssh/known_hosts`。首次连接仅在交互终端确认指纹后写入，非交互环境默认拒绝未知主机。

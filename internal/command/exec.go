@@ -17,7 +17,7 @@ import (
 
 func (app *App) cmdExec(args []string) error {
 	if len(args) < 2 {
-		return fmt.Errorf("用法: sshm --exec <别名|ID> <命令>")
+		return fmt.Errorf("用法: sshm exec <别名|ID> <命令>")
 	}
 
 	h, _, _, err := app.Store.FindHost(args[0])
@@ -38,7 +38,7 @@ func (app *App) cmdExec(args []string) error {
 
 func (app *App) cmdExecGroup(args []string) error {
 	if len(args) < 2 {
-		return fmt.Errorf("用法: sshm --exec-group <分组> <命令>")
+		return fmt.Errorf("用法: sshm exec-group <分组> <命令>")
 	}
 
 	group := args[0]
@@ -63,7 +63,7 @@ func (app *App) cmdExecGroup(args []string) error {
 
 func (app *App) cmdExecAll(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("用法: sshm --exec-all <命令>")
+		return fmt.Errorf("用法: sshm exec-all <命令>")
 	}
 
 	command := strings.Join(args, " ")

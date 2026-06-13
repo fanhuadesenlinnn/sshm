@@ -15,7 +15,7 @@ func (app *App) cmdEdit(args []string) error {
 	}
 
 	fmt.Println()
-	ui.PrintHeader(fmt.Sprintf("编辑主机: %s (留空保留原值)", h.Alias))
+	ui.PrintHeader(fmt.Sprintf("编辑主机: %s (留空保留原值，输入 - 清空可选字段)", h.Alias))
 	fmt.Println()
 
 	newAlias := ui.ReadLineDefault(fmt.Sprintf("别名 [%s]: ", h.Alias), h.Alias)
@@ -26,13 +26,13 @@ func (app *App) cmdEdit(args []string) error {
 	newPort := h.Port
 	fmt.Sscanf(portStr, "%d", &newPort)
 
-	newIdentity := ui.ReadLineDefault(fmt.Sprintf("密钥路径 [%s]: ", h.Identity), h.Identity)
-	newNote := ui.ReadLineDefault(fmt.Sprintf("备注 [%s]: ", h.Note), h.Note)
-	newGroup := ui.ReadLineDefault(fmt.Sprintf("分组 [%s]: ", h.Group), h.Group)
+	newIdentity := readEditableValue("密钥路径", h.Identity)
+	newNote := readEditableValue("备注", h.Note)
+	newGroup := readEditableValue("分组", h.Group)
 
 	newAuth := ui.ReadLineDefault(fmt.Sprintf("认证策略 (auto/key/password/ask/system) [%s]: ", h.Auth), h.Auth)
 
-	tagsInput := ui.ReadLineDefault(fmt.Sprintf("标签 [%s]: ", config.TagsToString(h.Tags)), config.TagsToString(h.Tags))
+	tagsInput := readEditableValue("标签", config.TagsToString(h.Tags))
 	newTags := config.ParseTags(tagsInput)
 
 	aliasChanged := newAlias != h.Alias
@@ -49,6 +49,8 @@ func (app *App) cmdEdit(args []string) error {
 		Tags:        newTags,
 		Auth:        newAuth,
 		PasswordRef: h.PasswordRef,
+		Pinned:      h.Pinned,
+		LastUsedAt:  h.LastUsedAt,
 	}
 	if errs := updated.Validate(); len(errs) > 0 {
 		for _, e := range errs {
@@ -108,6 +110,21 @@ func (app *App) cmdEdit(args []string) error {
 
 	ui.PrintSuccess("已更新主机：%s", newAlias)
 	return nil
+}
+
+func readEditableValue(label, current string) string {
+	display := current
+	if display == "" {
+		display = "空"
+	}
+	value := ui.ReadLine(fmt.Sprintf("%s [%s]（留空保留，输入 - 清空）: ", label, display))
+	if value == "" {
+		return current
+	}
+	if value == "-" {
+		return ""
+	}
+	return value
 }
 
 func (app *App) changeHostPasswordWithStore(fs *secret.FileStore, id, alias string) error {

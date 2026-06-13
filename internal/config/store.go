@@ -8,7 +8,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const CurrentVersion = 2
+const CurrentVersion = 3
 
 // Store manages host configuration persistence.
 type Store struct {
@@ -207,5 +207,22 @@ func (s *Store) Remove(idx int) error {
 		}
 		hf.Hosts = append(hf.Hosts[:idx], hf.Hosts[idx+1:]...)
 		return s.saveUnlocked(hf)
+	})
+}
+
+// MarkUsed records the most recent successful connection time for a stable host ID.
+func (s *Store) MarkUsed(id, timestamp string) error {
+	return safefile.WithLock(s.path, func() error {
+		hf, err := s.loadUnlocked(false)
+		if err != nil {
+			return err
+		}
+		for i := range hf.Hosts {
+			if hf.Hosts[i].ID == id {
+				hf.Hosts[i].LastUsedAt = timestamp
+				return s.saveUnlocked(hf)
+			}
+		}
+		return fmt.Errorf("未找到主机 ID: %s", id)
 	})
 }

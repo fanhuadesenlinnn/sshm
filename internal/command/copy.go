@@ -6,6 +6,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/fanhuadesenlinnn/sshm/internal/sshx"
 	"github.com/fanhuadesenlinnn/sshm/internal/ui"
 )
 
@@ -15,7 +16,7 @@ func (app *App) cmdCopy(args []string) error {
 		return err
 	}
 
-	connStr := fmt.Sprintf("ssh -p %d %s@%s", h.Port, h.User, h.Host)
+	connStr := sshx.ConnectionCommand(*h)
 	if err := copyToClipboard(connStr); err != nil {
 		ui.PrintWarn("无法写入系统剪贴板，将连接命令显示在下方: %v", err)
 	} else {

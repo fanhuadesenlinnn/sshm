@@ -8,13 +8,13 @@ import (
 )
 
 func (app *App) cmdSearch(args []string) error {
-	keyword := ""
+	query := ""
 	if len(args) > 0 {
-		keyword = args[0]
+		query = strings.Join(args, " ")
 	} else {
-		keyword = ui.ReadLine("请输入搜索关键词: ")
+		query = ui.ReadLine("请输入搜索关键词: ")
 	}
-	if keyword == "" {
+	if query == "" {
 		return nil
 	}
 
@@ -23,18 +23,47 @@ func (app *App) cmdSearch(args []string) error {
 		return err
 	}
 
-	keyword = strings.ToLower(keyword)
+	terms := strings.Fields(strings.ToLower(query))
 	var results []config.Host
 	var indices []int
 	for i, h := range hf.Hosts {
-		if matchHost(h, keyword) {
+		if matchHostTerms(h, terms) {
 			results = append(results, h)
 			indices = append(indices, i)
 		}
 	}
 
-	ui.RenderSearchResults(results, indices, keyword)
+	ui.RenderSearchResults(results, indices, query)
 	return nil
+}
+
+func matchHostTerms(h config.Host, terms []string) bool {
+	for _, term := range terms {
+		switch {
+		case strings.HasPrefix(term, "group:"):
+			if !strings.Contains(strings.ToLower(h.Group), strings.TrimPrefix(term, "group:")) {
+				return false
+			}
+		case strings.HasPrefix(term, "tag:"):
+			if !matchTag(h.Tags, strings.TrimPrefix(term, "tag:")) {
+				return false
+			}
+		default:
+			if !matchHost(h, term) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func matchTag(tags []string, keyword string) bool {
+	for _, tag := range tags {
+		if strings.Contains(strings.ToLower(tag), keyword) {
+			return true
+		}
+	}
+	return false
 }
 
 func matchHost(h config.Host, keyword string) bool {
@@ -53,10 +82,5 @@ func matchHost(h config.Host, keyword string) bool {
 	if strings.Contains(strings.ToLower(h.Group), keyword) {
 		return true
 	}
-	for _, t := range h.Tags {
-		if strings.Contains(strings.ToLower(t), keyword) {
-			return true
-		}
-	}
-	return false
+	return matchTag(h.Tags, keyword)
 }

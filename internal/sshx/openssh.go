@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"syscall"
 
 	"github.com/fanhuadesenlinnn/sshm/internal/config"
@@ -32,6 +33,27 @@ func buildConnectArgs(h config.Host, extraArgs []string, keyOnly bool) []string 
 	}
 	args = append(args, extraArgs...)
 	return append(args, fmt.Sprintf("%s@%s", h.User, h.Host))
+}
+
+// ConnectionCommand returns a copyable system SSH command for a host.
+func ConnectionCommand(h config.Host) string {
+	args := []string{"ssh", "-p", fmt.Sprintf("%d", h.Port)}
+	strategy := GetAuthStrategy(h.Auth)
+	if h.Identity != "" && (strategy == AuthAuto || strategy == AuthKey) {
+		args = append(args, "-i", config.ExpandPath(h.Identity), "-o", "IdentitiesOnly=yes")
+	}
+	args = append(args, fmt.Sprintf("%s@%s", h.User, h.Host))
+	for i := range args {
+		args[i] = shellQuote(args[i])
+	}
+	return strings.Join(args, " ")
+}
+
+func shellQuote(value string) string {
+	if value != "" && !strings.ContainsAny(value, " \t\n'\"\\$`!&|;<>()[]{}*?~") {
+		return value
+	}
+	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }
 
 func runInteractive(args []string) int {

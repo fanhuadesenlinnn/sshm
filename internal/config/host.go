@@ -23,6 +23,8 @@ type Host struct {
 	Tags        []string `yaml:"tags"`
 	Auth        string   `yaml:"auth"`
 	PasswordRef string   `yaml:"password_ref"`
+	Pinned      bool     `yaml:"pinned,omitempty"`
+	LastUsedAt  string   `yaml:"last_used_at,omitempty"`
 }
 
 // HostsFile is the top-level structure of hosts.yaml.

@@ -345,3 +345,24 @@ func TestEnsureIDs(t *testing.T) {
 		t.Fatal("Second EnsureIDs() should not report change")
 	}
 }
+
+func TestStoreMarkUsed(t *testing.T) {
+	store := NewStoreWithPath(filepath.Join(t.TempDir(), "hosts.yaml"))
+	h := DefaultHost()
+	h.Alias = "recent"
+	h.User = "root"
+	h.Host = "example.com"
+	if err := store.Add(h); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.MarkUsed(h.ID, "2026-06-13T12:00:00Z"); err != nil {
+		t.Fatal(err)
+	}
+	loaded, _, _, err := store.FindHost(h.Alias)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.LastUsedAt != "2026-06-13T12:00:00Z" {
+		t.Fatalf("LastUsedAt = %q", loaded.LastUsedAt)
+	}
+}

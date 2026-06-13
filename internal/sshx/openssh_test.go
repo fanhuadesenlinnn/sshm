@@ -34,3 +34,18 @@ func TestSystemArgsDoNotOverrideAuthentication(t *testing.T) {
 		}
 	}
 }
+
+func TestConnectionCommandIncludesConfiguredIdentity(t *testing.T) {
+	h := config.Host{
+		User:     "root",
+		Host:     "example.com",
+		Port:     2222,
+		Identity: "/tmp/id key",
+		Auth:     "auto",
+	}
+	got := ConnectionCommand(h)
+	want := "ssh -p 2222 -i '/tmp/id key' -o IdentitiesOnly=yes root@example.com"
+	if got != want {
+		t.Fatalf("ConnectionCommand() = %q, want %q", got, want)
+	}
+}

@@ -2,9 +2,12 @@ package ui
 
 import (
 	"fmt"
+	"os"
+	"sort"
 	"strings"
 
 	"github.com/fanhuadesenlinnn/sshm/internal/config"
+	"golang.org/x/term"
 )
 
 // displayWidth returns the terminal display width of a string.
@@ -106,22 +109,60 @@ func truncateToWidth(s string, maxWidth int) string {
 
 // RenderHostsTable renders a list of hosts as a formatted table.
 func RenderHostsTable(hosts []config.Host) {
+	RenderHostsTableWithOptions(hosts, HostTableOptions{})
+}
+
+// HostTableOptions controls host table layout and displayed IDs.
+type HostTableOptions struct {
+	Indices []int
+	Compact bool
+	Wide    bool
+}
+
+// RenderHostsTableWithOptions renders hosts using terminal-aware column widths.
+func RenderHostsTableWithOptions(hosts []config.Host, options HostTableOptions) {
 	if len(hosts) == 0 {
 		fmt.Println("  (暂无主机)")
 		return
 	}
 
-	// Column display widths (accounting for CJK headers)
 	colID := 4
 	colAlias := 18
-	colAddr := 16
+	colAddr := 24
 	colPort := 6
-	colGroup := 10
+	colGroup := 12
 	colAuth := 10
-	colNote := 16
+	colNote := 18
+	width := terminalWidth()
+	if options.Wide {
+		colAlias, colAddr, colGroup, colNote = 28, 40, 20, 40
+	} else if width > 100 {
+		extra := width - 100
+		colAddr += extra / 2
+		colNote += extra - extra/2
+	}
+	compact := options.Compact || width < 90
 
-	// Header
 	fmt.Println()
+	if compact {
+		fmt.Printf("  %s %s %s %s\n",
+			padToWidth("ID", colID),
+			padToWidth("别名", colAlias),
+			padToWidth("用户@主机", colAddr),
+			padToWidth("分组", colGroup))
+		sepWidth := 2 + colID + 1 + colAlias + 1 + colAddr + 1 + colGroup
+		fmt.Println("  " + strings.Repeat("-", sepWidth-2))
+		for i, h := range hosts {
+			fmt.Printf("  %s %s %s %s\n",
+				padToWidth(displayHostID(i, options.Indices), colID),
+				padToWidth(displayAlias(h), colAlias),
+				padToWidth(h.User+"@"+h.Host, colAddr),
+				padToWidth(h.Group, colGroup))
+		}
+		fmt.Println()
+		return
+	}
+
 	fmt.Printf("  %s %s %s %s %s %s %s\n",
 		padToWidth("ID", colID),
 		padToWidth("别名", colAlias),
@@ -131,29 +172,43 @@ func RenderHostsTable(hosts []config.Host) {
 		padToWidth("认证", colAuth),
 		padToWidth("备注", colNote))
 
-	// Separator line - calculate total width
 	sepWidth := 2 + colID + 1 + colAlias + 1 + colAddr + 1 + colPort + 1 + colGroup + 1 + colAuth + 1 + colNote
 	fmt.Println("  " + strings.Repeat("-", sepWidth-2))
 
 	for i, h := range hosts {
-		id := fmt.Sprintf("%d", i+1)
-		alias := truncateToWidth(h.Alias, colAlias)
-		addr := truncateToWidth(h.User+"@"+h.Host, colAddr)
 		port := fmt.Sprintf("%d", h.Port)
-		group := truncateToWidth(h.Group, colGroup)
-		auth := h.Auth
-		note := truncateToWidth(h.Note, colNote)
 
 		fmt.Printf("  %s %s %s %s %s %s %s\n",
-			padToWidth(id, colID),
-			padToWidth(alias, colAlias),
-			padToWidth(addr, colAddr),
+			padToWidth(displayHostID(i, options.Indices), colID),
+			padToWidth(displayAlias(h), colAlias),
+			padToWidth(h.User+"@"+h.Host, colAddr),
 			padToWidth(port, colPort),
-			padToWidth(group, colGroup),
-			padToWidth(auth, colAuth),
-			padToWidth(note, colNote))
+			padToWidth(h.Group, colGroup),
+			padToWidth(h.Auth, colAuth),
+			padToWidth(h.Note, colNote))
 	}
 	fmt.Println()
+}
+
+func displayAlias(h config.Host) string {
+	if h.Pinned {
+		return "* " + h.Alias
+	}
+	return h.Alias
+}
+
+func displayHostID(position int, indices []int) string {
+	if position < len(indices) {
+		return fmt.Sprintf("%d", indices[position]+1)
+	}
+	return fmt.Sprintf("%d", position+1)
+}
+
+func terminalWidth() int {
+	if width, _, err := term.GetSize(int(os.Stdout.Fd())); err == nil && width > 0 {
+		return width
+	}
+	return 100
 }
 
 // RenderHostDetail renders detailed info for a single host.
@@ -163,6 +218,9 @@ func RenderHostDetail(h config.Host, index int) {
 	fmt.Println("  " + strings.Repeat("-", 40))
 	fmt.Printf("  %s %s\n", BoldText("ID:"), fmt.Sprintf("%d", index+1))
 	fmt.Printf("  %s %s\n", BoldText("别名:"), h.Alias)
+	if h.Pinned {
+		fmt.Printf("  %s %s\n", BoldText("收藏:"), "是")
+	}
 	fmt.Printf("  %s %s\n", BoldText("用户:"), h.User)
 	fmt.Printf("  %s %s\n", BoldText("主机:"), h.Host)
 	fmt.Printf("  %s %d\n", BoldText("端口:"), h.Port)
@@ -186,6 +244,9 @@ func RenderHostDetail(h config.Host, index int) {
 	if len(h.Tags) > 0 {
 		fmt.Printf("  %s %s\n", BoldText("标签:"), strings.Join(h.Tags, ", "))
 	}
+	if h.LastUsedAt != "" {
+		fmt.Printf("  %s %s\n", BoldText("最近连接:"), h.LastUsedAt)
+	}
 	fmt.Println()
 }
 
@@ -197,43 +258,8 @@ func RenderSearchResults(hosts []config.Host, indices []int, keyword string) {
 	}
 	fmt.Println()
 	fmt.Printf("  搜索 '%s' 结果 (%d 个):\n", keyword, len(hosts))
-	fmt.Println()
 
-	colID := 4
-	colAlias := 18
-	colAddr := 16
-	colPort := 6
-	colGroup := 10
-	colNote := 16
-
-	fmt.Printf("  %s %s %s %s %s %s\n",
-		padToWidth("ID", colID),
-		padToWidth("别名", colAlias),
-		padToWidth("用户@主机", colAddr),
-		padToWidth("端口", colPort),
-		padToWidth("分组", colGroup),
-		padToWidth("备注", colNote))
-
-	sepWidth := 2 + colID + 1 + colAlias + 1 + colAddr + 1 + colPort + 1 + colGroup + 1 + colNote
-	fmt.Println("  " + strings.Repeat("-", sepWidth-2))
-
-	for i, h := range hosts {
-		id := fmt.Sprintf("%d", indices[i]+1)
-		alias := truncateToWidth(h.Alias, colAlias)
-		addr := truncateToWidth(h.User+"@"+h.Host, colAddr)
-		port := fmt.Sprintf("%d", h.Port)
-		group := truncateToWidth(h.Group, colGroup)
-		note := truncateToWidth(h.Note, colNote)
-
-		fmt.Printf("  %s %s %s %s %s %s\n",
-			padToWidth(id, colID),
-			padToWidth(alias, colAlias),
-			padToWidth(addr, colAddr),
-			padToWidth(port, colPort),
-			padToWidth(group, colGroup),
-			padToWidth(note, colNote))
-	}
-	fmt.Println()
+	RenderHostsTableWithOptions(hosts, HostTableOptions{Indices: indices})
 }
 
 // RenderGroupList renders a list of groups with host counts.
@@ -246,7 +272,16 @@ func RenderGroupList(groups map[string][]config.Host) {
 	fmt.Println(Header("分组列表"))
 	fmt.Println()
 
-	for group, hosts := range groups {
+	names := make([]string, 0, len(groups))
+	for group := range groups {
+		names = append(names, group)
+	}
+	sort.Strings(names)
+	for _, group := range names {
+		hosts := groups[group]
+		sort.SliceStable(hosts, func(i, j int) bool {
+			return hosts[i].Alias < hosts[j].Alias
+		})
 		displayGroup := group
 		if displayGroup == "" {
 			displayGroup = "(未分组)"
