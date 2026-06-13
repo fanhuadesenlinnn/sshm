@@ -34,3 +34,38 @@ jobs:
 
       - name: Coverage
         run: go test -cover ./...
+
+  linux-static:
+    name: Linux static compatibility
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.25'
+
+      - name: Build static Linux binary
+        env:
+          CGO_ENABLED: 0
+          GOOS: linux
+          GOARCH: amd64
+        run: go build -tags "netgo osusergo" -o sshm-linux-static .
+
+      - name: Verify static linking
+        run: |
+          file sshm-linux-static | tee file.txt
+          grep -F "statically linked" file.txt
+          go version -m sshm-linux-static | tee build-info.txt
+          grep -F "CGO_ENABLED=0" build-info.txt
+          if readelf -l sshm-linux-static | grep -F "Requesting program interpreter"; then
+            echo "ERROR: Linux binary has a dynamic program interpreter"
+            exit 1
+          fi
+
+      - name: Test glibc and musl environments
+        run: |
+          docker run --rm -v "$PWD/sshm-linux-static:/sshm:ro" centos:7 /sshm --version
+          docker run --rm -v "$PWD/sshm-linux-static:/sshm:ro" alpine:3.19 /sshm --version

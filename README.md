@@ -19,7 +19,7 @@
 - **密码管理** — 加密存储 SSH 密码，主密码保护
 - **密钥管理** — 导入、生成 SSH 密钥对，显示公钥
 - **认证策略** — 灵活配置密码/密钥/交互式认证
-- **跨平台** — 支持 Linux、macOS、Windows
+- **跨平台** — 支持 Linux、macOS、Windows；Linux 发布包为静态二进制，不依赖 glibc
 
 ## 📦 安装
 
@@ -45,6 +45,19 @@ mkdir -p ~/bin && mv sshm ~/bin/
 
 ```bash
 go install github.com/fanhuadesenlinnn/sshm@latest
+```
+
+### Linux 兼容性
+
+正式发布的 Linux amd64 和 arm64 制品使用纯 Go 静态构建，不依赖目标机器的 glibc，可用于常见的旧版 Linux、Alpine Linux 和精简容器环境。
+
+发布流程会在 CentOS 7（glibc 2.17）和 Alpine Linux（musl）中实际启动 amd64 制品。极旧 Linux 内核仍需满足当前 Go 运行时要求。
+
+如果之前遇到以下错误，请升级到 v2.3.1 或更高版本：
+
+```text
+GLIBC_x.xx not found
+/lib64/ld-linux-x86-64.so.2: No such file or directory
 ```
 
 ## 🚀 快速开始
