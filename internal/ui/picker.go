@@ -24,6 +24,8 @@ func PickHost(hosts []config.Host) (string, bool) {
 		return "", false
 	}
 	defer term.Restore(fd, oldState)
+	fmt.Fprint(os.Stderr, "\033[?25l")
+	defer fmt.Fprint(os.Stderr, "\033[?25h")
 
 	query := ""
 	selected := 0
@@ -122,17 +124,20 @@ func filterPickerHosts(hosts []config.Host, query string) []config.Host {
 }
 
 func renderHostPicker(hosts []config.Host, query string, selected int) {
-	fmt.Fprint(os.Stderr, "\033[2J\033[H")
-	fmt.Fprintln(os.Stderr, Header("sshm 主机选择器"))
-	fmt.Fprintf(os.Stderr, "  搜索: %s\n", query)
-	fmt.Fprintln(os.Stderr, "  输入过滤 / ↑↓选择 / Enter连接 / q或Ctrl+C进入命令模式")
-	fmt.Fprintln(os.Stderr)
+	renderHostPickerTo(os.Stderr, hosts, query, selected, pickerTerminalWidth())
+}
+
+func renderHostPickerTo(w io.Writer, hosts []config.Host, query string, selected, width int) {
+	fmt.Fprint(w, "\033[2J\033[H")
+	fmt.Fprintf(w, "%s\r\n", Header("sshm 主机选择器"))
+	fmt.Fprintf(w, "  搜索: %s\r\n", query)
+	fmt.Fprint(w, "  输入过滤 / ↑↓选择 / Enter连接 / q或Ctrl+C进入命令模式\r\n\r\n")
 	if len(hosts) == 0 {
-		fmt.Fprintln(os.Stderr, "  (没有匹配主机)")
+		fmt.Fprint(w, "  (没有匹配主机)\r\n")
 		return
 	}
 	limit := min(12, len(hosts))
-	width := terminalWidth() - 8
+	contentWidth := max(2, width-8)
 	for i := 0; i < limit; i++ {
 		prefix := "  "
 		if i == selected {
@@ -143,13 +148,20 @@ func renderHostPicker(hosts []config.Host, query string, selected int) {
 		if host.Group != "" {
 			label += "  [" + host.Group + "]"
 		}
-		fmt.Fprintf(os.Stderr, "%s%s\n", prefix, truncateToWidth(label, width))
+		fmt.Fprintf(w, "%s%s\r\n", prefix, truncateToWidth(label, contentWidth))
 	}
 	if len(hosts) > limit {
-		fmt.Fprintf(os.Stderr, "\n  另有 %d 台匹配主机，请继续输入缩小范围\n", len(hosts)-limit)
+		fmt.Fprintf(w, "\r\n  另有 %d 台匹配主机，请继续输入缩小范围\r\n", len(hosts)-limit)
 	}
 }
 
 func clearPicker() {
 	fmt.Fprint(os.Stderr, "\033[2J\033[H")
+}
+
+func pickerTerminalWidth() int {
+	if width, _, err := term.GetSize(int(os.Stdin.Fd())); err == nil && width > 0 {
+		return width
+	}
+	return 100
 }

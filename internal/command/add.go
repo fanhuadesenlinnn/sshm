@@ -133,7 +133,10 @@ func (app *App) cmdAddWizard() error {
 
 	var sshPassword string
 	savePass := false
-	if h.Auth == "password" {
+	if shouldPromptForPassword(h) {
+		if h.Auth == "auto" && h.Identity == "" {
+			fmt.Println("未填写密钥，将继续设置 SSH 密码（可留空跳过）。")
+		}
 		var err error
 		sshPassword, err = readConfirmedPassword()
 		if err != nil {
@@ -173,6 +176,10 @@ func (app *App) cmdAddWizard() error {
 	}
 	printAddedHost(h, savePass)
 	return nil
+}
+
+func shouldPromptForPassword(h config.Host) bool {
+	return h.Auth == "password" || (h.Auth == "auto" && h.Identity == "")
 }
 
 func readConfirmedPassword() (string, error) {

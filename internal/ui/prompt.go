@@ -122,9 +122,8 @@ func (ed *lineEditor) run() string {
 			escSeq[escLen] = b
 			escLen++
 
-			// Try to parse complete escape sequence
-			if cmd := ed.parseEscape(escSeq[:escLen]); cmd >= 0 {
-				ed.handleEscapeCmd(cmd, escSeq[:escLen])
+			// Keep collecting incomplete sequences such as ESC [ until the final key byte arrives.
+			if ed.consumeEscapeSequence(escSeq[:escLen]) {
 				escLen = 0
 			} else if escLen >= 8 {
 				// Too long, give up
@@ -180,6 +179,19 @@ func (ed *lineEditor) run() string {
 			}
 		}
 	}
+}
+
+// consumeEscapeSequence handles a complete escape sequence and reports whether
+// the caller should stop collecting bytes.
+func (ed *lineEditor) consumeEscapeSequence(seq []byte) bool {
+	cmd := ed.parseEscape(seq)
+	if cmd == escCmdIncomplete {
+		return false
+	}
+	if cmd != escCmdUnknown {
+		ed.handleEscapeCmd(cmd, seq)
+	}
+	return true
 }
 
 // escape command constants

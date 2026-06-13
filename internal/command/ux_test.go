@@ -124,3 +124,23 @@ func TestCompletionCandidatesIncludeCommandsAndHosts(t *testing.T) {
 		t.Fatalf("unexpected candidates: %v", candidates)
 	}
 }
+
+func TestShouldPromptForPassword(t *testing.T) {
+	tests := []struct {
+		name string
+		host config.Host
+		want bool
+	}{
+		{"auto without key", config.Host{Auth: "auto"}, true},
+		{"auto with key", config.Host{Auth: "auto", Identity: "~/.ssh/id_ed25519"}, false},
+		{"password with key", config.Host{Auth: "password", Identity: "~/.ssh/id_ed25519"}, true},
+		{"system without key", config.Host{Auth: "system"}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := shouldPromptForPassword(tt.host); got != tt.want {
+				t.Fatalf("shouldPromptForPassword() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

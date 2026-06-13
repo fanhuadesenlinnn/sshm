@@ -141,3 +141,37 @@ func TestNoColor(t *testing.T) {
 		t.Errorf("Warn() in no-color mode = %q, want '!! msg'", Warn("msg"))
 	}
 }
+
+func TestConsumeEscapeSequenceWaitsForFinalByte(t *testing.T) {
+	ed := &lineEditor{line: []rune("abc"), cursor: 3, histPos: -1}
+	if done := ed.consumeEscapeSequence([]byte{escapeChar, '['}); done {
+		t.Fatal("incomplete escape sequence should keep collecting bytes")
+	}
+	if done := ed.consumeEscapeSequence([]byte{escapeChar, '[', 'D'}); !done {
+		t.Fatal("complete left-arrow sequence should be consumed")
+	}
+	if ed.cursor != 2 {
+		t.Fatalf("cursor = %d, want 2", ed.cursor)
+	}
+}
+
+func TestArrowCommandsNavigateHistory(t *testing.T) {
+	ed := &lineEditor{
+		history: []string{"list", "show prod"},
+		histPos: -1,
+		line:    []rune("draft"),
+		cursor:  5,
+	}
+	ed.consumeEscapeSequence([]byte{escapeChar, '[', 'A'})
+	if got := ed.string(); got != "show prod" {
+		t.Fatalf("up arrow line = %q, want show prod", got)
+	}
+	ed.consumeEscapeSequence([]byte{escapeChar, '[', 'A'})
+	if got := ed.string(); got != "list" {
+		t.Fatalf("second up arrow line = %q, want list", got)
+	}
+	ed.consumeEscapeSequence([]byte{escapeChar, '[', 'B'})
+	if got := ed.string(); got != "show prod" {
+		t.Fatalf("down arrow line = %q, want show prod", got)
+	}
+}
