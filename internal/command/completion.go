@@ -37,13 +37,26 @@ func (app *App) cmdCompletion(args []string) error {
 }
 
 func (app *App) completionCandidates() ([]string, error) {
-	hf, err := app.Store.Load()
+	doc, err := app.Store.Repository().Load()
 	if err != nil {
 		return nil, err
 	}
-	candidates := append([]string{}, completionCommands...)
-	for _, host := range hf.Hosts {
-		candidates = append(candidates, host.Alias)
+	seen := map[string]bool{}
+	var candidates []string
+	add := func(value string) {
+		if !seen[value] {
+			seen[value] = true
+			candidates = append(candidates, value)
+		}
+	}
+	for _, command := range completionCommands {
+		add(command)
+	}
+	for _, host := range doc.Hosts {
+		add(host.Alias)
+	}
+	for _, tag := range doc.Tags.Items {
+		add(tag.Name)
 	}
 	sort.Strings(candidates)
 	return candidates, nil

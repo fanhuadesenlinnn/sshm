@@ -199,29 +199,55 @@ func (app *App) selectHosts(args []string) ([]config.Host, error) {
 	if err != nil {
 		return nil, err
 	}
-	aliases := map[string]bool{}
-	tags := map[string]bool{}
-	all := false
+	selector, err := parseHostSelector(args)
+	if err != nil {
+		return nil, err
+	}
+	return selectHostsFrom(hf.Hosts, selector)
+}
+
+type hostSelector struct {
+	aliases map[string]bool
+	tags    map[string]bool
+	all     bool
+}
+
+func parseHostSelector(args []string) (hostSelector, error) {
+	selector := hostSelector{
+		aliases: map[string]bool{},
+		tags:    map[string]bool{},
+	}
+	if len(args) == 0 {
+		return selector, fmt.Errorf("需要指定目标；目标支持别名...、--tag 标签、--all")
+	}
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--all":
-			all = true
+			selector.all = true
 		case "--tag":
 			if i+1 >= len(args) {
-				return nil, fmt.Errorf("--tag 缺少标签")
+				return selector, fmt.Errorf("--tag 缺少标签")
 			}
 			i++
-			tags[args[i]] = true
+			selector.tags[args[i]] = true
 		default:
-			aliases[args[i]] = true
+			selector.aliases[args[i]] = true
 		}
 	}
+	return selector, nil
+}
+
+func selectHostsFrom(hosts []config.Host, selector hostSelector) ([]config.Host, error) {
+	aliases := make(map[string]bool, len(selector.aliases))
+	for alias := range selector.aliases {
+		aliases[alias] = true
+	}
 	var selected []config.Host
-	for index, host := range hf.Hosts {
+	for index, host := range hosts {
 		displayID := strconv.Itoa(index + 1)
-		matched := all || aliases[host.Alias] || aliases[host.ID] || aliases[displayID]
+		matched := selector.all || aliases[host.Alias] || aliases[host.ID] || aliases[displayID]
 		for _, tag := range host.Tags {
-			if tags[tag] {
+			if selector.tags[tag] {
 				matched = true
 			}
 		}

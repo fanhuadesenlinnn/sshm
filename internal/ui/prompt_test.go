@@ -82,7 +82,8 @@ func TestTruncateToWidth(t *testing.T) {
 		{"hello", 10, "hello"},
 		{"你好世界", 3, "你…"},
 		{"你好世界", 5, "你好…"},
-		{"a", 1, ""},
+		{"a", 1, "a"},
+		{"ab", 1, ""},
 	}
 
 	for _, tt := range tests {

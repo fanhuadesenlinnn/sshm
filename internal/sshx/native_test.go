@@ -4,6 +4,8 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/pem"
+	"errors"
+	"fmt"
 	"net"
 	"path/filepath"
 	"testing"
@@ -30,6 +32,20 @@ func TestGetAuthStrategy(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("GetAuthStrategy(%q) = %v, want %v", tt.input, got, tt.want)
 		}
+	}
+}
+
+func TestInteractiveSessionExitErrorIsACompletedRemoteSession(t *testing.T) {
+	var exitErr *ssh.ExitError
+	err := fmt.Errorf("wrapped: %w", &ssh.ExitError{})
+	if !errors.As(err, &exitErr) {
+		t.Fatal("test setup did not produce an SSH exit error")
+	}
+	if status, ok := remoteSessionExitStatus(err); !ok || status != 0 {
+		t.Fatal("remote shell exit should be treated as a completed session")
+	}
+	if _, ok := remoteSessionExitStatus(errors.New("connection lost")); ok {
+		t.Fatal("unexpected disconnect should remain an error")
 	}
 }
 

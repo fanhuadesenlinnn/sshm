@@ -41,6 +41,7 @@ func printConfigHelp() {
 	fmt.Println("sshm 只使用一个配置文件：<SSHM_HOME>/sshm.yaml")
 	fmt.Println("主机信任策略：strict | accept-new | insecure")
 	fmt.Println("主机的 host_key_policy 为空时继承 defaults.host_key_policy")
+	fmt.Println("标签定义保存在 tags.items；主机引用的新标签会自动登记")
 	fmt.Println("host_trust 与 vault 由 sshm 管理，请勿手动修改")
 	fmt.Println("使用 sshm config-edit 校验后编辑完整配置")
 	fmt.Println("v4 不读取或迁移旧版多文件配置")

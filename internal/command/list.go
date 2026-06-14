@@ -39,6 +39,9 @@ func (app *App) cmdList(args []string) error {
 			return unknownOptionError(args[i])
 		}
 	}
+	if options.Compact && options.Wide {
+		return fmt.Errorf("--compact 和 --wide 不能同时使用")
+	}
 
 	hf, err := app.Store.Load()
 	if err != nil {
@@ -65,7 +68,7 @@ func (app *App) cmdList(args []string) error {
 	}
 	hosts, indices := splitIndexedHosts(rows)
 	options.Indices = indices
-	ui.PrintHeader("主机列表")
+	ui.PrintHeader(fmt.Sprintf("主机列表 · %d 台", len(hosts)))
 	ui.RenderHostsTableWithOptions(hosts, options)
 	return nil
 }

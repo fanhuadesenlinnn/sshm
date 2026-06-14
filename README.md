@@ -63,12 +63,15 @@ sshm
 # sshm 配置；完整说明: sshm help config
 # host_key_policy: strict | accept-new | insecure(跳过验证)；主机空值继承全局
 # 主机必填: alias, user, host；常用可选: port, auth, identity, tags
+# tags.items 可填写标签备注；主机引用的新标签会自动登记
 # auth: auto | key | password；identity 填托管密钥名
 # 高级可选: host_key_policy, jump_host
 # host_trust 与 vault 由 sshm 管理，请勿手动修改
 version: 1
 defaults:
   host_key_policy: strict
+tags:
+  items: []
 hosts: []
 managed_keys:
   items: []
@@ -107,16 +110,37 @@ sshm config host-key-policy insecure
 ### 主机
 
 ```bash
-sshm list [--tag 标签] [--sort id|alias]
+sshm list [--compact|--wide] [--tag 标签] [--sort id|alias]
 sshm show <别名|ID>
 sshm search <关键词...>
-sshm tag [标签]
 sshm pin <别名|ID>
 sshm recent
 sshm edit <别名|ID>
 sshm delete <别名|ID>
 sshm pick
 ```
+
+`list` 默认按内容展示连接目标，并仅在有值时增加标签或备注；`--compact` 使用最小三列视图，`--wide` 展示认证、信任和跳板机等完整字段。
+
+### 标签
+
+标签拥有独立管理中心，但仍与其他数据共同保存在唯一的 `sshm.yaml`：
+
+```bash
+sshm tag list
+sshm tag show <标签|--untagged>
+sshm tag create <标签> [--note 备注]
+sshm tag edit <标签> [--note 备注]
+sshm tag rename <旧标签> <新标签>
+sshm tag delete <标签...> [--yes]
+
+sshm tag add <标签> <目标...>
+sshm tag remove <标签> <目标...>
+sshm tag set <目标...> --tags <标签>
+sshm tag clear <目标...>
+```
+
+标签关系操作的目标支持主机别名、ID、`--tag 标签` 和 `--all`。新增主机或批量设置时，尚未登记的标签会自动创建。
 
 快速添加支持以下选项：
 
@@ -149,7 +173,7 @@ sshm key delete <名称...>
 
 普通私钥文件仅作为显式导入来源。后续连接只使用由主密码保护的托管密钥。
 
-目标支持主机别名、`--tag 标签` 和 `--all`。
+目标支持主机别名、ID、`--tag 标签` 和 `--all`。
 
 ### 远程操作
 

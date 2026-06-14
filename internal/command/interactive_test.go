@@ -1,10 +1,12 @@
 package command
 
 import (
+	"errors"
 	"reflect"
 	"testing"
 
 	"github.com/fanhuadesenlinnn/sshm/v4/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v4/internal/operation"
 )
 
 func TestParseArgs(t *testing.T) {
@@ -59,6 +61,23 @@ func TestMatchHost(t *testing.T) {
 		got := matchHost(h, tt.keyword)
 		if got != tt.want {
 			t.Errorf("matchHost(host, %q) = %v, want %v", tt.keyword, got, tt.want)
+		}
+	}
+}
+
+func TestTemporaryPasswordRetryOnlyFollowsAuthenticationFailure(t *testing.T) {
+	if !shouldTryTemporaryPassword(operation.Wrap(operation.StageAuth, errors.New("bad credentials"))) {
+		t.Fatal("authentication failure should allow temporary password retry")
+	}
+	for _, stage := range []operation.FailureStage{
+		operation.StageResolve,
+		operation.StageNetwork,
+		operation.StageJump,
+		operation.StageTrust,
+		operation.StageSession,
+	} {
+		if shouldTryTemporaryPassword(operation.Wrap(stage, errors.New("failed"))) {
+			t.Fatalf("%s failure should not prompt for a temporary password", stage)
 		}
 	}
 }
