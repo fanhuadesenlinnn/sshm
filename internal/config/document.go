@@ -53,6 +53,7 @@ type ScryptConfig struct {
 type Document struct {
 	Version     int             `yaml:"version"`
 	Defaults    Defaults        `yaml:"defaults"`
+	Tags        TagsFile        `yaml:"tags"`
 	Hosts       []Host          `yaml:"hosts"`
 	ManagedKeys ManagedKeysFile `yaml:"managed_keys"`
 	HostTrust   HostTrust       `yaml:"host_trust"`
@@ -78,6 +79,7 @@ func DefaultDocument() *Document {
 	return &Document{
 		Version:  DocumentVersion,
 		Defaults: Defaults{HostKeyPolicy: HostKeyPolicyStrict},
+		Tags:     TagsFile{Items: []Tag{}},
 		Hosts:    []Host{},
 		ManagedKeys: ManagedKeysFile{
 			Keys: []ManagedKey{},
@@ -196,6 +198,9 @@ func normalizeAndValidateDocument(doc *Document) error {
 	if doc.Hosts == nil {
 		doc.Hosts = []Host{}
 	}
+	if doc.Tags.Items == nil {
+		doc.Tags.Items = []Tag{}
+	}
 	if doc.ManagedKeys.Keys == nil {
 		doc.ManagedKeys.Keys = []ManagedKey{}
 	}
@@ -203,6 +208,18 @@ func normalizeAndValidateDocument(doc *Document) error {
 		doc.HostTrust.Entries = []HostTrustEntry{}
 	}
 	doc.ManagedKeys.normalize()
+	doc.Tags.normalize()
+
+	tagNames := map[string]bool{}
+	for _, tag := range doc.Tags.Items {
+		if err := ValidateTagName(tag.Name); err != nil {
+			return err
+		}
+		if tagNames[tag.Name] {
+			return fmt.Errorf("标签名称重复: %s", tag.Name)
+		}
+		tagNames[tag.Name] = true
+	}
 
 	aliases := map[string]bool{}
 	hostsByAlias := map[string]*Host{}
@@ -213,6 +230,12 @@ func normalizeAndValidateDocument(doc *Document) error {
 			host.ID = NewID()
 		}
 		host.EnsureDefaults()
+		for _, tag := range host.Tags {
+			if err := ValidateTagName(tag); err != nil {
+				return fmt.Errorf("主机 %s 的标签无效: %w", host.Alias, err)
+			}
+		}
+		doc.Tags.Ensure(host.Tags...)
 		if aliases[host.Alias] {
 			return fmt.Errorf("配置包含重复别名: %s", host.Alias)
 		}
@@ -285,6 +308,7 @@ func encodeDocument(doc *Document) ([]byte, error) {
 	header := `# sshm 配置；完整说明: sshm help config
 # host_key_policy: strict | accept-new | insecure(跳过验证)；主机空值继承全局
 # 主机必填: alias, user, host；常用可选: port, auth, identity, tags
+# tags.items 可填写标签备注；主机引用的新标签会自动登记
 # auth: auto | key | password；identity 填托管密钥名
 # 高级可选: host_key_policy, jump_host
 # host_trust 与 vault 由 sshm 管理，请勿手动修改

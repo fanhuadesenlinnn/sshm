@@ -1,6 +1,7 @@
 package sshx
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -142,9 +143,21 @@ func interactiveSession(client *ssh.Client, label string) error {
 	}
 
 	if err := session.Wait(); err != nil {
+		if status, ok := remoteSessionExitStatus(err); ok {
+			fmt.Fprintln(os.Stderr, ui.Warn("远程 Shell 已退出（状态 %d）", status))
+			return nil
+		}
 		return fmt.Errorf("远程会话异常结束: %w", err)
 	}
 	return nil
+}
+
+func remoteSessionExitStatus(err error) (int, bool) {
+	var exitErr *ssh.ExitError
+	if !errors.As(err, &exitErr) {
+		return 0, false
+	}
+	return exitErr.ExitStatus(), true
 }
 
 // AuthStrategy determines how to connect to a host.

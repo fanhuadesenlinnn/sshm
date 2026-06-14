@@ -47,10 +47,19 @@ func TestDialContextUsesStoredTrustAndPassword(t *testing.T) {
 		t.Fatal(err)
 	}
 	output, err := session.CombinedOutput("echo ok")
-	client.Close()
 	if err != nil || string(output) != "ok\n" {
 		t.Fatalf("output = %q, err = %v", output, err)
 	}
+	exitSession, err := client.NewSession()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = exitSession.CombinedOutput("exit 127")
+	status, ok := remoteSessionExitStatus(err)
+	if !ok || status != 127 {
+		t.Fatalf("remote exit status = %d, recognized = %t, err = %v", status, ok, err)
+	}
+	client.Close()
 	doc, err := config.NewRepositoryWithPath(path).Load()
 	if err != nil || len(doc.HostTrust.Entries) != 1 {
 		t.Fatalf("host trust = %+v, %v", doc.HostTrust.Entries, err)
@@ -224,8 +233,15 @@ func serveTestSSHConnection(conn net.Conn, serverConfig *ssh.ServerConfig, forwa
 					for req := range reqs {
 						if req.Type == "exec" {
 							_ = req.Reply(true, nil)
-							_, _ = ch.Write([]byte("ok\n"))
-							_, _ = ch.SendRequest("exit-status", false, ssh.Marshal(struct{ Status uint32 }{0}))
+							var payload struct{ Command string }
+							_ = ssh.Unmarshal(req.Payload, &payload)
+							status := uint32(0)
+							if payload.Command == "exit 127" {
+								status = 127
+							} else {
+								_, _ = ch.Write([]byte("ok\n"))
+							}
+							_, _ = ch.SendRequest("exit-status", false, ssh.Marshal(struct{ Status uint32 }{status}))
 							return
 						}
 						_ = req.Reply(false, nil)

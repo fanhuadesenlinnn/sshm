@@ -143,6 +143,11 @@ func (h *Host) Validate() []string {
 	if h.HostKeyPolicy != "" && !ValidHostKeyPolicy(h.HostKeyPolicy) {
 		errs = append(errs, fmt.Sprintf("无效的主机信任策略: %s", h.HostKeyPolicy))
 	}
+	for _, tag := range h.Tags {
+		if err := ValidateTagName(tag); err != nil {
+			errs = append(errs, fmt.Sprintf("无效标签 %q: %v", tag, err))
+		}
+	}
 
 	return errs
 }
@@ -154,9 +159,7 @@ func (h *Host) EnsureDefaults() {
 	if h.Auth == "" {
 		h.Auth = "auto"
 	}
-	if h.Tags == nil {
-		h.Tags = []string{}
-	}
+	h.Tags = NormalizeTags(h.Tags)
 }
 
 func ValidHostKeyPolicy(policy string) bool {
@@ -227,7 +230,7 @@ func ParseTags(input string) []string {
 	if result == nil {
 		return []string{}
 	}
-	return result
+	return NormalizeTags(result)
 }
 
 // TagsToString joins tags into a space-separated string.

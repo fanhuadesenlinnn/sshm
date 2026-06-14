@@ -121,7 +121,7 @@ func (app *App) printWorkbench() {
 	fmt.Println("  p/pick        查找并连接主机")
 	fmt.Println("  r/recent      收藏与最近使用")
 	fmt.Println("  a/add         添加主机")
-	fmt.Println("  host / key    主机与托管密钥管理")
+	fmt.Println("  host/key/tag  主机、密钥与标签管理")
 	fmt.Println("  h/help        完整帮助")
 	fmt.Println("  lock / q      锁定密码库 / 退出")
 	fmt.Println()
@@ -179,11 +179,18 @@ func (app *App) cmdConnect(args []string) (err error) {
 		return nil
 	}
 	stage := operation.StageOf(err, operation.StageSession)
+	if !shouldTryTemporaryPassword(err) {
+		return connectionFailure(*h, err)
+	}
 	fmt.Fprintln(os.Stderr, ui.Warn("已配置认证连接失败（阶段: %s）: %v", stage, err))
 	if !ui.IsTerminal() {
 		return connectionFailure(*h, err)
 	}
 	return app.promptAndConnect(*h, fs)
+}
+
+func shouldTryTemporaryPassword(err error) bool {
+	return operation.StageOf(err, operation.StageSession) == operation.StageAuth
 }
 
 func (app *App) promptAndConnect(h config.Host, fs *secret.FileStore) error {

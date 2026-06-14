@@ -23,7 +23,7 @@ func TestRepositoryCreatesCommentedSingleFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(data)
-	for _, want := range []string{"# sshm 配置", "insecure(跳过验证)", "auth: auto | key | password", "hosts: []", "managed_keys:"} {
+	for _, want := range []string{"# sshm 配置", "insecure(跳过验证)", "auth: auto | key | password", "tags:", "hosts: []", "managed_keys:"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("default config missing %q:\n%s", want, text)
 		}

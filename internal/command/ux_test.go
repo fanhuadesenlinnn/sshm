@@ -65,6 +65,14 @@ func TestSplitIndexedHostsPreservesDisplayedIDs(t *testing.T) {
 	}
 }
 
+func TestListViewFlagsAreMutuallyExclusive(t *testing.T) {
+	app := &App{}
+	err := app.cmdList([]string{"--compact", "--wide"})
+	if err == nil || !strings.Contains(err.Error(), "不能同时使用") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestUnknownOptionSuggestsClosestCommand(t *testing.T) {
 	err := unknownOptionError("--lis")
 	if err == nil || !strings.Contains(err.Error(), "--list") {
@@ -130,13 +138,19 @@ func TestCompletionCandidatesIncludeCommandsAndHosts(t *testing.T) {
 	if err := store.Add(host); err != nil {
 		t.Fatal(err)
 	}
+	if err := store.Repository().Update(func(doc *config.Document) error {
+		doc.Tags.Ensure("production")
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
 	app := &App{Store: store}
 	candidates, err := app.completionCandidates()
 	if err != nil {
 		t.Fatal(err)
 	}
 	joined := strings.Join(candidates, " ")
-	if !strings.Contains(joined, "my-server") || !strings.Contains(joined, "pick") {
+	if !strings.Contains(joined, "my-server") || !strings.Contains(joined, "pick") || !strings.Contains(joined, "production") {
 		t.Fatalf("unexpected candidates: %v", candidates)
 	}
 }

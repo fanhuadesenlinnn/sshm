@@ -2,8 +2,8 @@ package ui
 
 import (
 	"fmt"
+	"io"
 	"os"
-	"sort"
 	"strings"
 
 	"github.com/fanhuadesenlinnn/sshm/v4/internal/config"
@@ -76,6 +76,9 @@ func padToWidth(s string, width int) string {
 }
 
 func truncateToWidth(s string, maxWidth int) string {
+	if displayWidth(s) <= maxWidth {
+		return s
+	}
 	if maxWidth <= 1 {
 		return ""
 	}
@@ -99,75 +102,162 @@ type HostTableOptions struct {
 	Indices []int
 	Compact bool
 	Wide    bool
+	Width   int
 }
 
 func RenderHostsTableWithOptions(hosts []config.Host, options HostTableOptions) {
+	renderHostsTableTo(os.Stdout, hosts, options)
+}
+
+type hostTableColumn struct {
+	header     string
+	values     []string
+	width      int
+	minWidth   int
+	optional   bool
+	shrinkRank int
+}
+
+func renderHostsTableTo(w io.Writer, hosts []config.Host, options HostTableOptions) {
 	if len(hosts) == 0 {
-		fmt.Println("  (暂无主机)")
+		fmt.Fprintln(w, "  (暂无主机)")
 		return
 	}
 
-	colID := 4
-	colAlias := 18
-	colAddr := 24
-	colPort := 6
-	colTags := 18
-	colAuth := 10
-	colNote := 18
-	width := terminalWidth()
+	ids := make([]string, len(hosts))
+	aliases := make([]string, len(hosts))
+	targets := make([]string, len(hosts))
+	tags := make([]string, len(hosts))
+	notes := make([]string, len(hosts))
+	auth := make([]string, len(hosts))
+	trust := make([]string, len(hosts))
+	jumps := make([]string, len(hosts))
+	for i, host := range hosts {
+		ids[i] = displayHostID(i, options.Indices)
+		aliases[i] = displayAlias(host)
+		targets[i] = displayConnectionTarget(host)
+		tags[i] = config.TagsToString(host.Tags)
+		notes[i] = host.Note
+		auth[i] = host.Auth
+		trust[i] = displayHostTrust(host)
+		jumps[i] = host.JumpHost
+	}
+
+	columns := []hostTableColumn{
+		newHostTableColumn("ID", ids, 2, 6, false, 0),
+		newHostTableColumn("主机", aliases, 6, 28, false, 2),
+		newHostTableColumn("连接目标", targets, 12, 48, false, 1),
+	}
 	if options.Wide {
-		colAlias, colAddr, colTags, colNote = 28, 40, 28, 40
-	} else if width > 100 {
-		extra := width - 100
-		colAddr += extra / 2
-		colNote += extra - extra/2
-	}
-	compact := options.Compact || width < 90
-
-	fmt.Println()
-	if compact {
-		fmt.Printf("  %s %s %s %s\n",
-			padToWidth("ID", colID),
-			padToWidth("别名", colAlias),
-			padToWidth("用户@主机", colAddr),
-			padToWidth("标签", colTags))
-		sepWidth := 2 + colID + 1 + colAlias + 1 + colAddr + 1 + colTags
-		fmt.Println("  " + strings.Repeat("-", sepWidth-2))
-		for i, h := range hosts {
-			fmt.Printf("  %s %s %s %s\n",
-				padToWidth(displayHostID(i, options.Indices), colID),
-				padToWidth(displayAlias(h), colAlias),
-				padToWidth(h.User+"@"+h.Host, colAddr),
-				padToWidth(config.TagsToString(h.Tags), colTags))
+		columns = append(columns,
+			newHostTableColumn("认证", auth, 4, 12, false, 6),
+			newHostTableColumn("信任", trust, 6, 14, false, 5),
+			newHostTableColumn("跳板机", jumps, 6, 24, false, 4),
+			newHostTableColumn("标签", tags, 6, 28, false, 3),
+			newHostTableColumn("备注", notes, 8, 40, false, 2),
+		)
+	} else if !options.Compact {
+		if hasNonEmpty(tags) {
+			columns = append(columns, newHostTableColumn("标签", tags, 6, 24, true, 3))
 		}
-		fmt.Println()
-		return
+		if hasNonEmpty(notes) {
+			columns = append(columns, newHostTableColumn("备注", notes, 8, 36, true, 2))
+		}
 	}
 
-	fmt.Printf("  %s %s %s %s %s %s %s\n",
-		padToWidth("ID", colID),
-		padToWidth("别名", colAlias),
-		padToWidth("用户@主机", colAddr),
-		padToWidth("端口", colPort),
-		padToWidth("标签", colTags),
-		padToWidth("认证", colAuth),
-		padToWidth("备注", colNote))
-
-	sepWidth := 2 + colID + 1 + colAlias + 1 + colAddr + 1 + colPort + 1 + colTags + 1 + colAuth + 1 + colNote
-	fmt.Println("  " + strings.Repeat("-", sepWidth-2))
-
-	for i, h := range hosts {
-		port := fmt.Sprintf("%d", h.Port)
-		fmt.Printf("  %s %s %s %s %s %s %s\n",
-			padToWidth(displayHostID(i, options.Indices), colID),
-			padToWidth(displayAlias(h), colAlias),
-			padToWidth(h.User+"@"+h.Host, colAddr),
-			padToWidth(port, colPort),
-			padToWidth(config.TagsToString(h.Tags), colTags),
-			padToWidth(h.Auth, colAuth),
-			padToWidth(h.Note, colNote))
+	width := options.Width
+	if width <= 0 {
+		width = terminalWidth()
 	}
-	fmt.Println()
+	columns = fitHostTableColumns(columns, width, options.Wide)
+
+	fmt.Fprintln(w)
+	if !options.Compact {
+		renderHostTableRow(w, columns, -1)
+		fmt.Fprintln(w, "  "+strings.Repeat("-", hostTableContentWidth(columns)))
+	}
+	for row := range hosts {
+		renderHostTableRow(w, columns, row)
+	}
+	fmt.Fprintln(w)
+}
+
+func newHostTableColumn(header string, values []string, minWidth, maxWidth int, optional bool, shrinkRank int) hostTableColumn {
+	width := displayWidth(header)
+	for _, value := range values {
+		width = max(width, displayWidth(value))
+	}
+	width = min(width, maxWidth)
+	return hostTableColumn{
+		header: header, values: values, width: width,
+		minWidth: min(minWidth, width),
+		optional: optional, shrinkRank: shrinkRank,
+	}
+}
+
+func fitHostTableColumns(columns []hostTableColumn, terminalWidth int, wide bool) []hostTableColumn {
+	for !wide && hostTableContentWidth(columns)+2 > terminalWidth {
+		dropped := false
+		for i := len(columns) - 1; i >= 0; i-- {
+			if columns[i].optional {
+				columns = append(columns[:i], columns[i+1:]...)
+				dropped = true
+				break
+			}
+		}
+		if !dropped {
+			break
+		}
+	}
+	for hostTableContentWidth(columns)+2 > terminalWidth {
+		best := -1
+		for i := range columns {
+			if columns[i].width <= columns[i].minWidth {
+				continue
+			}
+			if best == -1 || columns[i].shrinkRank < columns[best].shrinkRank {
+				best = i
+			}
+		}
+		if best == -1 {
+			break
+		}
+		columns[best].width--
+	}
+	return columns
+}
+
+func renderHostTableRow(w io.Writer, columns []hostTableColumn, row int) {
+	fmt.Fprint(w, "  ")
+	for i, column := range columns {
+		text := column.header
+		if row >= 0 {
+			text = column.values[row]
+		}
+		if i == len(columns)-1 {
+			fmt.Fprint(w, truncateToWidth(text, column.width))
+		} else {
+			fmt.Fprint(w, padToWidth(text, column.width), " ")
+		}
+	}
+	fmt.Fprintln(w)
+}
+
+func hostTableContentWidth(columns []hostTableColumn) int {
+	width := max(0, len(columns)-1)
+	for _, column := range columns {
+		width += column.width
+	}
+	return width
+}
+
+func hasNonEmpty(values []string) bool {
+	for _, value := range values {
+		if value != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func displayAlias(h config.Host) string {
@@ -182,6 +272,28 @@ func displayHostID(position int, indices []int) string {
 		return fmt.Sprintf("%d", indices[position]+1)
 	}
 	return fmt.Sprintf("%d", position+1)
+}
+
+func displayConnectionTarget(h config.Host) string {
+	host := h.Host
+	if strings.Contains(host, ":") && !strings.HasPrefix(host, "[") {
+		host = "[" + host + "]"
+	}
+	target := h.User + "@" + host
+	if h.Port != 0 && h.Port != 22 {
+		target += fmt.Sprintf(":%d", h.Port)
+	}
+	return target
+}
+
+func displayHostTrust(h config.Host) string {
+	if h.ResolvedHostKeyPolicy != "" {
+		return h.ResolvedHostKeyPolicy
+	}
+	if h.HostKeyPolicy != "" {
+		return h.HostKeyPolicy
+	}
+	return config.HostKeyPolicyStrict
 }
 
 func terminalWidth() int {
@@ -251,29 +363,48 @@ func RenderSearchResults(hosts []config.Host, indices []int, keyword string) {
 	RenderHostsTableWithOptions(hosts, HostTableOptions{Indices: indices})
 }
 
-func RenderTagList(tags map[string][]config.Host) {
+func RenderTagsTable(tags []config.Tag, hosts []config.Host) {
 	if len(tags) == 0 {
 		fmt.Println("  (暂无标签)")
+		fmt.Println()
 		return
 	}
-	fmt.Println()
-	fmt.Println(Header("标签列表"))
-	fmt.Println()
-
-	names := make([]string, 0, len(tags))
-	for tag := range tags {
-		names = append(names, tag)
-	}
-	sort.Strings(names)
-	for _, tag := range names {
-		hosts := tags[tag]
-		sort.SliceStable(hosts, func(i, j int) bool {
-			return hosts[i].Alias < hosts[j].Alias
-		})
-		fmt.Printf("  %s%s%s (%d 台)\n", Bold, tag, Reset, len(hosts))
-		for _, h := range hosts {
-			fmt.Printf("    - %s (%s@%s:%d)\n", h.Alias, h.User, h.Host, h.Port)
+	names := make([]string, len(tags))
+	counts := make([]string, len(tags))
+	notes := make([]string, len(tags))
+	examples := make([]string, len(tags))
+	for i, tag := range tags {
+		names[i] = tag.Name
+		notes[i] = tag.Note
+		var aliases []string
+		for _, host := range hosts {
+			if host.HasTag(tag.Name) {
+				aliases = append(aliases, host.Alias)
+			}
 		}
-		fmt.Println()
+		counts[i] = fmt.Sprintf("%d", len(aliases))
+		if len(aliases) > 3 {
+			examples[i] = strings.Join(aliases[:3], ", ") + "…"
+		} else {
+			examples[i] = strings.Join(aliases, ", ")
+		}
 	}
+	columns := []hostTableColumn{
+		newHostTableColumn("标签", names, 6, 28, false, 3),
+		newHostTableColumn("主机数", counts, 6, 8, false, 0),
+	}
+	if hasNonEmpty(notes) {
+		columns = append(columns, newHostTableColumn("备注", notes, 8, 36, true, 2))
+	}
+	if hasNonEmpty(examples) {
+		columns = append(columns, newHostTableColumn("示例主机", examples, 8, 48, true, 1))
+	}
+	columns = fitHostTableColumns(columns, terminalWidth(), false)
+	fmt.Println()
+	renderHostTableRow(os.Stdout, columns, -1)
+	fmt.Println("  " + strings.Repeat("-", hostTableContentWidth(columns)))
+	for row := range tags {
+		renderHostTableRow(os.Stdout, columns, row)
+	}
+	fmt.Println()
 }

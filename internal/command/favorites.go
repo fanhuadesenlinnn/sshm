@@ -69,7 +69,7 @@ func (app *App) cmdRecent(args []string) error {
 		return nil
 	}
 	hosts, indices := splitIndexedHosts(rows)
-	ui.PrintHeader("收藏与最近连接")
+	ui.PrintHeader(fmt.Sprintf("收藏与最近连接 · %d 台", len(hosts)))
 	ui.RenderHostsTableWithOptions(hosts, ui.HostTableOptions{Indices: indices})
 	return nil
 }
