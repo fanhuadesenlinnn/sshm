@@ -5,8 +5,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/fanhuadesenlinnn/sshm/v4/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v4/internal/ui"
+	"github.com/fanhuadesenlinnn/sshm/v5/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v5/internal/ui"
 )
 
 func (app *App) cmdTag(args []string) error {

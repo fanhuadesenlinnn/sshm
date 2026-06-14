@@ -11,22 +11,25 @@ import (
 	"sync"
 	"time"
 
-	"github.com/fanhuadesenlinnn/sshm/v4/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v4/internal/operation"
-	"github.com/fanhuadesenlinnn/sshm/v4/internal/secret"
-	"github.com/fanhuadesenlinnn/sshm/v4/internal/sshx"
-	"github.com/fanhuadesenlinnn/sshm/v4/internal/ui"
+	"github.com/fanhuadesenlinnn/sshm/v5/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v5/internal/operation"
+	"github.com/fanhuadesenlinnn/sshm/v5/internal/ops"
+	"github.com/fanhuadesenlinnn/sshm/v5/internal/secret"
+	"github.com/fanhuadesenlinnn/sshm/v5/internal/sshx"
+	"github.com/fanhuadesenlinnn/sshm/v5/internal/ui"
 	"github.com/pkg/sftp"
 )
 
 type transferOptions struct {
-	direction  string
-	localPath  string
-	remotePath string
-	targets    []string
-	overwrite  bool
-	yes        bool
-	quiet      bool
+	direction      string
+	localPath      string
+	remotePath     string
+	targets        []string
+	overwrite      bool
+	yes            bool
+	quiet          bool
+	method         string
+	connectTimeout time.Duration
 }
 
 func (app *App) cmdPush(args []string) error {
@@ -52,7 +55,7 @@ func parseTransferOptions(args []string, direction string) (transferOptions, err
 		}
 		return transferOptions{}, fmt.Errorf("用法: sshm pull <远程路径> <本地目录> <目标...> [--overwrite] [--yes] [--quiet]")
 	}
-	options := transferOptions{direction: direction}
+	options := transferOptions{direction: direction, method: "auto"}
 	if direction == "push" {
 		options.localPath, options.remotePath = args[0], args[1]
 	} else {
@@ -95,7 +98,7 @@ func (app *App) cmdTransfer(options transferOptions) error {
 		}
 	}
 
-	fs := app.tryGetSecretStore()
+	executor := app.operationExecutor()
 	results := make([]transferResult, len(hosts))
 	jobs := make(chan int)
 	var wg sync.WaitGroup
@@ -104,11 +107,22 @@ func (app *App) cmdTransfer(options transferOptions) error {
 		go func() {
 			defer wg.Done()
 			for i := range jobs {
-				start := time.Now()
 				ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
-				method, destination, err := transferOne(ctx, hosts[i], fs, options)
+				transferOptions := ops.TransferOptions{
+					Direction: options.direction, Src: transferSource(options), Dest: transferDestination(options),
+					Method: options.method, Overwrite: options.overwrite,
+				}
+				var opResult ops.Result
+				if options.direction == "push" {
+					opResult = executor.Push(ctx, hosts[i], transferOptions)
+				} else {
+					opResult = executor.Pull(ctx, hosts[i], transferOptions)
+				}
 				cancel()
-				results[i] = transferResult{host: hosts[i], method: method, destination: destination, err: err, duration: time.Since(start)}
+				results[i] = transferResult{
+					host: hosts[i], method: opResult.Method, destination: opResult.Destination,
+					err: opResult.Err, duration: opResult.Duration,
+				}
 			}
 		}()
 	}
@@ -183,7 +197,13 @@ func transferDestination(options transferOptions) string {
 }
 
 func transferOne(ctx context.Context, host config.Host, store *secret.FileStore, options transferOptions) (string, string, error) {
-	client, _, err := sshx.DialContext(ctx, host, store)
+	dialCtx := ctx
+	cancelDial := func() {}
+	if options.connectTimeout > 0 {
+		dialCtx, cancelDial = context.WithTimeout(ctx, options.connectTimeout)
+	}
+	client, _, err := sshx.DialContextWithTimeout(dialCtx, host, store, options.connectTimeout)
+	cancelDial()
 	if err != nil {
 		return "sftp", "", err
 	}
@@ -203,8 +223,19 @@ func transferOne(ctx context.Context, host config.Host, store *secret.FileStore,
 	}
 	defer sftpClient.Close()
 
-	if destination, used, err := tryRsyncTransfer(ctx, client, sftpClient, host, store, options); used {
-		return "rsync", destination, err
+	if options.method == "" {
+		options.method = "auto"
+	}
+	if options.method != "auto" && options.method != "sftp" && options.method != "rsync" {
+		return options.method, "", fmt.Errorf("无效传输方式: %s", options.method)
+	}
+	if options.method != "sftp" {
+		if destination, used, err := tryRsyncTransfer(ctx, client, sftpClient, host, store, options); used {
+			return "rsync", destination, err
+		}
+		if options.method == "rsync" {
+			return "rsync", "", fmt.Errorf("显式 rsync 传输不可用或执行失败")
+		}
 	}
 
 	if options.direction == "push" {

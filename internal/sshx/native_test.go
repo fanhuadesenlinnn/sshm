@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/fanhuadesenlinnn/sshm/v4/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v4/internal/secret"
+	"github.com/fanhuadesenlinnn/sshm/v5/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v5/internal/secret"
 	"golang.org/x/crypto/ssh"
 )
 

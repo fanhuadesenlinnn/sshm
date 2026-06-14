@@ -9,8 +9,8 @@ import (
 	"os/signal"
 	"sync"
 
-	"github.com/fanhuadesenlinnn/sshm/v4/internal/sshx"
-	"github.com/fanhuadesenlinnn/sshm/v4/internal/ui"
+	"github.com/fanhuadesenlinnn/sshm/v5/internal/sshx"
+	"github.com/fanhuadesenlinnn/sshm/v5/internal/ui"
 	"golang.org/x/crypto/ssh"
 )
 

@@ -6,11 +6,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fanhuadesenlinnn/sshm/v4/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v4/internal/operation"
-	"github.com/fanhuadesenlinnn/sshm/v4/internal/secret"
-	"github.com/fanhuadesenlinnn/sshm/v4/internal/sshx"
-	"github.com/fanhuadesenlinnn/sshm/v4/internal/ui"
+	"github.com/fanhuadesenlinnn/sshm/v5/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v5/internal/operation"
+	"github.com/fanhuadesenlinnn/sshm/v5/internal/secret"
+	"github.com/fanhuadesenlinnn/sshm/v5/internal/sshx"
+	"github.com/fanhuadesenlinnn/sshm/v5/internal/ui"
 )
 
 func (app *App) interactiveMode() error {
@@ -57,6 +57,8 @@ func (app *App) interactiveMode() error {
 			err = app.cmdSearch(args)
 		case "tag", "tags":
 			err = app.cmdTag(args)
+		case "deploy":
+			err = app.cmdDeploy(args)
 		case "recent", "r":
 			err = app.cmdRecent(args)
 		case "pin":
@@ -122,6 +124,7 @@ func (app *App) printWorkbench() {
 	fmt.Println("  r/recent      收藏与最近使用")
 	fmt.Println("  a/add         添加主机")
 	fmt.Println("  host/key/tag  主机、密钥与标签管理")
+	fmt.Println("  deploy        批量部署工作流")
 	fmt.Println("  h/help        完整帮助")
 	fmt.Println("  lock / q      锁定密码库 / 退出")
 	fmt.Println()

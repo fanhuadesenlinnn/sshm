@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/fanhuadesenlinnn/sshm/v4/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v4/internal/secret"
-	"github.com/fanhuadesenlinnn/sshm/v4/internal/ui"
+	"github.com/fanhuadesenlinnn/sshm/v5/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v5/internal/secret"
+	"github.com/fanhuadesenlinnn/sshm/v5/internal/ui"
 )
 
 func (app *App) cmdEdit(args []string) error {

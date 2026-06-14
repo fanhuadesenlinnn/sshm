@@ -9,11 +9,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/fanhuadesenlinnn/sshm/v4/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v4/internal/operation"
-	"github.com/fanhuadesenlinnn/sshm/v4/internal/secret"
-	"github.com/fanhuadesenlinnn/sshm/v4/internal/sshx"
-	"github.com/fanhuadesenlinnn/sshm/v4/internal/ui"
+	"github.com/fanhuadesenlinnn/sshm/v5/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v5/internal/operation"
+	"github.com/fanhuadesenlinnn/sshm/v5/internal/ops"
+	"github.com/fanhuadesenlinnn/sshm/v5/internal/secret"
+	"github.com/fanhuadesenlinnn/sshm/v5/internal/ui"
 )
 
 func (app *App) cmdExec(args []string) error {
@@ -39,16 +39,15 @@ func (app *App) cmdExec(args []string) error {
 		}
 	}
 
-	fs := app.tryGetSecretStore()
-	start := time.Now()
-	output, err := sshx.ExecCommand(*h, fs, command)
-	result := newOperationResult(*h, output, err, operation.StageExecute,
-		fmt.Sprintf("sshm exec --yes %s %q", h.Alias, command), time.Since(start))
+	opResult := app.operationExecutor().Exec(context.Background(), *h, ops.ExecOptions{Command: command})
+	err = opResult.Err
+	result := newOperationResult(*h, opResult.Output, err, operation.StageExecute,
+		fmt.Sprintf("sshm exec --yes %s %q", h.Alias, command), opResult.Duration)
 	if err != nil {
 		printOperationFailure(result)
 	}
 	if !quiet {
-		fmt.Print(output)
+		fmt.Print(opResult.Output)
 	} else {
 		if logErr := writeOperationLog("exec", command, []operation.Result{result}); logErr != nil {
 			return logErr
@@ -127,7 +126,7 @@ func (app *App) executeBatch(hosts []config.Host, command string, yes, quiet boo
 		}
 	}
 
-	fs := app.tryGetSecretStore()
+	executor := app.operationExecutor()
 	results := make([]batchExecResult, len(hosts))
 	progress := make(chan int, len(hosts))
 	jobs := make(chan int)
@@ -149,11 +148,10 @@ func (app *App) executeBatch(hosts []config.Host, command string, yes, quiet boo
 		go func() {
 			defer wg.Done()
 			for i := range jobs {
-				start := time.Now()
 				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-				output, err := sshx.ExecCommandContext(ctx, hosts[i], fs, command)
+				opResult := executor.Exec(ctx, hosts[i], ops.ExecOptions{Command: command})
 				cancel()
-				results[i] = batchExecResult{host: hosts[i], output: output, err: err, duration: time.Since(start)}
+				results[i] = batchExecResult{host: hosts[i], output: opResult.Output, err: opResult.Err, duration: opResult.Duration}
 				progress <- i
 			}
 		}()

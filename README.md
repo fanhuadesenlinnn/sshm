@@ -1,15 +1,15 @@
 # sshm
 
-`sshm` 是面向个人使用者的本地优先 SSH 工作台，适合管理约 5～100 台主机。
+`sshm` 是面向个人使用者的本地优先 SSH 主机工作台与轻量部署工作流工具，适合管理约 5～100 台主机。
 
-它提供主机与标签管理、收藏与最近使用、加密凭据、托管密钥、批量命令、安全文件传输、跳板机和本地端口转发。
+它提供主机与标签管理、加密凭据、托管密钥、批量命令、安全文件传输、部署 Profile、跳板机和本地端口转发。
 
 ## 安装
 
 要求 Go 1.25 或更高版本。
 
 ```bash
-go install github.com/fanhuadesenlinnn/sshm/v4@latest
+go install github.com/fanhuadesenlinnn/sshm/v5@latest
 ```
 
 也可以从源码构建：
@@ -45,9 +45,9 @@ sshm pull /var/log/app.log ./downloads prod
 sshm
 ```
 
-## 单文件配置
+## 核心状态与 Deploy 配置
 
-所有配置、主机信任、加密密码和加密私钥均保存在：
+所有 sshm 拥有的可变状态、主机信任、加密密码和加密私钥均保存在：
 
 ```text
 ~/.config/sshm/sshm.yaml
@@ -66,6 +66,7 @@ sshm
 # tags.items 可填写标签备注；主机引用的新标签会自动登记
 # auth: auto | key | password；identity 填托管密钥名
 # 高级可选: host_key_policy, jump_host
+# deploy 工作流使用独立 deploy.yaml、deploy.d/*.yaml 或项目 sshm.deploy.yaml
 # host_trust 与 vault 由 sshm 管理，请勿手动修改
 version: 1
 defaults:
@@ -79,7 +80,19 @@ host_trust:
   entries: []
 ```
 
-v4 不读取或迁移旧版 `hosts.yaml`、`keys.yaml`、`secrets.yaml` 与 `.bak`；这些文件会被忽略。
+v5 不读取或迁移旧版 `hosts.yaml`、`keys.yaml`、`secrets.yaml` 与 `.bak`；这些文件会被忽略。
+
+Deploy 工作流使用独立 YAML 文件，只描述目标、变量、步骤和执行策略，不保存 SSH 用户、端口、密码、私钥或主机信任。
+
+未使用 `-f` 时依次加载：
+
+```text
+~/.config/sshm/deploy.yaml
+~/.config/sshm/deploy.d/*.yaml
+./sshm.deploy.yaml
+```
+
+显式 `-f` 可以重复指定，此时只加载指定文件。Profile 重名会直接报错。
 
 完整编辑配置：
 
@@ -192,6 +205,52 @@ sshm exec-all [--yes] [--quiet] <命令>
 ```bash
 sshm logs
 sshm logs clean
+```
+
+### Deploy 工作流
+
+```bash
+sshm deploy init
+sshm deploy validate
+sshm deploy list
+sshm deploy show install
+sshm deploy plan install
+sshm deploy run install --yes
+
+sshm deploy exec --tag prod --cmd "hostname && uptime" --yes
+sshm deploy copy --tag prod --src ./dist --dest /opt/app --overwrite --yes
+```
+
+Profile 只支持 `copy` 和 `exec` 步骤。同一主机内步骤顺序执行，不同主机按 `max_parallel` 并发执行；一台主机失败不会停止其他主机。
+
+- `hidden`：默认模式，并发执行并汇总逐主机、逐步骤结果。
+- `visible`：实时展示远程输出并强制 `max_parallel: 1`。
+- `exec` 不自动重试；`copy` 可显式对 `network` 或 `transfer` 阶段重试。
+- `method: auto` 可从 rsync 回退 SFTP；显式 `rsync` 不静默回退。
+- 多个标签使用 AND 匹配；主机与标签结果取并集；`--all` 不与其他目标混用。
+- 相对 `src` 以所属 deploy 文件目录为基准。
+- `--output json` 保证 stdout 只包含 JSON。
+- Ctrl+C 会取消执行并保留已经产生的结果与日志。
+- deploy 文件属于可信输入；`${name}` 会直接替换到命令文本中，不进行 Shell 转义。
+
+精简配置示例：
+
+```yaml
+# 只描述任务；主机与凭据继续由 sshm.yaml 管理
+version: 1
+vars:
+  app_dir: /opt/app
+profiles:
+  - name: install
+    targets:
+      tags: [prod]
+    steps:
+      - type: copy
+        src: ./dist
+        dest: ${app_dir}
+        overwrite: true
+      - type: exec
+        command: bash ${app_dir}/install.sh
 ```
 
 ### 文件传输

@@ -7,9 +7,9 @@ import (
 	"runtime/debug"
 	"strings"
 
-	"github.com/fanhuadesenlinnn/sshm/v4/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v4/internal/secret"
-	"github.com/fanhuadesenlinnn/sshm/v4/internal/ui"
+	"github.com/fanhuadesenlinnn/sshm/v5/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v5/internal/secret"
+	"github.com/fanhuadesenlinnn/sshm/v5/internal/ui"
 )
 
 var Version = "dev"
@@ -92,6 +92,8 @@ func Run(args []string) error {
 		return app.cmdSearch(args[1:])
 	case "tag", "tags":
 		return app.cmdTag(args[1:])
+	case "deploy":
+		return app.cmdDeploy(args[1:])
 	case "recent":
 		return app.cmdRecent(args[1:])
 	case "pin":
@@ -224,6 +226,7 @@ func (app *App) printHelp() {
 	fmt.Println("  show <别名|ID>                显示主机详情")
 	fmt.Println("  search <关键词...>            搜索主机")
 	fmt.Println("  tag                           进入标签管理中心")
+	fmt.Println("  deploy                        批量部署工作流")
 	fmt.Println("  recent [数量]                 显示收藏和最近连接")
 	fmt.Println("  pin/unpin <别名|ID>           收藏或取消收藏")
 	fmt.Println("  completion <bash|zsh|fish>     生成 Shell 自动补全脚本")
@@ -277,6 +280,7 @@ func (app *App) printInteractiveHelp() {
 	fmt.Printf("    %-14s %-24s %s\n", "exec, x", "远程执行命令", "x <别名|ID> <命令>")
 	fmt.Printf("    %-14s %-24s %s\n", "exec-tag, xt", "按标签执行命令", "xt <标签> <命令>")
 	fmt.Printf("    %-14s %-24s %s\n", "exec-all, xa", "所有主机执行", "xa <命令>")
+	fmt.Printf("    %-14s %-24s %s\n", "deploy", "批量部署工作流", "deploy <子命令>")
 	fmt.Println()
 	fmt.Println("  认证与密钥")
 	fmt.Printf("    %-14s %-24s %s\n", "key, k", "进入托管密钥中心", "")

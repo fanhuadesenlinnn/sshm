@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fanhuadesenlinnn/sshm/v4/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v4/internal/safefile"
+	"github.com/fanhuadesenlinnn/sshm/v5/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v5/internal/safefile"
 )
 
 type FailureStage string
@@ -23,6 +23,10 @@ const (
 	StageSession  FailureStage = "session"
 	StageExecute  FailureStage = "execute"
 	StageTransfer FailureStage = "transfer"
+	StageTimeout  FailureStage = "timeout"
+	StageConfig   FailureStage = "config"
+	StageVault    FailureStage = "vault"
+	StageUnknown  FailureStage = "unknown"
 )
 
 type StageError struct {
@@ -56,10 +60,14 @@ func StageOf(err error, fallback FailureStage) FailureStage {
 		return StageJump
 	case strings.Contains(message, "主机密钥"), strings.Contains(message, "无法验证主机"), strings.Contains(message, "host key"), strings.Contains(message, "knownhosts"):
 		return StageTrust
+	case strings.Contains(message, "vault"), strings.Contains(message, "密码库"), strings.Contains(message, "需要先解锁"):
+		return StageVault
 	case strings.Contains(message, "认证"), strings.Contains(message, "凭据"), strings.Contains(message, "authenticate"), strings.Contains(message, "permission denied"):
 		return StageAuth
 	case strings.Contains(message, "网络连接"), strings.Contains(message, "connection refused"), strings.Contains(message, "i/o timeout"), strings.Contains(message, "no route to host"):
 		return StageNetwork
+	case strings.Contains(message, "deadline exceeded"), strings.Contains(message, "context canceled"), strings.Contains(message, "超时或取消"):
+		return StageTimeout
 	case strings.Contains(message, "创建会话"), strings.Contains(message, "启动 shell"), strings.Contains(message, "pty"):
 		return StageSession
 	case strings.Contains(message, "sftp"), strings.Contains(message, "rsync"), strings.Contains(message, "远程目标"), strings.Contains(message, "本地目标"):
@@ -85,6 +93,12 @@ func Suggestion(stage FailureStage) string {
 		return "检查远端 SSH 会话与 Shell 配置"
 	case StageTransfer:
 		return "检查源、目标、权限和 --overwrite 设置"
+	case StageTimeout:
+		return "检查超时设置、网络状态和远端命令耗时"
+	case StageConfig:
+		return "检查 deploy 配置并先运行 sshm deploy validate"
+	case StageVault:
+		return "解锁 sshm 密码库并检查凭据"
 	default:
 		return "检查远程命令、权限和连接状态"
 	}

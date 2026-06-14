@@ -6,7 +6,7 @@ import (
 	"os"
 	"sort"
 
-	"github.com/fanhuadesenlinnn/sshm/v4/internal/safefile"
+	"github.com/fanhuadesenlinnn/sshm/v5/internal/safefile"
 	"golang.org/x/crypto/ssh"
 	"gopkg.in/yaml.v3"
 )
@@ -311,6 +311,7 @@ func encodeDocument(doc *Document) ([]byte, error) {
 # tags.items 可填写标签备注；主机引用的新标签会自动登记
 # auth: auto | key | password；identity 填托管密钥名
 # 高级可选: host_key_policy, jump_host
+# deploy 工作流使用独立 deploy.yaml、deploy.d/*.yaml 或项目 sshm.deploy.yaml
 # host_trust 与 vault 由 sshm 管理，请勿手动修改
 `
 	return append([]byte(header), body...), nil

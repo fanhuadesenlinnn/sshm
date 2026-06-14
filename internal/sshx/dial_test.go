@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fanhuadesenlinnn/sshm/v4/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v4/internal/operation"
-	"github.com/fanhuadesenlinnn/sshm/v4/internal/secret"
+	"github.com/fanhuadesenlinnn/sshm/v5/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v5/internal/operation"
+	"github.com/fanhuadesenlinnn/sshm/v5/internal/secret"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -63,6 +63,25 @@ func TestDialContextUsesStoredTrustAndPassword(t *testing.T) {
 	doc, err := config.NewRepositoryWithPath(path).Load()
 	if err != nil || len(doc.HostTrust.Entries) != 1 {
 		t.Fatalf("host trust = %+v, %v", doc.HostTrust.Entries, err)
+	}
+}
+
+func TestClientConfigUsesExplicitConnectionTimeout(t *testing.T) {
+	host := config.DefaultHost()
+	host.Alias, host.User, host.Host = "server", "test", "127.0.0.1"
+	host.PasswordRef = host.ID
+	path := filepath.Join(t.TempDir(), "sshm.yaml")
+	vault := secret.NewFileStore(path, "master")
+	if err := vault.SetPassword(host.ID, "secret"); err != nil {
+		t.Fatal(err)
+	}
+	timeout := 37 * time.Second
+	sshConfig, _, err := clientConfigWithTimeout(host, vault, timeout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sshConfig.Timeout != timeout {
+		t.Fatalf("timeout = %s", sshConfig.Timeout)
 	}
 }
 

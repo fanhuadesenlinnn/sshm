@@ -4,11 +4,13 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/fanhuadesenlinnn/sshm/v5/internal/deploy"
 )
 
 var completionCommands = []string{
 	"add", "add-batch", "auth", "completion", "config-edit", "connect", "delete", "doctor", "edit", "exec", "exec-all",
-	"exec-tag", "export-ssh-config", "forget-pass", "push", "pull", "forward", "tag",
+	"exec-tag", "export-ssh-config", "forget-pass", "push", "pull", "forward", "tag", "deploy",
 	"help", "host", "import-ssh-config", "key", "list", "lock", "logs", "config", "passwd", "pin",
 	"pick", "ping", "recent", "search", "show", "show-pubkey", "unpin",
 }
@@ -57,6 +59,13 @@ func (app *App) completionCandidates() ([]string, error) {
 	}
 	for _, tag := range doc.Tags.Items {
 		add(tag.Name)
+	}
+	if paths, err := deploy.Discover(nil, ""); err == nil {
+		if catalog, err := deploy.Load(paths); err == nil {
+			for _, profile := range catalog.Profiles {
+				add(profile.Name)
+			}
+		}
 	}
 	sort.Strings(candidates)
 	return candidates, nil

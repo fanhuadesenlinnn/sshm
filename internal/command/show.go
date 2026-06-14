@@ -1,7 +1,7 @@
 package command
 
 import (
-	"github.com/fanhuadesenlinnn/sshm/v4/internal/ui"
+	"github.com/fanhuadesenlinnn/sshm/v5/internal/ui"
 )
 
 func (app *App) cmdShow(args []string) error {

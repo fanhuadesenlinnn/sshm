@@ -1,26 +1,37 @@
 package sshx
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"strings"
+	"sync"
 	"time"
 
-	"github.com/fanhuadesenlinnn/sshm/v4/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v4/internal/operation"
-	"github.com/fanhuadesenlinnn/sshm/v4/internal/secret"
+	"github.com/fanhuadesenlinnn/sshm/v5/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v5/internal/operation"
+	"github.com/fanhuadesenlinnn/sshm/v5/internal/secret"
 	"golang.org/x/crypto/ssh"
 )
 
 // DialContext establishes an authenticated SSH client using sshm's trust policy.
 func DialContext(ctx context.Context, h config.Host, store *secret.FileStore) (*ssh.Client, string, error) {
-	targetConfig, label, err := clientConfig(h, store)
-	if err != nil {
-		return nil, "", operation.Wrap(operation.StageAuth, err)
+	return DialContextWithTimeout(ctx, h, store, 10*time.Second)
+}
+
+// DialContextWithTimeout establishes an SSH client with an explicit connection timeout.
+func DialContextWithTimeout(ctx context.Context, h config.Host, store *secret.FileStore, timeout time.Duration) (*ssh.Client, string, error) {
+	if timeout <= 0 {
+		timeout = 10 * time.Second
 	}
-	return dialConfiguredContext(ctx, h, store, targetConfig, label)
+	targetConfig, label, err := clientConfigWithTimeout(h, store, timeout)
+	if err != nil {
+		return nil, "", operation.Wrap(operation.StageOf(err, operation.StageAuth), err)
+	}
+	return dialConfiguredContext(ctx, h, store, targetConfig, label, timeout)
 }
 
 // DialPasswordContext uses a temporary password for the target without saving it.
@@ -33,7 +44,7 @@ func DialPasswordContext(ctx context.Context, h config.Host, store *secret.FileS
 		User: h.User, Auth: []ssh.AuthMethod{ssh.Password(password)},
 		HostKeyCallback: callback, Timeout: 10 * time.Second,
 	}
-	return dialConfiguredContext(ctx, h, store, targetConfig, "临时密码")
+	return dialConfiguredContext(ctx, h, store, targetConfig, "临时密码", 10*time.Second)
 }
 
 func ConnectTemporaryPassword(h config.Host, store *secret.FileStore, password string) error {
@@ -45,7 +56,7 @@ func ConnectTemporaryPassword(h config.Host, store *secret.FileStore, password s
 	return interactiveSession(client, label)
 }
 
-func dialConfiguredContext(ctx context.Context, h config.Host, store *secret.FileStore, targetConfig *ssh.ClientConfig, label string) (*ssh.Client, string, error) {
+func dialConfiguredContext(ctx context.Context, h config.Host, store *secret.FileStore, targetConfig *ssh.ClientConfig, label string, timeout time.Duration) (*ssh.Client, string, error) {
 	if h.JumpHost == "" {
 		return dialDirectWithConfig(ctx, h, targetConfig, label)
 	}
@@ -59,7 +70,7 @@ func dialConfiguredContext(ctx context.Context, h config.Host, store *secret.Fil
 	if jump.JumpHost != "" {
 		return nil, "", operation.Wrap(operation.StageJump, fmt.Errorf("仅支持单级跳板机，%s 不能再引用跳板机", jump.Alias))
 	}
-	jumpClient, _, err := dialDirectContext(ctx, *jump, store)
+	jumpClient, _, err := dialDirectContextWithTimeout(ctx, *jump, store, timeout)
 	if err != nil {
 		return nil, "", operation.Wrap(operation.StageJump, fmt.Errorf("跳板机 %s 连接失败: %w", jump.Alias, err))
 	}
@@ -82,16 +93,24 @@ func dialConfiguredContext(ctx context.Context, h config.Host, store *secret.Fil
 }
 
 func dialDirectContext(ctx context.Context, h config.Host, store *secret.FileStore) (*ssh.Client, string, error) {
-	sshConfig, label, err := clientConfig(h, store)
+	return dialDirectContextWithTimeout(ctx, h, store, 10*time.Second)
+}
+
+func dialDirectContextWithTimeout(ctx context.Context, h config.Host, store *secret.FileStore, timeout time.Duration) (*ssh.Client, string, error) {
+	sshConfig, label, err := clientConfigWithTimeout(h, store, timeout)
 	if err != nil {
-		return nil, "", operation.Wrap(operation.StageAuth, err)
+		return nil, "", operation.Wrap(operation.StageOf(err, operation.StageAuth), err)
 	}
 	return dialDirectWithConfig(ctx, h, sshConfig, label)
 }
 
 func dialDirectWithConfig(ctx context.Context, h config.Host, sshConfig *ssh.ClientConfig, label string) (*ssh.Client, string, error) {
 	addr := fmt.Sprintf("%s:%d", h.Host, h.Port)
-	conn, err := (&net.Dialer{Timeout: 10 * time.Second}).DialContext(ctx, "tcp", addr)
+	timeout := sshConfig.Timeout
+	if timeout <= 0 {
+		timeout = 10 * time.Second
+	}
+	conn, err := (&net.Dialer{Timeout: timeout}).DialContext(ctx, "tcp", addr)
 	if err != nil {
 		stage := operation.StageNetwork
 		var dnsErr *net.DNSError
@@ -157,6 +176,10 @@ func newSSHClientContext(ctx context.Context, conn net.Conn, addr string, config
 }
 
 func clientConfig(h config.Host, store *secret.FileStore) (*ssh.ClientConfig, string, error) {
+	return clientConfigWithTimeout(h, store, 10*time.Second)
+}
+
+func clientConfigWithTimeout(h config.Host, store *secret.FileStore, timeout time.Duration) (*ssh.ClientConfig, string, error) {
 	callback, err := createHostKeyCallback(h)
 	if err != nil {
 		return nil, "", operation.Wrap(operation.StageTrust, err)
@@ -189,7 +212,7 @@ func clientConfig(h config.Host, store *secret.FileStore) (*ssh.ClientConfig, st
 		User:            h.User,
 		Auth:            methods,
 		HostKeyCallback: callback,
-		Timeout:         10 * time.Second,
+		Timeout:         timeout,
 	}, strings.Join(labels, "/"), nil
 }
 
@@ -210,7 +233,29 @@ func ExecCommand(h config.Host, store *secret.FileStore, command string) (string
 
 // ExecCommandContext runs a command using a consistent authentication plan.
 func ExecCommandContext(ctx context.Context, h config.Host, store *secret.FileStore, command string) (string, error) {
-	client, _, err := DialContext(ctx, h, store)
+	return ExecCommandWithConnectTimeoutContext(ctx, h, store, command, 0)
+}
+
+// ExecCommandStreamContext runs a command and optionally streams stdout/stderr
+// while retaining a combined copy for logs and result reporting.
+func ExecCommandStreamContext(ctx context.Context, h config.Host, store *secret.FileStore, command string, stdout, stderr io.Writer) (string, error) {
+	return ExecCommandStreamWithConnectTimeoutContext(ctx, h, store, command, 0, stdout, stderr)
+}
+
+func ExecCommandWithConnectTimeoutContext(ctx context.Context, h config.Host, store *secret.FileStore, command string, connectTimeout time.Duration) (string, error) {
+	return ExecCommandStreamWithConnectTimeoutContext(ctx, h, store, command, connectTimeout, nil, nil)
+}
+
+// ExecCommandStreamWithConnectTimeoutContext limits only connection
+// establishment separately from the command context.
+func ExecCommandStreamWithConnectTimeoutContext(ctx context.Context, h config.Host, store *secret.FileStore, command string, connectTimeout time.Duration, stdout, stderr io.Writer) (string, error) {
+	dialCtx := ctx
+	cancelDial := func() {}
+	if connectTimeout > 0 {
+		dialCtx, cancelDial = context.WithTimeout(ctx, connectTimeout)
+	}
+	client, _, err := DialContextWithTimeout(dialCtx, h, store, connectTimeout)
+	cancelDial()
 	if err != nil {
 		return "", err
 	}
@@ -220,22 +265,46 @@ func ExecCommandContext(ctx context.Context, h config.Host, store *secret.FileSt
 		return "", operation.Wrap(operation.StageSession, fmt.Errorf("创建会话失败: %w", err))
 	}
 	defer session.Close()
+	var output synchronizedBuffer
+	if stdout == nil {
+		stdout = io.Discard
+	}
+	if stderr == nil {
+		stderr = io.Discard
+	}
+	session.Stdout = io.MultiWriter(&output, stdout)
+	session.Stderr = io.MultiWriter(&output, stderr)
 	type result struct {
-		output []byte
-		err    error
+		err error
 	}
 	done := make(chan result, 1)
 	go func() {
-		output, err := session.CombinedOutput(command)
-		done <- result{output: output, err: err}
+		done <- result{err: session.Run(command)}
 	}()
 	select {
 	case <-ctx.Done():
 		_ = client.Close()
-		return "", fmt.Errorf("远程命令超时或取消: %w", ctx.Err())
+		return output.String(), operation.Wrap(operation.StageTimeout, fmt.Errorf("远程命令超时或取消: %w", ctx.Err()))
 	case result := <-done:
-		return string(result.output), operation.Wrap(operation.StageExecute, result.err)
+		return output.String(), operation.Wrap(operation.StageExecute, result.err)
 	}
+}
+
+type synchronizedBuffer struct {
+	mu     sync.Mutex
+	buffer bytes.Buffer
+}
+
+func (b *synchronizedBuffer) Write(data []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buffer.Write(data)
+}
+
+func (b *synchronizedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buffer.String()
 }
 
 // CheckPingContext verifies that a complete SSH session can execute a command.

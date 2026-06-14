@@ -1,3 +1,5 @@
-# Keep batch operations immediate and user-driven
+# Support explicit local deployment workflows
 
-sshm supports one-time batch command execution, key deployment, and file transfer with explicit target confirmation and visible results. It will not become a deployment pipeline, scheduler, workflow engine, desired-state configuration manager, or Ansible replacement, because the product is a lightweight personal SSH tool and those capabilities would fundamentally change its complexity and operating model.
+sshm supports immediate batch operations and explicit local deployment workflows composed of sequential copy and exec steps. Deploy workflows are loaded from user-maintained YAML files, always resolve to concrete sshm-managed hosts, show an execution plan, require confirmation by default, and run only while the invoking process is active.
+
+sshm remains a lightweight personal operations tool. It will not provide background scheduling, a server, desired-state convergence, dependency graphs, roles, handlers, facts, conditions, loops, or an Ansible-compatible language.

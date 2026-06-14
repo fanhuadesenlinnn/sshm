@@ -8,7 +8,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/fanhuadesenlinnn/sshm/v4/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v5/internal/config"
 	"golang.org/x/crypto/scrypt"
 )
 

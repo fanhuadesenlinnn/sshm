@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fanhuadesenlinnn/sshm/v4/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v4/internal/secret"
-	"github.com/fanhuadesenlinnn/sshm/v4/internal/sshx"
+	"github.com/fanhuadesenlinnn/sshm/v5/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v5/internal/secret"
+	"github.com/fanhuadesenlinnn/sshm/v5/internal/sshx"
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
@@ -28,7 +28,7 @@ func tryRsyncTransfer(ctx context.Context, client *ssh.Client, sftpClient *sftp.
 	if !ok {
 		return "", false, nil
 	}
-	sshCommand, cleanup, err := prepareRsyncTransport(host, store, sshPath)
+	sshCommand, cleanup, err := prepareRsyncTransportWithTimeout(host, store, sshPath, options.connectTimeout)
 	if err != nil {
 		return "", false, nil
 	}
@@ -73,6 +73,10 @@ func rsyncAvailable(client *ssh.Client, host config.Host, store *secret.FileStor
 }
 
 func prepareRsyncTransport(host config.Host, store *secret.FileStore, sshPath string) (string, func(), error) {
+	return prepareRsyncTransportWithTimeout(host, store, sshPath, 10*time.Second)
+}
+
+func prepareRsyncTransportWithTimeout(host config.Host, store *secret.FileStore, sshPath string, connectTimeout time.Duration) (string, func(), error) {
 	privateKey, err := sshx.ManagedKeyPrivateKey(host, store)
 	if err != nil {
 		return "", nil, err
@@ -88,6 +92,10 @@ func prepareRsyncTransport(host config.Host, store *secret.FileStore, sshPath st
 		return "", nil, err
 	}
 
+	timeoutSeconds := int((connectTimeout + time.Second - 1) / time.Second)
+	if timeoutSeconds < 1 {
+		timeoutSeconds = 10
+	}
 	args := []string{
 		sshPath,
 		"-F", nullDevice(),
@@ -100,7 +108,7 @@ func prepareRsyncTransport(host config.Host, store *secret.FileStore, sshPath st
 		"-o", "NumberOfPasswordPrompts=0",
 		"-o", "PasswordAuthentication=no",
 		"-o", "PreferredAuthentications=publickey",
-		"-o", "ConnectTimeout=10",
+		"-o", fmt.Sprintf("ConnectTimeout=%d", timeoutSeconds),
 		"-o", "LogLevel=ERROR",
 	}
 	policy := host.ResolvedHostKeyPolicy
@@ -180,10 +188,16 @@ func pushRsync(ctx context.Context, rsyncPath, sshCommand string, client *sftp.C
 		if cleanupErr := client.RemoveAll(temp); cleanupErr != nil {
 			return remotePath, true, fmt.Errorf("rsync 失败且无法清理远程临时目标: %v；原始错误: %w", cleanupErr, err)
 		}
+		if options.method == "rsync" {
+			return remotePath, true, fmt.Errorf("rsync 推送失败: %w", err)
+		}
 		return "", false, nil
 	}
 	if _, err := client.Stat(temp); err != nil {
 		_ = client.RemoveAll(temp)
+		if options.method == "rsync" {
+			return remotePath, true, fmt.Errorf("rsync 推送未产生远程临时目标: %w", err)
+		}
 		return "", false, nil
 	}
 	defer client.RemoveAll(temp)
@@ -216,10 +230,16 @@ func pullRsync(ctx context.Context, rsyncPath, sshCommand string, client *sftp.C
 		if cleanupErr := os.RemoveAll(temp); cleanupErr != nil {
 			return destination, true, fmt.Errorf("rsync 失败且无法清理本地临时目标: %v；原始错误: %w", cleanupErr, err)
 		}
+		if options.method == "rsync" {
+			return destination, true, fmt.Errorf("rsync 拉取失败: %w", err)
+		}
 		return "", false, nil
 	}
 	if _, err := os.Stat(temp); err != nil {
 		_ = os.RemoveAll(temp)
+		if options.method == "rsync" {
+			return destination, true, fmt.Errorf("rsync 拉取未产生本地临时目标: %w", err)
+		}
 		return "", false, nil
 	}
 	defer os.RemoveAll(temp)

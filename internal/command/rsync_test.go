@@ -7,9 +7,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
-	"github.com/fanhuadesenlinnn/sshm/v4/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v4/internal/secret"
+	"github.com/fanhuadesenlinnn/sshm/v5/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v5/internal/secret"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -83,5 +84,13 @@ func TestPrepareRsyncTransportPinsTrustAndDisablesPassword(t *testing.T) {
 	}
 	if strings.Contains(command, string(privatePEM)) {
 		t.Fatal("transport command exposed private key")
+	}
+	timed, timedCleanup, err := prepareRsyncTransportWithTimeout(*loaded, vault, "/usr/bin/ssh", 37*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer timedCleanup()
+	if !strings.Contains(timed, "ConnectTimeout=37") {
+		t.Fatalf("timed transport command = %q", timed)
 	}
 }

@@ -9,9 +9,11 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
-	"github.com/fanhuadesenlinnn/sshm/v4/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v4/internal/secret"
+	"github.com/fanhuadesenlinnn/sshm/v5/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v5/internal/deploy"
+	"github.com/fanhuadesenlinnn/sshm/v5/internal/secret"
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
 )
@@ -103,6 +105,55 @@ func TestTransferOnePushesAndPullsDirectoryOverSFTP(t *testing.T) {
 	}
 }
 
+func TestDeployRunnerExecutesCopyThenExecOverSharedExecutor(t *testing.T) {
+	remoteRoot := t.TempDir()
+	addr, closeServer := startCommandTestSFTPServer(t, "secret", remoteRoot)
+	defer closeServer()
+	hostName, port := splitCommandTestAddress(t, addr)
+
+	configPath := filepath.Join(t.TempDir(), "sshm.yaml")
+	store := config.NewStoreWithPath(configPath)
+	host := config.DefaultHost()
+	host.Alias, host.User, host.Host, host.Port = "target", "test", hostName, port
+	host.PasswordRef, host.HostKeyPolicy = host.ID, config.HostKeyPolicyAcceptNew
+	if err := store.Add(host); err != nil {
+		t.Fatal(err)
+	}
+	vault := secret.NewFileStore(configPath, "master")
+	if err := vault.SetPassword(host.ID, "secret"); err != nil {
+		t.Fatal(err)
+	}
+	loaded, _, _, err := store.FindHost(host.Alias)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := filepath.Join(t.TempDir(), "package.txt")
+	if err := os.WriteFile(source, []byte("payload"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	app := &App{Store: store, ConfigPath: configPath, secretStore: vault}
+	plan := deploy.Plan{
+		Profile: "integration", Config: "<test>", Hosts: []config.Host{*loaded},
+		Strategy: deploy.Strategy{
+			Mode: "hidden", MaxParallel: 1,
+			ConnectTimeout: deploy.Duration{Duration: time.Second},
+			StepTimeout:    deploy.Duration{Duration: time.Second},
+		},
+		Steps: []deploy.Step{
+			{Name: "copy", Type: "copy", Src: source, Dest: "deployed/package.txt", Method: "sftp"},
+			{Name: "exec", Type: "exec", Command: "verify package"},
+		},
+	}
+	result := (deploy.Runner{Executor: app.operationExecutor()}).Run(context.Background(), plan)
+	if result.OK != 1 || result.Failed != 0 || len(result.Results[0].Steps) != 2 {
+		t.Fatalf("deploy result = %+v", result)
+	}
+	assertCommandTestFile(t, filepath.Join(remoteRoot, "deployed", "package.txt"), "payload")
+	if got := result.Results[0].Steps[1].Output; got != "executed: verify package\n" {
+		t.Fatalf("exec output = %q", got)
+	}
+}
+
 func startCommandTestSFTPServer(t *testing.T, password, workDir string) (string, func()) {
 	t.Helper()
 	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
@@ -159,6 +210,17 @@ func serveCommandTestSFTPConnection(conn net.Conn, serverConfig *ssh.ServerConfi
 			defer ch.Close()
 			for req := range reqs {
 				var subsystem struct{ Name string }
+				if req.Type == "exec" {
+					var request struct{ Command string }
+					if ssh.Unmarshal(req.Payload, &request) != nil {
+						_ = req.Reply(false, nil)
+						return
+					}
+					_ = req.Reply(true, nil)
+					_, _ = ch.Write([]byte("executed: " + request.Command + "\n"))
+					_, _ = ch.SendRequest("exit-status", false, ssh.Marshal(struct{ Status uint32 }{0}))
+					return
+				}
 				if req.Type != "subsystem" || ssh.Unmarshal(req.Payload, &subsystem) != nil || subsystem.Name != "sftp" {
 					_ = req.Reply(false, nil)
 					continue

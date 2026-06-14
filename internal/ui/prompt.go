@@ -76,12 +76,12 @@ func ReadYesNo(prompt string) bool {
 
 // ReadPassword reads a password without echoing.
 func ReadPassword(prompt string) (string, error) {
-	fmt.Print(prompt)
+	fmt.Fprint(os.Stderr, prompt)
 	pass, err := readPasswordFromTTY()
 	if err != nil {
 		return "", err
 	}
-	fmt.Println()
+	fmt.Fprintln(os.Stderr)
 	return pass, nil
 }
 
@@ -443,7 +443,7 @@ func visualLength(s string) int {
 
 // readLineFallback reads a line without raw mode (for piped/redirected input).
 func readLineFallback(prompt string) string {
-	fmt.Print(prompt)
+	fmt.Fprint(os.Stderr, prompt)
 	var buf strings.Builder
 	var b [1]byte
 	for {
