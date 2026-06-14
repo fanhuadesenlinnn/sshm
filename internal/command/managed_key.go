@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/keymgr"
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/ui"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/keymgr"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/ui"
 	"golang.org/x/crypto/ssh"
 )
 

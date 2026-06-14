@@ -5,10 +5,10 @@ import (
 	"io"
 	"time"
 
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/operation"
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/secret"
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/sshx"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/operation"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/secret"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/sshx"
 )
 
 type ExecOptions struct {
@@ -19,12 +19,17 @@ type ExecOptions struct {
 }
 
 type TransferOptions struct {
-	Direction      string
-	Src            string
-	Dest           string
-	Method         string
-	Overwrite      bool
-	ConnectTimeout time.Duration
+	Direction        string
+	Src              string
+	Dest             string
+	Method           string
+	Overwrite        bool
+	Backup           bool
+	ValidateChecksum bool
+	DestinationExact bool
+	Check            bool
+	Diff             bool
+	ConnectTimeout   time.Duration
 }
 
 type Result struct {
@@ -34,6 +39,8 @@ type Result struct {
 	Output      string
 	Method      string
 	Destination string
+	Changed     bool
+	WouldChange bool
 	Duration    time.Duration
 	Err         error
 }
@@ -79,7 +86,13 @@ func (e *NativeExecutor) Pull(ctx context.Context, host config.Host, options Tra
 }
 
 func NewTransferResult(host config.Host, method, destination string, err error, duration time.Duration) Result {
-	return newResult(host, "", method, destination, err, operation.StageTransfer, duration)
+	return NewTransferResultWithChange(host, method, destination, false, err, duration)
+}
+
+func NewTransferResultWithChange(host config.Host, method, destination string, changed bool, err error, duration time.Duration) Result {
+	result := newResult(host, "", method, destination, err, operation.StageTransfer, duration)
+	result.Changed = changed
+	return result
 }
 
 func newResult(host config.Host, output, method, destination string, err error, fallback operation.FailureStage, duration time.Duration) Result {

@@ -9,8 +9,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/ui"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/ui"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/term"
 )

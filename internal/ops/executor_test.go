@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/operation"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/operation"
 )
 
 func TestNativeExecutorUsesTransferAdapters(t *testing.T) {

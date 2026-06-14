@@ -5,72 +5,39 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/operation"
-	"gopkg.in/yaml.v3"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/batch"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/operation"
 )
 
-const Version = 1
+const Version = 2
 
-type Duration struct {
-	time.Duration
-}
-
-func (d *Duration) UnmarshalYAML(unmarshal func(any) error) error {
-	var value any
-	if err := unmarshal(&value); err != nil {
-		return err
-	}
-	switch typed := value.(type) {
-	case string:
-		parsed, err := time.ParseDuration(typed)
-		if err != nil {
-			return fmt.Errorf("无效时长 %q: %w", typed, err)
-		}
-		d.Duration = parsed
-		return nil
-	default:
-		return fmt.Errorf("时长必须使用 30s、5m 等格式")
-	}
-}
-
-func (d Duration) MarshalYAML() (any, error) {
-	if d.Duration == 0 {
-		return "", nil
-	}
-	return d.String(), nil
-}
-
-func (d Duration) MarshalJSON() ([]byte, error) {
-	return []byte(strconv.Quote(d.String())), nil
-}
+type Duration = config.Duration
 
 type File struct {
-	Version     int               `yaml:"version"`
-	Name        string            `yaml:"name,omitempty"`
-	Description string            `yaml:"description,omitempty"`
-	Vars        map[string]string `yaml:"vars,omitempty"`
-	Defaults    Defaults          `yaml:"defaults,omitempty"`
-	Profiles    []Profile         `yaml:"profiles"`
+	Version  int       `yaml:"version" json:"version"`
+	Profiles []Profile `yaml:"profiles" json:"profiles"`
+	Handlers []Step    `yaml:"handlers,omitempty" json:"handlers,omitempty"`
 
 	Path    string `yaml:"-" json:"-"`
 	BaseDir string `yaml:"-" json:"-"`
 }
 
-type Defaults struct {
-	Strategy Strategy `yaml:"strategy,omitempty"`
-}
-
 type Profile struct {
-	Name        string         `yaml:"name"`
-	Description string         `yaml:"description,omitempty"`
-	Targets     TargetSelector `yaml:"targets,omitempty"`
-	Strategy    Strategy       `yaml:"strategy,omitempty"`
-	Steps       []Step         `yaml:"steps"`
+	Name           string         `yaml:"name" json:"name"`
+	Description    string         `yaml:"description,omitempty" json:"description,omitempty"`
+	Targets        TargetSelector `yaml:"targets" json:"targets"`
+	Serial         int            `yaml:"serial,omitempty" json:"serial,omitempty"`
+	Parallel       int            `yaml:"parallel,omitempty" json:"parallel,omitempty"`
+	Timeout        Duration       `yaml:"timeout,omitempty" json:"timeout,omitempty"`
+	ConnectTimeout Duration       `yaml:"connect_timeout,omitempty" json:"connect_timeout,omitempty"`
+	FailFast       bool           `yaml:"fail_fast,omitempty" json:"fail_fast,omitempty"`
+	MaxFail        int            `yaml:"max_fail,omitempty" json:"max_fail,omitempty"`
+	MaxFailPercent int            `yaml:"max_fail_percent,omitempty" json:"max_fail_percent,omitempty"`
+	Steps          []Step         `yaml:"steps" json:"steps"`
 
-	Source  string            `yaml:"-" json:"source"`
-	BaseDir string            `yaml:"-" json:"-"`
-	Vars    map[string]string `yaml:"-" json:"-"`
+	Source  string `yaml:"-" json:"source"`
+	BaseDir string `yaml:"-" json:"-"`
 }
 
 type TargetSelector struct {
@@ -100,94 +67,160 @@ func (s TargetSelector) String() string {
 	return value
 }
 
-type Strategy struct {
-	Mode           string   `yaml:"mode,omitempty" json:"mode"`
-	MaxParallel    int      `yaml:"max_parallel,omitempty" json:"max_parallel"`
-	ConnectTimeout Duration `yaml:"connect_timeout,omitempty" json:"connect_timeout"`
-	StepTimeout    Duration `yaml:"step_timeout,omitempty" json:"step_timeout"`
-	RunTimeout     Duration `yaml:"run_timeout,omitempty" json:"run_timeout"`
-	RetryCount     int      `yaml:"retry_count,omitempty" json:"retry_count"`
-	RetryOnStage   []string `yaml:"retry_on_stage,omitempty" json:"retry_on_stage"`
-
-	maxParallelSet bool
-	retryCountSet  bool
-}
-
-func (s *Strategy) UnmarshalYAML(node *yaml.Node) error {
-	allowed := map[string]bool{
-		"mode": true, "max_parallel": true, "connect_timeout": true, "step_timeout": true,
-		"run_timeout": true, "retry_count": true, "retry_on_stage": true,
-	}
-	if node.Kind == yaml.MappingNode {
-		for index := 0; index+1 < len(node.Content); index += 2 {
-			if key := node.Content[index].Value; !allowed[key] {
-				return fmt.Errorf("未知 strategy 字段 %q", key)
-			}
-		}
-	}
-	type rawStrategy Strategy
-	var raw rawStrategy
-	if err := node.Decode(&raw); err != nil {
-		return err
-	}
-	*s = Strategy(raw)
-	if node.Kind == yaml.MappingNode {
-		for index := 0; index+1 < len(node.Content); index += 2 {
-			switch node.Content[index].Value {
-			case "max_parallel":
-				s.maxParallelSet = true
-			case "retry_count":
-				s.retryCountSet = true
-			}
-		}
-	}
-	return nil
-}
-
 type Step struct {
-	Name      string   `yaml:"name,omitempty" json:"name"`
-	Type      string   `yaml:"type" json:"type"`
-	Src       string   `yaml:"src,omitempty" json:"src,omitempty"`
-	Dest      string   `yaml:"dest,omitempty" json:"dest,omitempty"`
-	Method    string   `yaml:"method,omitempty" json:"method,omitempty"`
-	Overwrite bool     `yaml:"overwrite,omitempty" json:"overwrite,omitempty"`
-	Command   string   `yaml:"command,omitempty" json:"command,omitempty"`
-	Timeout   Duration `yaml:"timeout,omitempty" json:"timeout,omitempty"`
+	Name        string       `yaml:"name" json:"name"`
+	Timeout     Duration     `yaml:"timeout,omitempty" json:"timeout,omitempty"`
+	Notify      []string     `yaml:"notify,omitempty" json:"notify,omitempty"`
+	IgnoreError bool         `yaml:"ignore_error,omitempty" json:"ignore_error,omitempty"`
+	Exec        string       `yaml:"exec,omitempty" json:"exec,omitempty"`
+	Push        *PushAction  `yaml:"push,omitempty" json:"push,omitempty"`
+	Pull        *PullAction  `yaml:"pull,omitempty" json:"pull,omitempty"`
+	Mkdir       *MkdirAction `yaml:"mkdir,omitempty" json:"mkdir,omitempty"`
+	Wait        *Duration    `yaml:"wait,omitempty" json:"wait,omitempty"`
+	Confirm     string       `yaml:"confirm,omitempty" json:"confirm,omitempty"`
+	Become      bool         `yaml:"become,omitempty" json:"become,omitempty"`
+	BecomeUser  string       `yaml:"become_user,omitempty" json:"become_user,omitempty"`
+	CheckSafe   bool         `yaml:"check_safe,omitempty" json:"check_safe,omitempty"`
+	FailedWhen  *Condition   `yaml:"failed_when,omitempty" json:"failed_when,omitempty"`
+	ChangedWhen *Condition   `yaml:"changed_when,omitempty" json:"changed_when,omitempty"`
+
+	BaseDir string `yaml:"-" json:"-"`
+}
+
+type PushAction struct {
+	Src       string `yaml:"src" json:"src"`
+	Dest      string `yaml:"dest" json:"dest"`
+	Checksum  *bool  `yaml:"checksum,omitempty" json:"checksum,omitempty"`
+	Overwrite bool   `yaml:"overwrite,omitempty" json:"overwrite,omitempty"`
+	Backup    bool   `yaml:"backup,omitempty" json:"backup,omitempty"`
+}
+
+type PullAction struct {
+	Src       string `yaml:"src" json:"src"`
+	Dest      string `yaml:"dest" json:"dest"`
+	Flat      bool   `yaml:"flat,omitempty" json:"flat,omitempty"`
+	Checksum  *bool  `yaml:"checksum,omitempty" json:"checksum,omitempty"`
+	Overwrite bool   `yaml:"overwrite,omitempty" json:"overwrite,omitempty"`
+	Backup    bool   `yaml:"backup,omitempty" json:"backup,omitempty"`
+}
+
+type MkdirAction struct {
+	Path string `yaml:"path" json:"path"`
+	Mode string `yaml:"mode,omitempty" json:"mode,omitempty"`
+}
+
+type Condition struct {
+	RCIn    []int `yaml:"rc_in,omitempty" json:"rc_in,omitempty"`
+	RCNotIn []int `yaml:"rc_not_in,omitempty" json:"rc_not_in,omitempty"`
+}
+
+func (c Condition) Matches(rc int) bool {
+	for _, value := range c.RCIn {
+		if rc == value {
+			return true
+		}
+	}
+	if len(c.RCNotIn) > 0 {
+		for _, value := range c.RCNotIn {
+			if rc == value {
+				return false
+			}
+		}
+		return true
+	}
+	return false
+}
+
+func (s Step) ActionType() string {
+	switch {
+	case s.Exec != "":
+		return "exec"
+	case s.Push != nil:
+		return "push"
+	case s.Pull != nil:
+		return "pull"
+	case s.Mkdir != nil:
+		return "mkdir"
+	case s.Wait != nil:
+		return "wait"
+	case s.Confirm != "":
+		return "confirm"
+	default:
+		return ""
+	}
 }
 
 func (s Step) DisplayName(index int) string {
 	if s.Name != "" {
 		return s.Name
 	}
-	return s.Type + "-" + strconv.Itoa(index+1)
+	action := s.ActionType()
+	if action == "" {
+		action = "step"
+	}
+	return action + "-" + strconv.Itoa(index+1)
+}
+
+func (a PushAction) ValidateChecksum() bool {
+	return a.Checksum == nil || *a.Checksum
+}
+
+func (a PullAction) ValidateChecksum() bool {
+	return a.Checksum == nil || *a.Checksum
 }
 
 type Catalog struct {
-	Sources  []string
-	Profiles []Profile
-	ByName   map[string]Profile
+	Sources       []string
+	Profiles      []Profile
+	Handlers      []Step
+	ByName        map[string]Profile
+	HandlerByName map[string]Step
+}
+
+type Overrides struct {
+	Targets               *TargetSelector
+	Parallel              int
+	Serial                int
+	FailFast              bool
+	MaxFail               int
+	MaxFailPercent        int
+	Check                 bool
+	Diff                  bool
+	DefaultParallel       int
+	DefaultTimeout        Duration
+	DefaultConnectTimeout Duration
 }
 
 type Plan struct {
-	Profile     string         `json:"profile"`
-	Description string         `json:"description,omitempty"`
-	Config      string         `json:"config"`
-	Sources     []string       `json:"sources"`
-	Targets     TargetSelector `json:"selector"`
-	Hosts       []config.Host  `json:"-"`
-	Strategy    Strategy       `json:"strategy"`
-	Steps       []Step         `json:"steps"`
+	Profile        string         `json:"profile"`
+	Description    string         `json:"description,omitempty"`
+	Config         string         `json:"config"`
+	Sources        []string       `json:"sources"`
+	Targets        TargetSelector `json:"selector"`
+	Hosts          []config.Host  `json:"-"`
+	Batch          batch.Options  `json:"batch"`
+	Timeout        Duration       `json:"timeout"`
+	ConnectTimeout Duration       `json:"connect_timeout"`
+	Check          bool           `json:"check"`
+	Diff           bool           `json:"diff"`
+	Steps          []Step         `json:"steps"`
+	Handlers       []Step         `json:"handlers,omitempty"`
 }
 
 type PlanJSON struct {
-	Profile     string         `json:"profile"`
-	Description string         `json:"description,omitempty"`
-	Config      string         `json:"config"`
-	Sources     []string       `json:"sources"`
-	Selector    TargetSelector `json:"selector"`
-	Targets     []PlanHost     `json:"targets"`
-	Strategy    Strategy       `json:"strategy"`
-	Steps       []Step         `json:"steps"`
+	Profile        string         `json:"profile"`
+	Description    string         `json:"description,omitempty"`
+	Config         string         `json:"config"`
+	Sources        []string       `json:"sources"`
+	Selector       TargetSelector `json:"selector"`
+	Targets        []PlanHost     `json:"targets"`
+	Batch          batch.Options  `json:"batch"`
+	Timeout        Duration       `json:"timeout"`
+	ConnectTimeout Duration       `json:"connect_timeout"`
+	Check          bool           `json:"check"`
+	Diff           bool           `json:"diff"`
+	Steps          []Step         `json:"steps"`
+	Handlers       []Step         `json:"handlers,omitempty"`
 }
 
 type PlanHost struct {
@@ -198,20 +231,20 @@ type PlanHost struct {
 type StepResult struct {
 	Name        string                 `json:"name"`
 	Type        string                 `json:"type"`
-	OK          bool                   `json:"ok"`
+	Status      batch.Status           `json:"status"`
+	Ignored     bool                   `json:"ignored,omitempty"`
 	Stage       operation.FailureStage `json:"stage,omitempty"`
 	Reason      string                 `json:"reason,omitempty"`
 	Output      string                 `json:"output,omitempty"`
-	Method      string                 `json:"method,omitempty"`
 	Destination string                 `json:"destination,omitempty"`
-	Attempts    int                    `json:"attempts"`
+	RC          int                    `json:"rc"`
 	DurationMS  int64                  `json:"duration_ms"`
 }
 
 type HostResult struct {
 	HostAlias    string                 `json:"host"`
 	HostAddress  string                 `json:"address"`
-	OK           bool                   `json:"ok"`
+	Status       batch.Status           `json:"status"`
 	FailedStep   string                 `json:"failed_step,omitempty"`
 	Stage        operation.FailureStage `json:"stage,omitempty"`
 	Reason       string                 `json:"reason,omitempty"`
@@ -223,17 +256,29 @@ type HostResult struct {
 }
 
 type RunResult struct {
-	Profile   string       `json:"profile"`
-	Config    string       `json:"config"`
-	Mode      string       `json:"mode"`
-	Targets   int          `json:"targets"`
-	OK        int          `json:"ok"`
-	Failed    int          `json:"failed"`
-	Cancelled bool         `json:"cancelled"`
-	StartedAt time.Time    `json:"started_at"`
-	EndedAt   time.Time    `json:"ended_at"`
-	Results   []HostResult `json:"results"`
-	LogPath   string       `json:"log_path,omitempty"`
+	Profile    string        `json:"profile"`
+	Config     string        `json:"config"`
+	Targets    int           `json:"targets"`
+	Summary    batch.Summary `json:"summary"`
+	Cancelled  bool          `json:"cancelled"`
+	StopReason string        `json:"stop_reason,omitempty"`
+	StartedAt  time.Time     `json:"started_at"`
+	EndedAt    time.Time     `json:"ended_at"`
+	Results    []HostResult  `json:"results"`
+	LogPath    string        `json:"log_path,omitempty"`
+}
+
+func (r RunResult) ExitCode() int {
+	switch {
+	case r.Cancelled:
+		return 130
+	case r.Summary.Failed > 0 || r.Summary.Skipped > 0:
+		return 1
+	case r.Summary.Unreachable > 0:
+		return 2
+	default:
+		return 0
+	}
 }
 
 func join(values []string) string {
@@ -245,4 +290,14 @@ func join(values []string) string {
 		out += value
 	}
 	return out
+}
+
+func (p Plan) Validate() error {
+	if err := p.Batch.Validate(); err != nil {
+		return err
+	}
+	if p.Timeout.Duration <= 0 || p.ConnectTimeout.Duration <= 0 {
+		return fmt.Errorf("deploy timeout 和 connect_timeout 必须大于 0")
+	}
+	return nil
 }

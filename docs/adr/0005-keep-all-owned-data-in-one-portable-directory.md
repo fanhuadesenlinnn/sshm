@@ -1,5 +1,9 @@
-# Keep owned runtime state portable while allowing project manifests
+# Keep all owned data in one portable directory
 
-All mutable runtime state owned by sshm, including hosts, tags, trust, managed-key metadata, encrypted credentials, and operation logs, lives in one portable data directory. User-authored deploy manifests are declarative inputs rather than sshm-owned state and may live in project directories or the data directory.
+Status: accepted for v6.0.0
 
-Deploy manifests never contain SSH credentials, private keys, SSH users, ports, or host trust. Copying the data directory preserves sshm-owned state; project manifests remain portable with their projects.
+All mutable state owned by sshm lives under one portable data directory. The default is `~/.sshm`; `SSHM_HOME` is the only supported path override.
+
+The directory contains the authoritative `sshm.yaml`, logs, backups, temporary data, and optional user-level Deploy files. Project Deploy files may live elsewhere, but they are loaded only through explicit `--file` arguments and are never treated as sshm-owned mutable state.
+
+sshm does not support `SSHM_CONFIG_FILE` and does not read, migrate, or delete the legacy `~/.config/sshm` directory.

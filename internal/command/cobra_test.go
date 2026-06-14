@@ -1,0 +1,103 @@
+package command
+
+import (
+	"context"
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/operation"
+)
+
+func TestCobraHelpWorksWithoutInitializationAndRemovedCommandsAreAbsent(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sshm.yaml")
+	app := &App{Store: config.NewStoreWithPath(path), ConfigPath: path}
+	for _, args := range [][]string{{"--help"}, {"deploy", "--help"}, {"deploy", "run", "--help"}} {
+		if err := runCobra(app, args); err != nil {
+			t.Fatalf("help %v: %v", args, err)
+		}
+	}
+	root := newRootCommand(app)
+	for _, name := range []string{"exec-all", "push-all", "pull-all"} {
+		if knownRootCommand(root, name) {
+			t.Fatalf("removed command %s is still registered", name)
+		}
+	}
+}
+
+func TestDoctorWorksWithoutInitialization(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sshm.yaml")
+	app := &App{Store: config.NewStoreWithPath(path), ConfigPath: path}
+	if err := app.cmdDoctor(nil); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestOnlyDocumentedCommandsRunWithoutInitialization(t *testing.T) {
+	t.Setenv("SSHM_HOME", t.TempDir())
+	path := config.ConfigFilePath()
+	app := &App{Store: config.NewStoreWithPath(path), ConfigPath: path}
+	for _, args := range [][]string{{"init"}, {"config", "path"}, {"doctor"}} {
+		if err := runCobra(app, args); err != nil {
+			t.Fatalf("allowed command %v: %v", args, err)
+		}
+		if args[0] == "init" {
+			if err := os.Remove(path); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	for _, args := range [][]string{{"list"}, {"completion", "bash"}, {"deploy", "init", "--stdout"}} {
+		if err := runCobra(app, args); !errors.Is(err, config.ErrNotInitialized) {
+			t.Fatalf("command %v should require initialization: %v", args, err)
+		}
+	}
+	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("commands unexpectedly created config: %v", err)
+	}
+}
+
+func TestCompletionCandidatesMatchV6CommandSurface(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sshm.yaml")
+	store := config.NewStoreWithPath(path)
+	if err := store.Repository().Replace(config.DefaultDocument()); err != nil {
+		t.Fatal(err)
+	}
+	app := &App{Store: store, ConfigPath: path}
+	candidates, err := app.completionCandidates()
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := "\n" + strings.Join(candidates, "\n") + "\n"
+	for _, name := range []string{"init", "config", "doctor", "deploy", "exec-tag", "push-tag", "pull-tag"} {
+		if !strings.Contains(joined, "\n"+name+"\n") {
+			t.Fatalf("missing completion candidate %q", name)
+		}
+	}
+	for _, name := range []string{"exec-all", "push-all", "pull-all"} {
+		if strings.Contains(joined, "\n"+name+"\n") {
+			t.Fatalf("removed command is still a completion candidate: %q", name)
+		}
+	}
+}
+
+func TestExitCodeForErrorContract(t *testing.T) {
+	cases := []struct {
+		err  error
+		code int
+	}{
+		{errors.New("参数无效"), 3},
+		{operation.Wrap(operation.StageNetwork, errors.New("down")), 2},
+		{operation.Wrap(operation.StageExecute, errors.New("rc=1")), 1},
+		{&ExitError{Code: 4, Err: errors.New("vault")}, 4},
+		{context.Canceled, 130},
+	}
+	for _, tt := range cases {
+		if got := ExitCodeForError(tt.err); got != tt.code {
+			t.Fatalf("error %v: code=%d want=%d", tt.err, got, tt.code)
+		}
+	}
+}

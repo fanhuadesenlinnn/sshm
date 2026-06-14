@@ -3,7 +3,7 @@ package command
 import (
 	"fmt"
 
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/ui"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/ui"
 )
 
 func (app *App) cmdPick(_ []string) error {

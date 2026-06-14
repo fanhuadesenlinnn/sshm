@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/operation"
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/secret"
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/sshx"
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/ui"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/operation"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/secret"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/sshx"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/ui"
 )
 
 func (app *App) cmdPing(args []string) error {
@@ -36,7 +36,7 @@ func (app *App) cmdPing(args []string) error {
 			ui.PrintSuccess("%s (%s@%s:%d) 连接成功", h.Alias, h.User, h.Host, h.Port)
 		} else {
 			printOperationFailure(result)
-			return fmt.Errorf("主机 %s 连接失败", h.Alias)
+			return fmt.Errorf("主机 %s 连接失败: %w", h.Alias, pingErr)
 		}
 	} else {
 		// Ping all hosts
@@ -98,7 +98,17 @@ func (app *App) cmdPing(args []string) error {
 					}
 				}
 			}
-			return fmt.Errorf("有 %d 台主机连接失败", failed)
+			code := 2
+			for _, result := range results {
+				switch result.Stage {
+				case operation.StageResolve, operation.StageNetwork, operation.StageJump, operation.StageTrust, operation.StageAuth:
+				default:
+					if result.Err != nil {
+						code = 1
+					}
+				}
+			}
+			return &ExitError{Code: code, Err: fmt.Errorf("有 %d 台主机连接失败", failed)}
 		}
 	}
 

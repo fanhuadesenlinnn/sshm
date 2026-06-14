@@ -24,6 +24,9 @@ func ValidateTagName(name string) error {
 	if name == "" {
 		return fmt.Errorf("标签名称不能为空")
 	}
+	if name == "all" {
+		return fmt.Errorf("标签名称 all 为系统保留名称")
+	}
 	if strings.HasPrefix(name, "-") {
 		return fmt.Errorf("标签名称不能以短横线开头")
 	}

@@ -6,37 +6,38 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
 )
 
-func TestDiscoverAndLoadMultipleFiles(t *testing.T) {
+func TestDiscoverUsesUserFilesAndNeverImplicitCWD(t *testing.T) {
 	home := t.TempDir()
 	cwd := t.TempDir()
 	t.Setenv("SSHM_HOME", home)
 	writeDeployTestFile(t, filepath.Join(home, "deploy.yaml"), deployTestYAML("global", "prod"))
 	writeDeployTestFile(t, filepath.Join(home, "deploy.d", "20-second.yaml"), deployTestYAML("second", "prod"))
 	writeDeployTestFile(t, filepath.Join(home, "deploy.d", "10-first.yaml"), deployTestYAML("first", "prod"))
-	writeDeployTestFile(t, filepath.Join(cwd, "sshm.deploy.yaml"), deployTestYAML("local", "prod"))
+	local := filepath.Join(cwd, "sshm.deploy.yaml")
+	writeDeployTestFile(t, local, deployTestYAML("local", "prod"))
 
 	paths, err := Discover(nil, cwd)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.Join(paths, "\n"); !strings.Contains(got, "deploy.yaml\n") ||
-		strings.Index(got, "10-first.yaml") > strings.Index(got, "20-second.yaml") ||
-		!strings.HasSuffix(got, "sshm.deploy.yaml") {
+	got := strings.Join(paths, "\n")
+	if strings.Contains(got, local) || strings.Index(got, "10-first.yaml") > strings.Index(got, "20-second.yaml") {
 		t.Fatalf("unexpected discovery order:\n%s", got)
 	}
-	catalog, err := Load(paths)
+
+	explicit, err := Discover([]string{local}, cwd)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(catalog.Profiles) != 4 {
-		t.Fatalf("profiles = %d", len(catalog.Profiles))
+	if len(explicit) != 1 || explicit[0] != local {
+		t.Fatalf("explicit paths = %v", explicit)
 	}
 }
 
-func TestLoadRejectsDuplicateProfilesAcrossFiles(t *testing.T) {
+func TestLoadStrictV2AndGlobalNames(t *testing.T) {
 	dir := t.TempDir()
 	one := filepath.Join(dir, "one.yaml")
 	two := filepath.Join(dir, "two.yaml")
@@ -45,108 +46,83 @@ func TestLoadRejectsDuplicateProfilesAcrossFiles(t *testing.T) {
 	if _, err := Load([]string{one, two}); err == nil || !strings.Contains(err.Error(), "重复") {
 		t.Fatalf("duplicate profile error = %v", err)
 	}
+
+	writeDeployTestFile(t, one, "version: 1\nprofiles: []\n")
+	if _, err := Load([]string{one}); err == nil || !strings.Contains(err.Error(), "仅支持 2") {
+		t.Fatalf("version error = %v", err)
+	}
+	writeDeployTestFile(t, one, "version: 2\nunknown: true\nprofiles: []\n")
+	if _, err := Load([]string{one}); err == nil || !strings.Contains(err.Error(), "field unknown") {
+		t.Fatalf("unknown field error = %v", err)
+	}
 }
 
-func TestResolveStepsUsesFileDirectoryAndSinglePassVars(t *testing.T) {
+func TestValidateV2ActionsHandlersAndNotify(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "deploy.yaml")
+	writeDeployTestFile(t, path, `version: 2
+profiles:
+  - name: app
+    targets: {all: true}
+    steps:
+      - name: invalid
+        exec: hostname
+        mkdir: {path: /tmp/app}
+`)
+	catalog, err := Load([]string{path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateCatalog(catalog, []config.Host{{Alias: "one"}}); err == nil || !strings.Contains(err.Error(), "只能包含一个 action") {
+		t.Fatalf("action error = %v", err)
+	}
+
+	writeDeployTestFile(t, path, `version: 2
+profiles:
+  - name: app
+    targets: {all: true}
+    steps:
+      - name: upload
+        push: {src: ./app, dest: /opt/app}
+        notify: [restart]
+handlers:
+  - name: reload
+    exec: systemctl reload app
+`)
+	catalog, err = Load([]string{path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateCatalog(catalog, []config.Host{{Alias: "one"}}); err == nil || !strings.Contains(err.Error(), "不存在的 handler") {
+		t.Fatalf("notify error = %v", err)
+	}
+}
+
+func TestResolveStepsUsesDeclaringFileDirectory(t *testing.T) {
 	profile := Profile{
-		BaseDir: "/project/tasks",
-		Vars:    map[string]string{"package": "./dist", "dest": "/opt/app"},
+		Name: "app", BaseDir: "/project/tasks", Targets: TargetSelector{All: true},
 		Steps: []Step{
-			{Type: "copy", Src: "${package}", Dest: "${dest}"},
-			{Type: "exec", Command: "test -d ${dest}"},
+			{Name: "push", Push: &PushAction{Src: "./dist/app", Dest: "/opt/app"}},
+			{Name: "pull", Pull: &PullAction{Src: "/var/log/app.log", Dest: "./logs"}},
 		},
 	}
 	steps, err := ResolveSteps(profile)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if steps[0].Src != "/project/tasks/dist" || steps[0].Method != "auto" || steps[1].Command != "test -d /opt/app" {
+	if steps[0].Push.Src != "/project/tasks/dist/app" || steps[1].Pull.Dest != "/project/tasks/logs" {
 		t.Fatalf("resolved steps = %+v", steps)
 	}
-	profile.Vars["dest"] = "${other}"
-	if err := ValidateProfile(Profile{
-		Name: "bad", Vars: profile.Vars, Targets: TargetSelector{All: true},
-		Strategy: applyStrategyDefaults(Strategy{}), Steps: []Step{{Type: "exec", Command: "echo ok"}},
-	}, []config.Host{{Alias: "one"}}, false); err == nil || !strings.Contains(err.Error(), "不能递归") {
-		t.Fatalf("recursive var error = %v", err)
-	}
 }
 
-func TestResolveStepsRejectsEmptyRequiredValueAfterExpansion(t *testing.T) {
+func TestValidateRejectsUnsafeRemotePaths(t *testing.T) {
 	for _, step := range []Step{
-		{Type: "exec", Command: "${empty}"},
-		{Type: "copy", Src: "${empty}", Dest: "/tmp/app"},
+		{Push: &PushAction{Src: "/tmp/src", Dest: "~/dest"}},
+		{Pull: &PullAction{Src: "../secret", Dest: "/tmp/dest"}},
+		{Mkdir: &MkdirAction{Path: "/"}},
 	} {
-		if _, err := ResolveSteps(Profile{Vars: map[string]string{"empty": ""}, Steps: []Step{step}}); err == nil {
-			t.Fatalf("step should fail after empty expansion: %+v", step)
+		if err := validateStep(step, false); err == nil {
+			t.Fatalf("unsafe step should fail: %+v", step)
 		}
-	}
-}
-
-func TestVisibleModeDefaultsToSerial(t *testing.T) {
-	strategy := mergeStrategy(Strategy{MaxParallel: 5}, Strategy{Mode: "visible"})
-	if strategy.MaxParallel != 1 {
-		t.Fatalf("visible parallel = %d", strategy.MaxParallel)
-	}
-	if err := validateStrategy(strategy); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestProfileCanOverrideDefaultRetryCountWithZero(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "deploy.yaml")
-	writeDeployTestFile(t, path, `version: 1
-defaults:
-  strategy:
-    retry_count: 3
-profiles:
-  - name: no-retry
-    targets: {all: true}
-    strategy:
-      retry_count: 0
-    steps:
-      - {type: exec, command: hostname}
-`)
-	catalog, err := Load([]string{path})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if catalog.Profiles[0].Strategy.RetryCount != 0 {
-		t.Fatalf("retry count = %d", catalog.Profiles[0].Strategy.RetryCount)
-	}
-}
-
-func TestLoadRejectsUnknownStrategyField(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "deploy.yaml")
-	writeDeployTestFile(t, path, `version: 1
-defaults:
-  strategy:
-    made_up: true
-profiles:
-  - name: test
-    targets: {all: true}
-    steps: [{type: exec, command: hostname}]
-`)
-	if _, err := Load([]string{path}); err == nil || !strings.Contains(err.Error(), "未知 strategy 字段") {
-		t.Fatalf("unknown field error = %v", err)
-	}
-}
-
-func TestLoadPreservesExplicitInvalidZeroParallelForValidation(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "deploy.yaml")
-	writeDeployTestFile(t, path, `version: 1
-profiles:
-  - name: test
-    targets: {all: true}
-    strategy: {max_parallel: 0}
-    steps: [{type: exec, command: hostname}]
-`)
-	catalog, err := Load([]string{path})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := ValidateCatalog(catalog, []config.Host{{Alias: "one"}}); err == nil || !strings.Contains(err.Error(), "max_parallel") {
-		t.Fatalf("zero parallel error = %v", err)
 	}
 }
 
@@ -161,5 +137,5 @@ func writeDeployTestFile(t *testing.T, path, body string) {
 }
 
 func deployTestYAML(name, tag string) string {
-	return "version: 1\nprofiles:\n  - name: " + name + "\n    targets:\n      tags: [" + tag + "]\n    steps:\n      - type: exec\n        command: hostname\n"
+	return "version: 2\nprofiles:\n  - name: " + name + "\n    targets:\n      tags: [" + tag + "]\n    steps:\n      - exec: hostname\n"
 }

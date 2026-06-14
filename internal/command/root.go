@@ -5,11 +5,10 @@ import (
 	"fmt"
 	"os"
 	"runtime/debug"
-	"strings"
 
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/secret"
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/ui"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/secret"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/ui"
 )
 
 var Version = "dev"
@@ -59,115 +58,16 @@ func (app *App) keyStore() *config.KeyStore {
 	return app.Keys
 }
 
-// Run parses args and dispatches to the appropriate command.
+// Run executes the Cobra command tree.
 func Run(args []string) error {
-	if err := config.EnsureDirs(); err != nil {
-		return fmt.Errorf("初始化配置目录失败: %w", err)
-	}
-
-	app := NewApp()
-
-	if len(args) == 0 {
-		return app.interactiveMode()
-	}
-
-	switch args[0] {
-	case "host":
-		return app.cmdHost(args[1:])
-	case "key", "k":
-		return app.cmdKey(args[1:])
-	case "--list", "-l", "list", "ls":
-		return app.cmdList(args[1:])
-	case "--add", "-a", "add":
-		return app.cmdAdd(args[1:])
-	case "add-batch":
-		return app.cmdAddBatch(args[1:])
-	case "--edit", "-e", "edit":
-		return app.cmdEdit(args[1:])
-	case "--delete", "-d", "--del", "delete", "del", "rm":
-		return app.cmdDelete(args[1:])
-	case "--show", "show", "info":
-		return app.cmdShow(args[1:])
-	case "--search", "-s", "--find", "search", "find":
-		return app.cmdSearch(args[1:])
-	case "tag", "tags":
-		return app.cmdTag(args[1:])
-	case "deploy":
-		return app.cmdDeploy(args[1:])
-	case "recent":
-		return app.cmdRecent(args[1:])
-	case "pin":
-		return app.cmdPin(args[1:], true)
-	case "unpin":
-		return app.cmdPin(args[1:], false)
-	case "completion":
-		return app.cmdCompletion(args[1:])
-	case "pick":
-		return app.cmdPick(args[1:])
-	case "config-edit":
-		return app.cmdConfigEdit(args[1:])
-	case "config":
-		return app.cmdConfig(args[1:])
-	case "doctor":
-		return app.cmdDoctor(args[1:])
-	case "connect", "conn":
-		return app.cmdConnect(args[1:])
-	case "--ping", "-p", "ping":
-		return app.cmdPing(args[1:])
-	case "--exec", "-x", "exec":
-		return app.cmdExec(args[1:])
-	case "--exec-tag", "--xt", "exec-tag":
-		return app.cmdExecTag(args[1:])
-	case "--exec-all", "--xa", "exec-all":
-		return app.cmdExecAll(args[1:])
-	case "push":
-		return app.cmdPush(args[1:])
-	case "pull":
-		return app.cmdPull(args[1:])
-	case "forward":
-		return app.cmdForward(args[1:])
-	case "logs":
-		return app.cmdLogs(args[1:])
-	case "--export-ssh-config", "export-ssh-config":
-		return app.cmdExportSSHConfig(args[1:])
-	case "--import-ssh-config", "import-ssh-config":
-		return app.cmdImportSSHConfig(args[1:])
-	case "--passwd", "passwd":
-		return app.cmdPasswd(args[1:])
-	case "--forget-pass", "forget-pass":
-		return app.cmdForgetPass(args[1:])
-	case "--show-pubkey", "show-pubkey":
-		return app.cmdShowPubkey(args[1:])
-	case "--auth", "auth":
-		return app.cmdAuth(args[1:])
-	case "--lock", "lock":
-		app.lockSecretStore()
-		ui.PrintSuccess("当前会话密码库已锁定")
-		return nil
-	case "--help", "-h", "help":
-		if len(args) > 1 && args[1] == "config" {
-			printConfigHelp()
-			return nil
-		}
-		app.printHelp()
-		return nil
-	case "--version", "-v":
-		fmt.Printf("sshm %s\n", CurrentVersion())
-		return nil
-	default:
-		if strings.HasPrefix(args[0], "-") {
-			return unknownOptionError(args[0])
-		}
-		// Treat as alias or ID to connect
-		return app.cmdConnect(args)
-	}
+	return runCobra(NewApp(), args)
 }
 
 func unknownOptionError(option string) error {
 	commands := append([]string{}, completionCommands...)
 	commands = append(commands,
 		"--list", "--add", "--edit", "--delete", "--show", "--search",
-		"--tag", "--ping", "--exec", "--exec-tag", "--exec-all", "--passwd",
+		"--tag", "--ping", "--exec", "--exec-tag", "--passwd",
 		"--forget-pass", "--show-pubkey", "--auth",
 		"--lock", "--export-ssh-config", "--import-ssh-config", "--help", "--version",
 	)
@@ -236,7 +136,6 @@ func (app *App) printHelp() {
 	fmt.Println("  ping [--yes] [--quiet] [目标]  测试连接")
 	fmt.Println("  exec [--yes] [--quiet] ...     执行命令")
 	fmt.Println("  exec-tag [--yes] [--quiet] ... 按标签执行命令")
-	fmt.Println("  exec-all [--yes] [--quiet] ... 所有主机执行命令")
 	fmt.Println("  push/pull ...                  安全传输文件或目录，可选 rsync 加速")
 	fmt.Println("  forward <主机> <本地> <远程>   建立本地端口转发")
 	fmt.Println("  logs [clean]                   查看或清理操作日志")
@@ -245,8 +144,8 @@ func (app *App) printHelp() {
 	fmt.Println("  show-pubkey <别名|ID>         显示公钥")
 	fmt.Println("  auth <别名|ID>                修改认证策略")
 	fmt.Println("  lock                           锁定当前会话密码库")
-	fmt.Println("  config-edit                    校验后编辑 sshm.yaml")
-	fmt.Println("  config                         查看或修改全局配置")
+	fmt.Println("  init                           初始化 ~/.sshm 工作目录")
+	fmt.Println("  config path/edit               查看路径或校验后编辑 sshm.yaml")
 	fmt.Println("  export-ssh-config <文件>      导出 SSH 配置")
 	fmt.Println("  import-ssh-config [文件]      导入 SSH 配置")
 	fmt.Println("  --help, -h                    显示帮助")
@@ -279,7 +178,6 @@ func (app *App) printInteractiveHelp() {
 	fmt.Printf("    %-14s %-24s %s\n", "ping", "测试连通性", "ping [别名|ID]")
 	fmt.Printf("    %-14s %-24s %s\n", "exec, x", "远程执行命令", "x <别名|ID> <命令>")
 	fmt.Printf("    %-14s %-24s %s\n", "exec-tag, xt", "按标签执行命令", "xt <标签> <命令>")
-	fmt.Printf("    %-14s %-24s %s\n", "exec-all, xa", "所有主机执行", "xa <命令>")
 	fmt.Printf("    %-14s %-24s %s\n", "deploy", "批量部署工作流", "deploy <子命令>")
 	fmt.Println()
 	fmt.Println("  认证与密钥")
@@ -292,7 +190,7 @@ func (app *App) printInteractiveHelp() {
 	fmt.Println()
 	fmt.Println("  配置")
 	fmt.Printf("    %-14s %-24s %s\n", "ssh-config, sc", "导入/导出 SSH 配置", "")
-	fmt.Printf("    %-14s %-24s %s\n", "config-edit", "校验后编辑 sshm.yaml", "")
+	fmt.Printf("    %-14s %-24s %s\n", "config edit", "校验后编辑 sshm.yaml", "")
 	fmt.Printf("    %-14s %-24s %s\n", "doctor", "检查本机环境", "")
 	fmt.Println()
 	fmt.Println("  其他")

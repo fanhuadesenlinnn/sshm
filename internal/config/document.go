@@ -2,20 +2,74 @@ package config
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"sort"
+	"time"
 
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/safefile"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/safefile"
 	"golang.org/x/crypto/ssh"
 	"gopkg.in/yaml.v3"
 )
 
-const DocumentVersion = 1
+const DocumentVersion = 2
 
-// Defaults contains global host defaults. Empty per-host values inherit these.
+var ErrNotInitialized = errors.New("sshm 尚未初始化；请先运行 sshm init")
+
+// Defaults contains global operation defaults.
 type Defaults struct {
-	HostKeyPolicy string `yaml:"host_key_policy"`
+	HostKeyPolicy string           `yaml:"host_key_policy"`
+	Batch         BatchDefaults    `yaml:"batch"`
+	Exec          ExecDefaults     `yaml:"exec"`
+	Transfer      TransferDefaults `yaml:"transfer"`
+	Logs          LogDefaults      `yaml:"logs"`
+}
+
+type BatchDefaults struct {
+	Parallel       int      `yaml:"parallel"`
+	ConnectTimeout Duration `yaml:"connect_timeout"`
+}
+
+type ExecDefaults struct {
+	Timeout Duration `yaml:"timeout"`
+}
+
+type TransferDefaults struct {
+	Timeout Duration `yaml:"timeout"`
+}
+
+type LogDefaults struct {
+	Enabled    bool     `yaml:"enabled"`
+	Retention  Duration `yaml:"retention"`
+	enabledSet bool
+}
+
+func (d *LogDefaults) UnmarshalYAML(node *yaml.Node) error {
+	if node.Kind != yaml.MappingNode {
+		return fmt.Errorf("defaults.logs 必须是映射")
+	}
+	for index := 0; index < len(node.Content); index += 2 {
+		switch node.Content[index].Value {
+		case "enabled", "retention":
+		default:
+			return fmt.Errorf("defaults.logs 包含未知字段 %q", node.Content[index].Value)
+		}
+	}
+	type rawLogDefaults struct {
+		Enabled   *bool    `yaml:"enabled"`
+		Retention Duration `yaml:"retention"`
+	}
+	var raw rawLogDefaults
+	if err := node.Decode(&raw); err != nil {
+		return err
+	}
+	d.Retention = raw.Retention
+	if raw.Enabled != nil {
+		d.Enabled = *raw.Enabled
+		d.enabledSet = true
+	}
+	return nil
 }
 
 // HostTrustEntry records a trusted SSH host key owned by sshm.
@@ -57,7 +111,7 @@ type Document struct {
 	Hosts       []Host          `yaml:"hosts"`
 	ManagedKeys ManagedKeysFile `yaml:"managed_keys"`
 	HostTrust   HostTrust       `yaml:"host_trust"`
-	Vault       *EncryptedVault `yaml:"vault,omitempty"`
+	Vault       *EncryptedVault `yaml:"vault"`
 }
 
 // Repository atomically reads and updates sshm.yaml.
@@ -77,10 +131,27 @@ func (r *Repository) Path() string { return r.path }
 
 func DefaultDocument() *Document {
 	return &Document{
-		Version:  DocumentVersion,
-		Defaults: Defaults{HostKeyPolicy: HostKeyPolicyStrict},
-		Tags:     TagsFile{Items: []Tag{}},
-		Hosts:    []Host{},
+		Version: DocumentVersion,
+		Defaults: Defaults{
+			HostKeyPolicy: HostKeyPolicyStrict,
+			Batch: BatchDefaults{
+				Parallel:       4,
+				ConnectTimeout: Duration{Duration: 10 * time.Second},
+			},
+			Exec: ExecDefaults{
+				Timeout: Duration{Duration: 30 * time.Second},
+			},
+			Transfer: TransferDefaults{
+				Timeout: Duration{Duration: 15 * time.Minute},
+			},
+			Logs: LogDefaults{
+				Enabled:    true,
+				Retention:  Duration{Duration: 30 * 24 * time.Hour},
+				enabledSet: true,
+			},
+		},
+		Tags:  TagsFile{Items: []Tag{}},
+		Hosts: []Host{},
 		ManagedKeys: ManagedKeysFile{
 			Keys: []ManagedKey{},
 		},
@@ -92,7 +163,7 @@ func (r *Repository) Load() (*Document, error) {
 	var doc *Document
 	err := safefile.WithLock(r.path, func() error {
 		var err error
-		doc, err = r.loadUnlocked(true)
+		doc, err = r.loadUnlocked()
 		return err
 	})
 	return doc, err
@@ -101,8 +172,10 @@ func (r *Repository) Load() (*Document, error) {
 // Update runs one read-modify-write transaction against the complete document.
 func (r *Repository) Update(mutate func(*Document) error) error {
 	return safefile.WithLock(r.path, func() error {
-		doc, err := r.loadUnlocked(false)
-		if err != nil {
+		doc, err := r.loadUnlocked()
+		if errors.Is(err, ErrNotInitialized) {
+			doc = DefaultDocument()
+		} else if err != nil {
 			return err
 		}
 		if err := mutate(doc); err != nil {
@@ -131,19 +204,13 @@ func ValidateDocumentData(data []byte) (*Document, error) {
 	return &doc, nil
 }
 
-func (r *Repository) loadUnlocked(create bool) (*Document, error) {
+func (r *Repository) loadUnlocked() (*Document, error) {
 	data, err := os.ReadFile(r.path)
 	if err != nil {
 		if !os.IsNotExist(err) {
 			return nil, fmt.Errorf("读取配置文件失败: %w", err)
 		}
-		doc := DefaultDocument()
-		if create {
-			if err := r.saveUnlocked(doc); err != nil {
-				return nil, err
-			}
-		}
-		return doc, nil
+		return nil, ErrNotInitialized
 	}
 
 	var doc Document
@@ -152,21 +219,8 @@ func (r *Repository) loadUnlocked(create bool) (*Document, error) {
 	if err := decoder.Decode(&doc); err != nil {
 		return nil, fmt.Errorf("解析配置文件失败，原文件未修改: %w", err)
 	}
-	beforeNormalization, err := yaml.Marshal(&doc)
-	if err != nil {
-		return nil, fmt.Errorf("检查配置规范化状态失败: %w", err)
-	}
 	if err := normalizeAndValidateDocument(&doc); err != nil {
 		return nil, err
-	}
-	afterNormalization, err := yaml.Marshal(&doc)
-	if err != nil {
-		return nil, fmt.Errorf("检查配置规范化状态失败: %w", err)
-	}
-	if create && !bytes.Equal(beforeNormalization, afterNormalization) {
-		if err := r.saveUnlocked(&doc); err != nil {
-			return nil, fmt.Errorf("保存自动补全的配置字段失败: %w", err)
-		}
 	}
 	return &doc, nil
 }
@@ -184,7 +238,7 @@ func (r *Repository) saveUnlocked(doc *Document) error {
 
 func normalizeAndValidateDocument(doc *Document) error {
 	if doc.Version == 0 {
-		doc.Version = DocumentVersion
+		return fmt.Errorf("配置缺少必填字段 version")
 	}
 	if doc.Version != DocumentVersion {
 		return fmt.Errorf("不支持的配置版本 %d，当前仅支持 %d", doc.Version, DocumentVersion)
@@ -194,6 +248,27 @@ func normalizeAndValidateDocument(doc *Document) error {
 	}
 	if !ValidHostKeyPolicy(doc.Defaults.HostKeyPolicy) {
 		return fmt.Errorf("无效的全局主机信任策略: %s", doc.Defaults.HostKeyPolicy)
+	}
+	if doc.Defaults.Batch.Parallel == 0 {
+		doc.Defaults.Batch.Parallel = 4
+	}
+	if doc.Defaults.Batch.Parallel < 1 || doc.Defaults.Batch.Parallel > 128 {
+		return fmt.Errorf("defaults.batch.parallel 必须在 1 到 128 之间")
+	}
+	if doc.Defaults.Batch.ConnectTimeout.Duration == 0 {
+		doc.Defaults.Batch.ConnectTimeout.Duration = 10 * time.Second
+	}
+	if doc.Defaults.Exec.Timeout.Duration == 0 {
+		doc.Defaults.Exec.Timeout.Duration = 30 * time.Second
+	}
+	if doc.Defaults.Transfer.Timeout.Duration == 0 {
+		doc.Defaults.Transfer.Timeout.Duration = 15 * time.Minute
+	}
+	if doc.Defaults.Logs.Retention.Duration == 0 {
+		doc.Defaults.Logs.Retention.Duration = 30 * 24 * time.Hour
+	}
+	if !doc.Defaults.Logs.enabledSet {
+		doc.Defaults.Logs.Enabled = true
 	}
 	if doc.Hosts == nil {
 		doc.Hosts = []Host{}
@@ -227,7 +302,7 @@ func normalizeAndValidateDocument(doc *Document) error {
 	for i := range doc.Hosts {
 		host := &doc.Hosts[i]
 		if host.ID == "" {
-			host.ID = NewID()
+			return fmt.Errorf("主机 %s 缺少稳定 ID", host.Alias)
 		}
 		host.EnsureDefaults()
 		for _, tag := range host.Tags {
@@ -305,14 +380,18 @@ func encodeDocument(doc *Document) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	header := `# sshm 配置；完整说明: sshm help config
-# host_key_policy: strict | accept-new | insecure(跳过验证)；主机空值继承全局
-# 主机必填: alias, user, host；常用可选: port, auth, identity, tags
-# tags.items 可填写标签备注；主机引用的新标签会自动登记
-# auth: auto | key | password；identity 填托管密钥名
-# 高级可选: host_key_policy, jump_host
-# deploy 工作流使用独立 deploy.yaml、deploy.d/*.yaml 或项目 sshm.deploy.yaml
-# host_trust 与 vault 由 sshm 管理，请勿手动修改
+	header := `# sshm 配置文件
+# 数据目录: ~/.sshm
+# 主配置:   ~/.sshm/sshm.yaml
+# 日志目录: ~/.sshm/logs
+# 编排配置: ~/.sshm/deploy.yaml 或 ~/.sshm/deploy.d/*.yaml
+#
+# 主机密钥策略:
+#   strict      首次连接需要确认，主机密钥变化会被拒绝
+#   accept-new  新主机自动信任，主机密钥变化会被拒绝
+#   insecure    跳过主机密钥校验，不推荐
+#
+# host_trust 与 vault 由 sshm 管理，请勿手动编辑
 `
 	return append([]byte(header), body...), nil
 }

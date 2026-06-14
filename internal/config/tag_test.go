@@ -37,7 +37,7 @@ func TestRepositoryRegistersReferencedTags(t *testing.T) {
 
 func TestValidateDocumentRejectsDuplicateTagDefinitions(t *testing.T) {
 	_, err := ValidateDocumentData([]byte(`
-version: 1
+version: 2
 defaults:
   host_key_policy: strict
 tags:
@@ -61,7 +61,7 @@ func TestValidateTagName(t *testing.T) {
 			t.Fatalf("ValidateTagName(%q): %v", valid, err)
 		}
 	}
-	for _, invalid := range []string{"", "-prod", "--all", "prod web", "prod,web", "prod\nweb"} {
+	for _, invalid := range []string{"", "all", "-prod", "--all", "prod web", "prod,web", "prod\nweb"} {
 		if err := ValidateTagName(invalid); err == nil {
 			t.Fatalf("ValidateTagName(%q) should fail", invalid)
 		}

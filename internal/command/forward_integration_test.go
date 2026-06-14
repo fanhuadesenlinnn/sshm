@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/secret"
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/sshx"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/secret"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/sshx"
 	"golang.org/x/crypto/ssh"
 )
 

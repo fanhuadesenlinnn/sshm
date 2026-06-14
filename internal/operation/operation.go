@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/safefile"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/safefile"
 )
 
 type FailureStage string
@@ -106,6 +106,7 @@ func Suggestion(stage FailureStage) string {
 
 type Result struct {
 	Host         config.Host
+	Status       string
 	Output       string
 	Err          error
 	Stage        FailureStage
@@ -115,7 +116,14 @@ type Result struct {
 }
 
 func WriteLog(action, detail string, results []Result) (string, error) {
-	if err := CleanExpired(30 * 24 * time.Hour); err != nil {
+	return WriteLogWithRetention(action, detail, results, 30*24*time.Hour)
+}
+
+func WriteLogWithRetention(action, detail string, results []Result, retention time.Duration) (string, error) {
+	if retention <= 0 {
+		retention = 30 * 24 * time.Hour
+	}
+	if err := CleanExpired(retention); err != nil {
 		return "", err
 	}
 	name := time.Now().Format("20060102-150405.000000000") + "-" + action
@@ -126,8 +134,11 @@ func WriteLog(action, detail string, results []Result) (string, error) {
 	var summary strings.Builder
 	fmt.Fprintf(&summary, "action: %s\ndetail: %s\ncreated_at: %s\n\n", action, detail, time.Now().Format(time.RFC3339))
 	for _, result := range results {
-		status := "success"
-		if result.Err != nil {
+		status := result.Status
+		if status == "" {
+			status = "success"
+		}
+		if result.Err != nil && result.Status == "" {
 			status = "failed"
 		}
 		fmt.Fprintf(&summary, "%s (%s) %s stage=%s duration=%s\n", result.Host.Alias, result.Host.Host, status, result.Stage, result.Duration)

@@ -1,14 +1,26 @@
 package command
 
 import (
+	"errors"
 	"fmt"
 
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/ui"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/ui"
 )
 
 func (app *App) cmdDoctor(_ []string) error {
 	hf, err := app.Store.Load()
+	if errors.Is(err, config.ErrNotInitialized) {
+		ui.PrintHeader("sshm 环境检查")
+		fmt.Println()
+		fmt.Printf("  %-14s %s\n", "版本", CurrentVersion())
+		fmt.Printf("  %-14s %s\n", "配置文件", app.Store.Path())
+		ui.PrintWarn("sshm 尚未初始化；请运行 sshm init")
+		if legacy, exists := config.LegacyConfigExists(); exists {
+			ui.PrintWarn("发现旧配置 %s；v6 不会读取、迁移或删除该文件", legacy)
+		}
+		return nil
+	}
 	if err != nil {
 		return fmt.Errorf("读取主机配置失败: %w", err)
 	}

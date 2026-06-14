@@ -3,6 +3,7 @@ package command
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -10,12 +11,13 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"time"
 
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/secret"
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/sshx"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/secret"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/sshx"
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
@@ -23,21 +25,35 @@ import (
 
 var rsyncEndpointPart = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 
-func tryRsyncTransfer(ctx context.Context, client *ssh.Client, sftpClient *sftp.Client, host config.Host, store *secret.FileStore, options transferOptions) (string, bool, error) {
+func tryRsyncTransfer(ctx context.Context, client *ssh.Client, sftpClient *sftp.Client, host config.Host, store *secret.FileStore, options transferOptions) (string, bool, bool, error) {
 	rsyncPath, sshPath, ok := rsyncAvailable(client, host, store, options)
 	if !ok {
-		return "", false, nil
+		if options.method == "rsync" {
+			return "", false, true, fmt.Errorf("显式 rsync 不可用或无法保证 v6 安全语义")
+		}
+		return "", false, false, nil
 	}
 	sshCommand, cleanup, err := prepareRsyncTransportWithTimeout(host, store, sshPath, options.connectTimeout)
 	if err != nil {
-		return "", false, nil
+		if options.method == "rsync" {
+			return "", false, true, err
+		}
+		return "", false, false, nil
 	}
 	defer cleanup()
 
+	var destination string
+	var changed bool
 	if options.direction == "push" {
-		return pushRsync(ctx, rsyncPath, sshCommand, sftpClient, host, options)
+		destination, changed, err = pushRsync(ctx, rsyncPath, sshCommand, sftpClient, host, options)
+	} else {
+		destination, changed, err = pullRsync(ctx, rsyncPath, sshCommand, sftpClient, host, options)
 	}
-	return pullRsync(ctx, rsyncPath, sshCommand, sftpClient, host, options)
+	var fallback *rsyncFallbackError
+	if errors.As(err, &fallback) && options.method == "auto" {
+		return "", false, false, nil
+	}
+	return destination, changed, true, err
 }
 
 func rsyncAvailable(client *ssh.Client, host config.Host, store *secret.FileStore, options transferOptions) (string, string, bool) {
@@ -168,83 +184,129 @@ func trustedHostEntry(host config.Host) (config.HostTrustEntry, error) {
 }
 
 func pushRsync(ctx context.Context, rsyncPath, sshCommand string, client *sftp.Client, host config.Host, options transferOptions) (string, bool, error) {
-	if _, err := os.Stat(options.localPath); err != nil {
-		return options.remotePath, true, fmt.Errorf("读取本地源失败: %w", err)
+	sourceManifest, err := localManifest(options.localPath)
+	if err != nil {
+		return options.remotePath, false, err
 	}
 	remotePath := path.Clean(options.remotePath)
 	if remotePath == "." || remotePath == "/" || strings.HasPrefix(remotePath, "~/") {
-		return remotePath, true, fmt.Errorf("远程目标必须是明确路径，且不支持 ~ 展开: %s", remotePath)
+		return remotePath, false, fmt.Errorf("远程目标必须是明确路径，且不支持 ~ 展开: %s", remotePath)
 	}
-	if _, err := client.Stat(remotePath); err == nil {
-		if !options.overwrite {
-			return remotePath, true, fmt.Errorf("远程目标已存在；使用 --overwrite 明确覆盖")
+	exists := false
+	var targetManifest []manifestEntry
+	if _, err := client.Lstat(remotePath); err == nil {
+		exists = true
+		if options.validateChecksum {
+			targetManifest, err = remoteManifest(client, remotePath)
+			if err != nil {
+				return remotePath, false, err
+			}
+			if manifestsEqual(sourceManifest, targetManifest) {
+				return remotePath, false, nil
+			}
+		}
+		if options.diffWriter != nil {
+			if targetManifest == nil {
+				targetManifest, err = remoteManifest(client, remotePath)
+				if err != nil {
+					return remotePath, false, err
+				}
+			}
+			if err := writePushDiff(options.diffWriter, client, options.localPath, remotePath, sourceManifest, targetManifest); err != nil {
+				return remotePath, false, err
+			}
+		}
+		if !options.check && !options.overwrite && !options.backup {
+			return remotePath, false, fmt.Errorf("远程目标已存在且内容不同；使用 --overwrite 或 --backup")
 		}
 	} else if !os.IsNotExist(err) {
-		return remotePath, true, fmt.Errorf("检查远程目标失败: %w", err)
+		return remotePath, false, fmt.Errorf("检查远程目标失败: %w", err)
+	} else if options.diffWriter != nil {
+		if err := writePushDiff(options.diffWriter, client, options.localPath, remotePath, sourceManifest, nil); err != nil {
+			return remotePath, false, err
+		}
+	}
+	if options.check {
+		return remotePath, true, nil
 	}
 	temp := remotePath + fmt.Sprintf(".sshm-rsync-tmp-%d-%d", os.Getpid(), time.Now().UnixNano())
 	_ = client.RemoveAll(temp)
-	if err := runRsync(ctx, rsyncPath, sshCommand, filepath.Clean(options.localPath), rsyncRemote(host, temp)); err != nil {
-		if cleanupErr := client.RemoveAll(temp); cleanupErr != nil {
-			return remotePath, true, fmt.Errorf("rsync 失败且无法清理远程临时目标: %v；原始错误: %w", cleanupErr, err)
-		}
-		if options.method == "rsync" {
-			return remotePath, true, fmt.Errorf("rsync 推送失败: %w", err)
-		}
-		return "", false, nil
-	}
-	if _, err := client.Stat(temp); err != nil {
-		_ = client.RemoveAll(temp)
-		if options.method == "rsync" {
-			return remotePath, true, fmt.Errorf("rsync 推送未产生远程临时目标: %w", err)
-		}
-		return "", false, nil
-	}
 	defer client.RemoveAll(temp)
-	return remotePath, true, activateRemoteTemp(client, temp, remotePath, options.overwrite)
+	if err := runRsync(ctx, rsyncPath, sshCommand, filepath.Clean(options.localPath), rsyncRemote(host, temp)); err != nil {
+		return remotePath, false, &rsyncFallbackError{err: fmt.Errorf("rsync 推送失败: %w", err)}
+	}
+	if options.validateChecksum {
+		tempManifest, err := remoteManifest(client, temp)
+		if err != nil {
+			return remotePath, false, &rsyncFallbackError{err: err}
+		}
+		if !manifestsEqual(sourceManifest, tempManifest) {
+			return remotePath, false, &rsyncFallbackError{err: fmt.Errorf("rsync 远程临时目标 checksum 校验失败")}
+		}
+	}
+	return remotePath, true, activateRemoteTemp(client, temp, remotePath, exists, options.overwrite, options.backup)
 }
 
 func pullRsync(ctx context.Context, rsyncPath, sshCommand string, client *sftp.Client, host config.Host, options transferOptions) (string, bool, error) {
 	remotePath := path.Clean(options.remotePath)
-	if _, err := client.Stat(remotePath); err != nil {
-		return "", true, fmt.Errorf("读取远程源失败: %w", err)
+	sourceManifest, err := remoteManifest(client, remotePath)
+	if err != nil {
+		return options.localPath, false, err
 	}
-	name := path.Base(remotePath)
-	if name == "." || name == "/" {
-		return "", true, fmt.Errorf("远程源必须是明确文件或目录")
+	destination := options.localPath
+	if err := validateRemoteManifestDestinations(
+		destination, sourceManifest, runtime.GOOS == "windows", localPathComparisonCaseInsensitive(),
+	); err != nil {
+		return destination, false, err
 	}
-	destination := filepath.Join(options.localPath, host.Alias, name)
-	if _, err := os.Stat(destination); err == nil {
-		if !options.overwrite {
-			return destination, true, fmt.Errorf("本地目标已存在；使用 --overwrite 明确覆盖")
+	exists := false
+	if _, err := os.Lstat(destination); err == nil {
+		exists = true
+		if options.validateChecksum {
+			targetManifest, err := localManifest(destination)
+			if err != nil {
+				return destination, false, err
+			}
+			if manifestsEqual(sourceManifest, targetManifest) {
+				return destination, false, nil
+			}
+		}
+		if !options.check && !options.overwrite && !options.backup {
+			return destination, false, fmt.Errorf("本地目标已存在且内容不同；使用 --overwrite 或 --backup")
 		}
 	} else if !os.IsNotExist(err) {
-		return destination, true, fmt.Errorf("检查本地目标失败: %w", err)
+		return destination, false, fmt.Errorf("检查本地目标失败: %w", err)
+	}
+	if options.check {
+		return destination, true, nil
 	}
 	if err := os.MkdirAll(filepath.Dir(destination), 0700); err != nil {
-		return destination, true, err
+		return destination, false, err
 	}
-	temp := destination + fmt.Sprintf(".sshm-rsync-tmp-%d-%d", os.Getpid(), time.Now().UnixNano())
+	temp := filepath.Join(filepath.Dir(destination), "."+filepath.Base(destination)+fmt.Sprintf(".sshm-rsync-tmp-%d-%d", os.Getpid(), time.Now().UnixNano()))
 	_ = os.RemoveAll(temp)
-	if err := runRsync(ctx, rsyncPath, sshCommand, rsyncRemote(host, remotePath), temp); err != nil {
-		if cleanupErr := os.RemoveAll(temp); cleanupErr != nil {
-			return destination, true, fmt.Errorf("rsync 失败且无法清理本地临时目标: %v；原始错误: %w", cleanupErr, err)
-		}
-		if options.method == "rsync" {
-			return destination, true, fmt.Errorf("rsync 拉取失败: %w", err)
-		}
-		return "", false, nil
-	}
-	if _, err := os.Stat(temp); err != nil {
-		_ = os.RemoveAll(temp)
-		if options.method == "rsync" {
-			return destination, true, fmt.Errorf("rsync 拉取未产生本地临时目标: %w", err)
-		}
-		return "", false, nil
-	}
 	defer os.RemoveAll(temp)
-	return destination, true, activateLocalTemp(temp, destination, options.overwrite)
+	if err := runRsync(ctx, rsyncPath, sshCommand, rsyncRemote(host, remotePath), temp); err != nil {
+		return destination, false, &rsyncFallbackError{err: fmt.Errorf("rsync 拉取失败: %w", err)}
+	}
+	if options.validateChecksum {
+		tempManifest, err := localManifest(temp)
+		if err != nil {
+			return destination, false, &rsyncFallbackError{err: err}
+		}
+		if !manifestsEqual(sourceManifest, tempManifest) {
+			return destination, false, &rsyncFallbackError{err: fmt.Errorf("rsync 本地临时目标 checksum 校验失败")}
+		}
+	}
+	return destination, true, activateLocalTemp(temp, destination, exists, options.overwrite, options.backup)
 }
+
+type rsyncFallbackError struct {
+	err error
+}
+
+func (e *rsyncFallbackError) Error() string { return e.err.Error() }
+func (e *rsyncFallbackError) Unwrap() error { return e.err }
 
 func runRsync(ctx context.Context, rsyncPath, sshCommand, source, destination string) error {
 	command := exec.CommandContext(ctx, rsyncPath,

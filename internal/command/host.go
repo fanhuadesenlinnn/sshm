@@ -8,8 +8,8 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/ui"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/ui"
 )
 
 func (app *App) cmdHost(args []string) error {
@@ -130,7 +130,7 @@ func (app *App) cmdAddBatch(args []string) error {
 
 func (app *App) cmdConfigEdit(_ []string) error {
 	if _, err := app.Store.Repository().Load(); err != nil {
-		return fmt.Errorf("初始化配置失败: %w", err)
+		return fmt.Errorf("读取配置失败: %w", err)
 	}
 	data, err := os.ReadFile(app.Store.Path())
 	if err != nil {

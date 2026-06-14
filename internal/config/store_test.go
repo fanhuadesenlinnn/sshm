@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,15 +11,8 @@ import (
 
 func TestStoreLoadEmpty(t *testing.T) {
 	store := NewStoreWithPath(filepath.Join(t.TempDir(), "sshm.yaml"))
-	hf, err := store.Load()
-	if err != nil {
-		t.Fatalf("Load() error = %v", err)
-	}
-	if hf.Version != CurrentVersion {
-		t.Fatalf("Version = %d, want %d", hf.Version, CurrentVersion)
-	}
-	if len(hf.Hosts) != 0 {
-		t.Fatalf("len(Hosts) = %d, want 0", len(hf.Hosts))
+	if _, err := store.Load(); !errors.Is(err, ErrNotInitialized) {
+		t.Fatalf("Load() error = %v, want ErrNotInitialized", err)
 	}
 }
 
@@ -94,7 +88,7 @@ func TestRepositoryRejectsUnsupportedVersion(t *testing.T) {
 
 func TestStoreDuplicateAliasesDetected(t *testing.T) {
 	hf := &HostsFile{
-		Version: 1,
+		Version: 2,
 		Hosts: []Host{
 			{Alias: "a", User: "u", Host: "h1"},
 			{Alias: "b", User: "u", Host: "h2"},
@@ -283,7 +277,7 @@ func TestNewIDUniqueness(t *testing.T) {
 
 func TestEnsureIDs(t *testing.T) {
 	hf := HostsFile{
-		Version: 1,
+		Version: 2,
 		Hosts: []Host{
 			{Alias: "a", User: "u", Host: "h"},
 			{Alias: "b", User: "u", Host: "h", ID: "existing"},

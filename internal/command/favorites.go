@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strconv"
 
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/ui"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/ui"
 )
 
 func (app *App) cmdPin(args []string, pinned bool) error {

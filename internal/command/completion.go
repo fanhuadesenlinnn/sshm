@@ -5,13 +5,13 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/deploy"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/deploy"
 )
 
 var completionCommands = []string{
-	"add", "add-batch", "auth", "completion", "config-edit", "connect", "delete", "doctor", "edit", "exec", "exec-all",
-	"exec-tag", "export-ssh-config", "forget-pass", "push", "pull", "forward", "tag", "deploy",
-	"help", "host", "import-ssh-config", "key", "list", "lock", "logs", "config", "passwd", "pin",
+	"add", "add-batch", "auth", "completion", "config", "connect", "delete", "doctor", "edit", "exec",
+	"exec-tag", "export-ssh-config", "forget-pass", "push", "push-tag", "pull", "pull-tag", "forward", "tag", "deploy",
+	"help", "host", "import-ssh-config", "init", "key", "list", "lock", "logs", "passwd", "pin",
 	"pick", "ping", "recent", "search", "show", "show-pubkey", "unpin",
 }
 

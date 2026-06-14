@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
 )
 
 func TestEditHostWithBlankInputsDoesNotRewriteConfig(t *testing.T) {

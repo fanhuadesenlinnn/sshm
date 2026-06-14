@@ -1,49 +1,128 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 )
 
-// SSHMHome returns the base configuration directory for sshm.
-// Priority: SSHM_HOME > XDG_CONFIG_HOME/sshm > ~/.config/sshm
+// Paths contains every persistent path owned by sshm.
+type Paths struct {
+	Home      string
+	Config    string
+	Logs      string
+	Deploy    string
+	DeployDir string
+	Backups   string
+	Temp      string
+}
+
+// ResolvePaths resolves the portable sshm home. SSHM_HOME is the only
+// supported path override.
+func ResolvePaths() (Paths, error) {
+	home := os.Getenv("SSHM_HOME")
+	if home == "" {
+		userHome, err := os.UserHomeDir()
+		if err != nil {
+			return Paths{}, fmt.Errorf("解析用户主目录失败: %w", err)
+		}
+		home = filepath.Join(userHome, ".sshm")
+	} else {
+		home = ExpandPath(home)
+		if !filepath.IsAbs(home) {
+			absolute, err := filepath.Abs(home)
+			if err != nil {
+				return Paths{}, fmt.Errorf("解析 SSHM_HOME 失败: %w", err)
+			}
+			home = absolute
+		}
+	}
+	home = filepath.Clean(home)
+	return Paths{
+		Home:      home,
+		Config:    filepath.Join(home, "sshm.yaml"),
+		Logs:      filepath.Join(home, "logs"),
+		Deploy:    filepath.Join(home, "deploy.yaml"),
+		DeployDir: filepath.Join(home, "deploy.d"),
+		Backups:   filepath.Join(home, "backups"),
+		Temp:      filepath.Join(home, "tmp"),
+	}, nil
+}
+
+// SSHMHome returns the base directory for all sshm-owned data.
 func SSHMHome() string {
-	if v := os.Getenv("SSHM_HOME"); v != "" {
-		return v
+	paths, err := ResolvePaths()
+	if err != nil {
+		return filepath.Join(".", ".sshm")
 	}
-	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
-		return filepath.Join(xdg, "sshm")
-	}
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config", "sshm")
+	return paths.Home
 }
 
 // ConfigFilePath returns the only persistent configuration file.
 func ConfigFilePath() string {
-	if v := os.Getenv("SSHM_CONFIG_FILE"); v != "" {
-		return v
+	paths, err := ResolvePaths()
+	if err != nil {
+		return filepath.Join(SSHMHome(), "sshm.yaml")
 	}
-	return filepath.Join(SSHMHome(), "sshm.yaml")
+	return paths.Config
 }
 
 func LogsDir() string {
-	return filepath.Join(SSHMHome(), "logs")
+	paths, err := ResolvePaths()
+	if err != nil {
+		return filepath.Join(SSHMHome(), "logs")
+	}
+	return paths.Logs
+}
+
+func DeployFilePath() string {
+	return filepath.Join(SSHMHome(), "deploy.yaml")
+}
+
+func DeployDir() string {
+	return filepath.Join(SSHMHome(), "deploy.d")
+}
+
+func BackupsDir() string {
+	return filepath.Join(SSHMHome(), "backups")
+}
+
+func TempDir() string {
+	return filepath.Join(SSHMHome(), "tmp")
+}
+
+// LegacyConfigPath returns the old location only for warning users. v6 never
+// reads business data from this path.
+func LegacyConfigPath() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".config", "sshm", "sshm.yaml")
 }
 
 // EnsureDirs creates all required directories with proper permissions.
 func EnsureDirs() error {
+	paths, err := ResolvePaths()
+	if err != nil {
+		return err
+	}
 	dirs := []struct {
 		path string
 		perm os.FileMode
 	}{
-		{SSHMHome(), 0700},
+		{paths.Home, 0700},
+		{paths.DeployDir, 0700},
+		{paths.Logs, 0700},
+		{paths.Backups, 0700},
+		{paths.Temp, 0700},
 	}
 	for _, d := range dirs {
 		if err := os.MkdirAll(d.path, d.perm); err != nil {
-			return err
+			return fmt.Errorf("创建目录 %s 失败: %w", d.path, err)
 		}
 		if err := os.Chmod(d.path, d.perm); err != nil {
-			return err
+			return fmt.Errorf("设置目录权限 %s 失败: %w", d.path, err)
 		}
 	}
 	return nil

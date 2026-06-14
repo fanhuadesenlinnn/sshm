@@ -2,20 +2,36 @@ package deploy
 
 import (
 	"fmt"
+	"path"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/operation"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
 )
+
+var becomeUserPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]*$`)
 
 func ValidateCatalog(catalog *Catalog, hosts []config.Host) error {
 	if len(catalog.Profiles) == 0 {
 		return fmt.Errorf("deploy 配置不包含 profile")
 	}
+	for _, handler := range catalog.Handlers {
+		if err := validateHandler(handler); err != nil {
+			return fmt.Errorf("handler %q: %w", handler.Name, err)
+		}
+	}
 	for _, profile := range catalog.Profiles {
 		if err := ValidateProfile(profile, hosts, false); err != nil {
 			return fmt.Errorf("%s: profile %q: %w", profile.Source, profile.Name, err)
+		}
+		for _, step := range profile.Steps {
+			for _, name := range step.Notify {
+				if _, ok := catalog.HandlerByName[name]; !ok {
+					return fmt.Errorf("%s: profile %q step %q 引用了不存在的 handler %q", profile.Source, profile.Name, step.Name, name)
+				}
+			}
 		}
 	}
 	return nil
@@ -28,27 +44,16 @@ func ValidateProfile(profile Profile, hosts []config.Host, allowEmptyTargets boo
 	if !profileNamePattern.MatchString(profile.Name) {
 		return fmt.Errorf("名称只能包含字母、数字、点、下划线和短横线")
 	}
-	for name, value := range profile.Vars {
-		if !variableNamePattern.MatchString(name) {
-			return fmt.Errorf("变量名称无效: %s", name)
-		}
-		if variablePattern.MatchString(value) {
-			return fmt.Errorf("变量 %q 不能递归引用其他变量", name)
-		}
-	}
 	if len(profile.Steps) == 0 {
 		return fmt.Errorf("至少需要一个 step")
 	}
-	if err := validateStrategy(profile.Strategy); err != nil {
+	if err := validateBatchFields(profile.Serial, profile.Parallel, profile.MaxFail, profile.MaxFailPercent); err != nil {
 		return err
 	}
 	for index, step := range profile.Steps {
-		if err := validateStep(step, profile.Vars); err != nil {
+		if err := validateStep(step, false); err != nil {
 			return fmt.Errorf("step %d (%s): %w", index+1, step.DisplayName(index), err)
 		}
-	}
-	if _, err := ResolveSteps(profile); err != nil {
-		return err
 	}
 	if profile.Targets.Empty() {
 		if allowEmptyTargets {
@@ -60,63 +65,142 @@ func ValidateProfile(profile Profile, hosts []config.Host, allowEmptyTargets boo
 	return err
 }
 
-func validateStrategy(strategy Strategy) error {
-	if strategy.Mode != "hidden" && strategy.Mode != "visible" {
-		return fmt.Errorf("mode 必须是 hidden 或 visible")
+func validateHandler(handler Step) error {
+	if strings.TrimSpace(handler.Name) == "" {
+		return fmt.Errorf("名称不能为空")
 	}
-	if strategy.MaxParallel < 1 {
-		return fmt.Errorf("max_parallel 必须大于 0")
+	if err := validateStep(handler, true); err != nil {
+		return err
 	}
-	if strategy.Mode == "visible" && strategy.MaxParallel != 1 {
-		return fmt.Errorf("visible 模式要求 max_parallel=1")
+	if handler.ActionType() == "confirm" {
+		return fmt.Errorf("handler 不允许 confirm")
 	}
-	if strategy.ConnectTimeout.Duration < 0 || strategy.StepTimeout.Duration < 0 || strategy.RunTimeout.Duration < 0 {
-		return fmt.Errorf("timeout 不能为负数")
-	}
-	if strategy.RetryCount < 0 {
-		return fmt.Errorf("retry_count 不能为负数")
-	}
-	for _, stage := range strategy.RetryOnStage {
-		if stage != string(operation.StageNetwork) && stage != string(operation.StageTransfer) {
-			return fmt.Errorf("retry_on_stage 仅支持 network 或 transfer")
-		}
+	if len(handler.Notify) > 0 {
+		return fmt.Errorf("handler 不允许继续 notify")
 	}
 	return nil
 }
 
-func validateStep(step Step, vars map[string]string) error {
-	switch step.Type {
-	case "exec":
-		if step.Command == "" {
-			return fmt.Errorf("exec step 缺少 command")
-		}
-		if step.Src != "" || step.Dest != "" || step.Method != "" || step.Overwrite {
-			return fmt.Errorf("exec step 不能包含 copy 字段")
-		}
-		if _, err := Expand(step.Command, vars); err != nil {
-			return err
-		}
-	case "copy":
-		if step.Src == "" || step.Dest == "" {
-			return fmt.Errorf("copy step 需要 src 和 dest")
-		}
-		if step.Command != "" {
-			return fmt.Errorf("copy step 不能包含 command")
-		}
-		if step.Method != "" && step.Method != "auto" && step.Method != "sftp" && step.Method != "rsync" {
-			return fmt.Errorf("method 必须是 auto、sftp 或 rsync")
-		}
-		if _, err := Expand(step.Src, vars); err != nil {
-			return err
-		}
-		if _, err := Expand(step.Dest, vars); err != nil {
-			return err
-		}
-	default:
-		return fmt.Errorf("type 必须是 copy 或 exec")
+func validateBatchFields(serial, parallel, maxFail, maxFailPercent int) error {
+	if serial < 0 {
+		return fmt.Errorf("serial 必须大于 0")
+	}
+	if parallel < 0 || parallel > 128 {
+		return fmt.Errorf("parallel 必须在 1 到 128 之间")
+	}
+	if maxFail < 0 {
+		return fmt.Errorf("max_fail 必须大于 0")
+	}
+	if maxFailPercent < 0 || maxFailPercent > 100 {
+		return fmt.Errorf("max_fail_percent 必须在 1 到 100 之间")
+	}
+	return nil
+}
+
+func validateStep(step Step, handler bool) error {
+	actions := 0
+	if step.Exec != "" {
+		actions++
+	}
+	if step.Push != nil {
+		actions++
+	}
+	if step.Pull != nil {
+		actions++
+	}
+	if step.Mkdir != nil {
+		actions++
+	}
+	if step.Wait != nil {
+		actions++
+	}
+	if step.Confirm != "" {
+		actions++
+	}
+	if actions != 1 {
+		return fmt.Errorf("必须且只能包含一个 action")
 	}
 	if step.Timeout.Duration < 0 {
 		return fmt.Errorf("timeout 不能为负数")
+	}
+	if step.Push != nil {
+		if step.Push.Src == "" || step.Push.Dest == "" {
+			return fmt.Errorf("push 需要 src 和 dest")
+		}
+		if err := validateRemotePath(step.Push.Dest); err != nil {
+			return fmt.Errorf("push dest: %w", err)
+		}
+		if step.Push.Overwrite && step.Push.Backup {
+			return fmt.Errorf("push overwrite 与 backup 不能同时使用")
+		}
+	}
+	if step.Pull != nil {
+		if step.Pull.Src == "" || step.Pull.Dest == "" {
+			return fmt.Errorf("pull 需要 src 和 dest")
+		}
+		if err := validateRemotePath(step.Pull.Src); err != nil {
+			return fmt.Errorf("pull src: %w", err)
+		}
+		if step.Pull.Overwrite && step.Pull.Backup {
+			return fmt.Errorf("pull overwrite 与 backup 不能同时使用")
+		}
+	}
+	if step.Mkdir != nil {
+		if step.Mkdir.Path == "" {
+			return fmt.Errorf("mkdir 需要 path")
+		}
+		if err := validateRemotePath(step.Mkdir.Path); err != nil {
+			return fmt.Errorf("mkdir path: %w", err)
+		}
+		if step.Mkdir.Mode != "" {
+			if _, err := strconv.ParseUint(step.Mkdir.Mode, 8, 12); err != nil {
+				return fmt.Errorf("mkdir mode 必须是八进制权限字符串")
+			}
+		}
+	}
+	if step.Wait != nil && step.Wait.Duration <= 0 {
+		return fmt.Errorf("wait 必须大于 0")
+	}
+	if step.ActionType() != "exec" {
+		if step.Become || step.BecomeUser != "" || step.CheckSafe || step.FailedWhen != nil || step.ChangedWhen != nil {
+			return fmt.Errorf("become、become_user、check_safe、failed_when 和 changed_when 仅适用于 exec")
+		}
+	}
+	if step.BecomeUser != "" && !becomeUserPattern.MatchString(step.BecomeUser) {
+		return fmt.Errorf("become_user 格式不安全")
+	}
+	for name, condition := range map[string]*Condition{"failed_when": step.FailedWhen, "changed_when": step.ChangedWhen} {
+		if condition != nil {
+			if err := validateCondition(*condition); err != nil {
+				return fmt.Errorf("%s: %w", name, err)
+			}
+		}
+	}
+	if handler && step.IgnoreError {
+		return fmt.Errorf("handler 不支持 ignore_error")
+	}
+	return nil
+}
+
+func validateRemotePath(value string) error {
+	if strings.ContainsRune(value, '\x00') || value == "~" || strings.HasPrefix(value, "~/") {
+		return fmt.Errorf("远端路径必须是明确路径，且不支持 ~ 或 NUL")
+	}
+	for _, component := range strings.Split(value, "/") {
+		if component == ".." {
+			return fmt.Errorf("远端路径不能包含 ..")
+		}
+	}
+	clean := path.Clean(value)
+	if clean == "." || clean == "/" {
+		return fmt.Errorf("远端路径必须指向明确文件或目录")
+	}
+	return nil
+}
+
+func validateCondition(condition Condition) error {
+	if (len(condition.RCIn) == 0) == (len(condition.RCNotIn) == 0) {
+		return fmt.Errorf("必须且只能包含 rc_in 或 rc_not_in")
 	}
 	return nil
 }
@@ -125,36 +209,51 @@ func ResolveSteps(profile Profile) ([]Step, error) {
 	steps := make([]Step, len(profile.Steps))
 	for index, step := range profile.Steps {
 		resolved := step
-		var err error
-		resolved.Command, err = Expand(step.Command, profile.Vars)
-		if err != nil {
-			return nil, err
-		}
-		resolved.Src, err = Expand(step.Src, profile.Vars)
-		if err != nil {
-			return nil, err
-		}
-		resolved.Dest, err = Expand(step.Dest, profile.Vars)
-		if err != nil {
-			return nil, err
-		}
-		if resolved.Type == "exec" && strings.TrimSpace(resolved.Command) == "" {
-			return nil, fmt.Errorf("step %d (%s): 变量替换后的 command 不能为空", index+1, step.DisplayName(index))
-		}
-		if resolved.Type == "copy" && (resolved.Src == "" || resolved.Dest == "") {
-			return nil, fmt.Errorf("step %d (%s): 变量替换后的 src 和 dest 不能为空", index+1, step.DisplayName(index))
-		}
-		if resolved.Type == "copy" {
-			if resolved.Method == "" {
-				resolved.Method = "auto"
+		if resolved.Push != nil {
+			copy := *resolved.Push
+			if !filepath.IsAbs(copy.Src) {
+				copy.Src = filepath.Join(profile.BaseDir, copy.Src)
 			}
-			if resolved.Src == "~" || strings.HasPrefix(resolved.Src, "~/") {
-				resolved.Src = config.ExpandPath(resolved.Src)
-			} else if resolved.Src != "" && !filepath.IsAbs(resolved.Src) {
-				resolved.Src = filepath.Join(profile.BaseDir, resolved.Src)
+			resolved.Push = &copy
+		}
+		if resolved.Pull != nil {
+			copy := *resolved.Pull
+			if !filepath.IsAbs(copy.Dest) {
+				copy.Dest = filepath.Join(profile.BaseDir, copy.Dest)
 			}
+			resolved.Pull = &copy
+		}
+		resolved.BaseDir = profile.BaseDir
+		if err := validateStep(resolved, false); err != nil {
+			return nil, fmt.Errorf("step %d (%s): %w", index+1, step.DisplayName(index), err)
 		}
 		steps[index] = resolved
 	}
 	return steps, nil
+}
+
+func ResolveHandlers(handlers []Step) ([]Step, error) {
+	resolved := make([]Step, len(handlers))
+	for index, handler := range handlers {
+		copy := handler
+		if copy.Push != nil {
+			action := *copy.Push
+			if !filepath.IsAbs(action.Src) {
+				action.Src = filepath.Join(copy.BaseDir, action.Src)
+			}
+			copy.Push = &action
+		}
+		if copy.Pull != nil {
+			action := *copy.Pull
+			if !filepath.IsAbs(action.Dest) {
+				action.Dest = filepath.Join(copy.BaseDir, action.Dest)
+			}
+			copy.Pull = &action
+		}
+		if err := validateHandler(copy); err != nil {
+			return nil, fmt.Errorf("handler %d (%s): %w", index+1, handler.Name, err)
+		}
+		resolved[index] = copy
+	}
+	return resolved, nil
 }

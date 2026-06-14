@@ -6,14 +6,13 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"sync"
-	"time"
 
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/operation"
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/ops"
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/secret"
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/ui"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/batch"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/operation"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/ops"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/secret"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/ui"
 )
 
 func (app *App) cmdExec(args []string) error {
@@ -57,13 +56,16 @@ func (app *App) cmdExec(args []string) error {
 }
 
 func (app *App) cmdExecTag(args []string) error {
-	yes, quiet, args := parseOperationFlags(args)
-	if len(args) < 2 {
+	options, positionals, err := parseBatchCLIOptions(args)
+	if err != nil {
+		return err
+	}
+	if len(positionals) < 2 {
 		return fmt.Errorf("用法: sshm exec-tag <标签> <命令>")
 	}
 
-	tagFilter := args[0]
-	command := strings.Join(args[1:], " ")
+	tagName := positionals[0]
+	command := strings.Join(positionals[1:], " ")
 
 	hf, err := app.Store.Load()
 	if err != nil {
@@ -71,47 +73,19 @@ func (app *App) cmdExecTag(args []string) error {
 	}
 
 	var hosts []config.Host
-	filters := config.ParseTags(tagFilter)
 	for _, h := range hf.Hosts {
-		if h.MatchTags(filters) {
+		if tagName == "all" || h.HasTag(tagName) {
 			hosts = append(hosts, h)
 		}
 	}
 	if len(hosts) == 0 {
-		return fmt.Errorf("没有匹配标签 %q 的主机", tagFilter)
+		return fmt.Errorf("没有匹配标签 %q 的主机", tagName)
 	}
-	return app.executeBatch(hosts, command, yes, quiet)
+	return app.executeBatch(hosts, command, options)
 }
 
-func (app *App) cmdExecAll(args []string) error {
-	yes, quiet, args := parseOperationFlags(args)
-	if len(args) < 1 {
-		return fmt.Errorf("用法: sshm exec-all <命令>")
-	}
-
-	command := strings.Join(args, " ")
-
-	hf, err := app.Store.Load()
-	if err != nil {
-		return err
-	}
-
-	if len(hf.Hosts) == 0 {
-		return fmt.Errorf("暂无主机可执行")
-	}
-	return app.executeBatch(hf.Hosts, command, yes, quiet)
-}
-
-type batchExecResult struct {
-	host     config.Host
-	output   string
-	err      error
-	duration time.Duration
-}
-
-func (app *App) executeBatch(hosts []config.Host, command string, yes, quiet bool) error {
-	// List affected hosts and ask for confirmation.
-	if !yes {
+func (app *App) executeBatch(hosts []config.Host, command string, options batchCLIOptions) error {
+	if !options.Yes {
 		if !ui.IsTerminal() {
 			return fmt.Errorf("批量远程命令需要确认；非交互环境请使用 --yes")
 		}
@@ -126,78 +100,73 @@ func (app *App) executeBatch(hosts []config.Host, command string, yes, quiet boo
 		}
 	}
 
+	if err := app.unlockVaultForHosts(hosts); err != nil {
+		return &ExitError{Code: 4, Err: err}
+	}
+	batchOptions, timeout, connectTimeout, logDefaults, err := app.resolveBatchOptions(options, false)
+	if err != nil {
+		return &ExitError{Code: 3, Err: err}
+	}
 	executor := app.operationExecutor()
-	results := make([]batchExecResult, len(hosts))
-	progress := make(chan int, len(hosts))
-	jobs := make(chan int)
-	var wg sync.WaitGroup
-	workers := min(4, len(hosts))
-
-	// Print progress as results come in.
-	go func() {
-		done := 0
-		for range progress {
-			done++
-			fmt.Fprintf(os.Stderr, "\r  [%d/%d] 执行中...", done, len(hosts))
-		}
-		fmt.Fprintln(os.Stderr)
-	}()
-
-	for range workers {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for i := range jobs {
-				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-				opResult := executor.Exec(ctx, hosts[i], ops.ExecOptions{Command: command})
-				cancel()
-				results[i] = batchExecResult{host: hosts[i], output: opResult.Output, err: opResult.Err, duration: opResult.Duration}
-				progress <- i
-			}
-		}()
+	ctx, cancel := signalContext()
+	defer cancel()
+	runner := batch.Runner{
+		Options: batchOptions,
+		Progress: func(done, total int, _ batch.Result) {
+			fmt.Fprintf(os.Stderr, "\r  [%d/%d] 执行中...", done, total)
+		},
 	}
-	for i := range hosts {
-		jobs <- i
+	runResult, err := runner.Run(ctx, hosts, func(ctx context.Context, host config.Host) batch.Result {
+		taskCtx, taskCancel := context.WithTimeout(ctx, timeout)
+		defer taskCancel()
+		opResult := executor.Exec(taskCtx, host, ops.ExecOptions{Command: command, ConnectTimeout: connectTimeout})
+		return batch.Result{Status: batchStatus(opResult), Err: opResult.Err, Detail: opResult.Output, Value: opResult}
+	})
+	fmt.Fprintln(os.Stderr)
+	if err != nil {
+		return &ExitError{Code: 3, Err: err}
 	}
-	close(jobs)
-	wg.Wait()
-	close(progress)
 
-	failed := 0
-	var failedHosts []string
-	logResults := make([]operation.Result, 0, len(results))
-	for _, result := range results {
-		if !quiet {
+	logResults := make([]operation.Result, 0, len(runResult.Results))
+	for _, result := range runResult.Results {
+		if !options.Quiet {
 			fmt.Println()
-			ui.PrintHeader(fmt.Sprintf("=== %s (%s@%s) ===", result.host.Alias, result.host.User, result.host.Host))
+			ui.PrintHeader(fmt.Sprintf("=== %s (%s@%s) ===", result.Host.Alias, result.Host.User, result.Host.Host))
 		}
-		if result.err != nil {
-			failed++
-			failedHosts = append(failedHosts, result.host.Alias)
+		if result.Status == batch.StatusSkipped {
+			ui.PrintWarn("%s: skipped (%s)", result.Host.Alias, result.SkippedReason)
+			logResults = append(logResults, skippedOperationResult(result.Host, result.SkippedReason))
+			continue
 		}
-		if !quiet {
-			fmt.Print(result.output)
+		opResult := result.Value.(ops.Result)
+		if !options.Quiet {
+			fmt.Print(opResult.Output)
 		}
-		opResult := newOperationResult(result.host, result.output, result.err, operation.StageExecute,
-			fmt.Sprintf("sshm exec --yes %s %q", result.host.Alias, command), result.duration)
-		logResults = append(logResults, opResult)
-		if result.err != nil {
-			printOperationFailure(opResult)
+		logResult := newOperationResult(result.Host, opResult.Output, opResult.Err, operation.StageExecute,
+			fmt.Sprintf("sshm exec --yes %s %q", result.Host.Alias, command), opResult.Duration)
+		logResults = append(logResults, logResult)
+		if opResult.Err != nil {
+			printOperationFailure(logResult)
 		}
 	}
 	fmt.Println()
-	fmt.Printf("批量执行完成：成功 %d，失败 %d\n", len(results)-failed, failed)
-	if err := writeOperationLog("exec-batch", command, logResults); err != nil {
-		return err
-	}
-	if failed > 0 {
-		fmt.Printf("失败主机: %s\n", strings.Join(failedHosts, ", "))
-		if failed == len(hosts) {
-			return fmt.Errorf("所有 %d 台主机执行失败", failed)
+	printBatchSummary(runResult.Summary)
+	if logDefaults.Enabled && !options.NoLog {
+		if err := writeOperationLog("exec-batch", command, logResults); err != nil {
+			return err
 		}
-		return fmt.Errorf("有 %d 台主机执行失败", failed)
 	}
-	return nil
+	return exitErrorForBatch(runResult)
+}
+
+func printBatchSummary(summary batch.Summary) {
+	fmt.Println("summary:")
+	fmt.Printf("  ok: %d\n", summary.OK)
+	fmt.Printf("  changed: %d\n", summary.Changed)
+	fmt.Printf("  would-change: %d\n", summary.WouldChange)
+	fmt.Printf("  failed: %d\n", summary.Failed)
+	fmt.Printf("  unreachable: %d\n", summary.Unreachable)
+	fmt.Printf("  skipped: %d\n", summary.Skipped)
 }
 
 func parseOperationFlags(args []string) (yes, quiet bool, rest []string) {

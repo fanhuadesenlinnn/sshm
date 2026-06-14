@@ -6,11 +6,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/operation"
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/secret"
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/sshx"
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/ui"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/operation"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/secret"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/sshx"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/ui"
 )
 
 func (app *App) interactiveMode() error {
@@ -75,8 +75,6 @@ func (app *App) interactiveMode() error {
 			err = app.cmdInteractiveExec(args)
 		case "exec-tag", "xt":
 			err = app.cmdInteractiveExecTag(args)
-		case "exec-all", "xa":
-			err = app.cmdInteractiveExecAll(args)
 		case "push":
 			err = app.cmdPush(args)
 		case "pull":
@@ -261,14 +259,6 @@ func (app *App) cmdInteractiveExecTag(args []string) error {
 		return app.cmdExecTag([]string{tag, cmd})
 	}
 	return app.cmdExecTag(args)
-}
-
-func (app *App) cmdInteractiveExecAll(args []string) error {
-	if len(args) < 1 {
-		cmd := ui.ReadLine("命令: ")
-		return app.cmdExecAll([]string{cmd})
-	}
-	return app.cmdExecAll(args)
 }
 
 func (app *App) cmdInteractiveSSHConfig(args []string) error {

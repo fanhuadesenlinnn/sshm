@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
 )
 
 func TestParseSSHTarget(t *testing.T) {
@@ -155,15 +155,12 @@ func TestCompletionCandidatesIncludeCommandsAndHosts(t *testing.T) {
 	}
 }
 
-func TestConfigEditInitializesMissingSingleConfig(t *testing.T) {
+func TestConfigEditRequiresInitializedConfig(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sshm.yaml")
 	store := config.NewStoreWithPath(path)
 	app := &App{Store: store, ConfigPath: path}
 	t.Setenv("EDITOR", "true")
-	if err := app.cmdConfigEdit(nil); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := config.NewRepositoryWithPath(path).Load(); err != nil {
-		t.Fatal(err)
+	if err := app.cmdConfigEdit(nil); err == nil || !strings.Contains(err.Error(), "sshm init") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }

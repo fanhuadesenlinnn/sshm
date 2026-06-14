@@ -2,15 +2,11 @@ package deploy
 
 import (
 	"fmt"
+	"time"
 
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/batch"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
 )
-
-type Overrides struct {
-	Targets     *TargetSelector
-	Mode        string
-	MaxParallel int
-}
 
 func BuildPlan(catalog *Catalog, name string, hosts []config.Host, overrides Overrides) (Plan, error) {
 	profile, ok := catalog.ByName[name]
@@ -21,22 +17,8 @@ func BuildPlan(catalog *Catalog, name string, hosts []config.Host, overrides Ove
 	if overrides.Targets != nil {
 		selector = *overrides.Targets
 	}
-	strategy := profile.Strategy
-	if overrides.Mode != "" {
-		strategy.Mode = overrides.Mode
-		if overrides.Mode == "visible" && overrides.MaxParallel == 0 {
-			strategy.MaxParallel = 1
-		}
-	}
-	if overrides.MaxParallel != 0 {
-		strategy.MaxParallel = overrides.MaxParallel
-	}
-	if err := validateStrategy(strategy); err != nil {
-		return Plan{}, err
-	}
 	resolved := profile
 	resolved.Targets = selector
-	resolved.Strategy = strategy
 	if err := ValidateProfile(resolved, hosts, false); err != nil {
 		return Plan{}, err
 	}
@@ -48,17 +30,70 @@ func BuildPlan(catalog *Catalog, name string, hosts []config.Host, overrides Ove
 	if err != nil {
 		return Plan{}, err
 	}
-	return Plan{
-		Profile: name, Description: profile.Description, Config: profile.Source, Sources: append([]string(nil), catalog.Sources...),
-		Targets: selector, Hosts: resolvedHosts,
-		Strategy: strategy, Steps: steps,
-	}, nil
+	handlers, err := ResolveHandlers(catalog.Handlers)
+	if err != nil {
+		return Plan{}, err
+	}
+
+	parallel := profile.Parallel
+	if parallel == 0 {
+		parallel = overrides.DefaultParallel
+	}
+	if parallel == 0 {
+		parallel = 4
+	}
+	if overrides.Parallel > 0 {
+		parallel = overrides.Parallel
+	}
+	serial := profile.Serial
+	if overrides.Serial > 0 {
+		serial = overrides.Serial
+	}
+	timeout := profile.Timeout
+	if timeout.Duration == 0 {
+		timeout = overrides.DefaultTimeout
+	}
+	if timeout.Duration == 0 {
+		timeout.Duration = 30 * time.Second
+	}
+	connectTimeout := profile.ConnectTimeout
+	if connectTimeout.Duration == 0 {
+		connectTimeout = overrides.DefaultConnectTimeout
+	}
+	if connectTimeout.Duration == 0 {
+		connectTimeout.Duration = 10 * time.Second
+	}
+	batchOptions := batch.Options{
+		Parallel:       parallel,
+		Serial:         serial,
+		FailFast:       profile.FailFast || overrides.FailFast,
+		MaxFail:        profile.MaxFail,
+		MaxFailPercent: profile.MaxFailPercent,
+	}
+	if overrides.MaxFail > 0 {
+		batchOptions.MaxFail = overrides.MaxFail
+	}
+	if overrides.MaxFailPercent > 0 {
+		batchOptions.MaxFailPercent = overrides.MaxFailPercent
+	}
+	plan := Plan{
+		Profile: name, Description: profile.Description, Config: profile.Source,
+		Sources: append([]string(nil), catalog.Sources...), Targets: selector, Hosts: resolvedHosts,
+		Batch: batchOptions, Timeout: timeout, ConnectTimeout: connectTimeout,
+		Check: overrides.Check, Diff: overrides.Diff, Steps: steps, Handlers: handlers,
+	}
+	if err := plan.Validate(); err != nil {
+		return Plan{}, err
+	}
+	return plan, nil
 }
 
 func (p Plan) JSON() PlanJSON {
 	out := PlanJSON{
-		Profile: p.Profile, Description: p.Description, Config: p.Config, Sources: append([]string(nil), p.Sources...), Selector: p.Targets,
-		Strategy: p.Strategy, Steps: p.Steps,
+		Profile: p.Profile, Description: p.Description, Config: p.Config,
+		Sources: append([]string(nil), p.Sources...), Selector: p.Targets,
+		Batch: p.Batch, Timeout: p.Timeout, ConnectTimeout: p.ConnectTimeout,
+		Check: p.Check, Diff: p.Diff, Steps: p.Steps, Handlers: p.Handlers,
 	}
 	for _, host := range p.Hosts {
 		out.Targets = append(out.Targets, PlanHost{

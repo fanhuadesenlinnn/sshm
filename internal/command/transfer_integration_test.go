@@ -8,12 +8,15 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/deploy"
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/secret"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/batch"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/deploy"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/ops"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/secret"
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
 )
@@ -49,8 +52,8 @@ func TestTransferOnePushesAndPullsDirectoryOverSFTP(t *testing.T) {
 		t.Fatal(err)
 	}
 	remotePath := "remote target 'one'"
-	method, destination, err := transferOne(context.Background(), *loaded, vault, transferOptions{
-		direction: "push", localPath: localSource, remotePath: remotePath,
+	method, destination, changed, err := transferOne(context.Background(), *loaded, vault, transferOptions{
+		direction: "push", localPath: localSource, remotePath: remotePath, validateChecksum: true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -58,22 +61,25 @@ func TestTransferOnePushesAndPullsDirectoryOverSFTP(t *testing.T) {
 	if method != "sftp" || destination != remotePath {
 		t.Fatalf("method=%q destination=%q", method, destination)
 	}
+	if !changed {
+		t.Fatal("first push should be changed")
+	}
 	assertCommandTestFile(t, filepath.Join(remoteRoot, remotePath, "nested", "it's ready.txt"), "payload")
 
-	if _, _, err := transferOne(context.Background(), *loaded, vault, transferOptions{
-		direction: "push", localPath: localSource, remotePath: remotePath,
-	}); err == nil {
-		t.Fatal("push should refuse an existing destination without --overwrite")
+	if _, _, changed, err := transferOne(context.Background(), *loaded, vault, transferOptions{
+		direction: "push", localPath: localSource, remotePath: remotePath, validateChecksum: true,
+	}); err != nil || changed {
+		t.Fatalf("identical push should be ok: changed=%t err=%v", changed, err)
 	}
 
 	localDestination := t.TempDir()
-	method, destination, err = transferOne(context.Background(), *loaded, vault, transferOptions{
-		direction: "pull", remotePath: remotePath, localPath: localDestination,
+	method, destination, changed, err = transferOne(context.Background(), *loaded, vault, transferOptions{
+		direction: "pull", remotePath: remotePath, localPath: localDestination, validateChecksum: true,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	expectedDestination := filepath.Join(localDestination, host.Alias, filepath.Base(remotePath))
+	expectedDestination := filepath.Join(localDestination, filepath.Base(remotePath))
 	if method != "sftp" || destination != expectedDestination {
 		t.Fatalf("method=%q destination=%q want=%q", method, destination, expectedDestination)
 	}
@@ -82,18 +88,59 @@ func TestTransferOnePushesAndPullsDirectoryOverSFTP(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(localSource, "nested", "it's ready.txt"), []byte("updated"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := transferOne(context.Background(), *loaded, vault, transferOptions{
-		direction: "push", localPath: localSource, remotePath: remotePath, overwrite: true,
+	checkResult := (&App{Store: store, ConfigPath: configPath, secretStore: vault}).operationExecutor().Push(
+		context.Background(), *loaded, ops.TransferOptions{
+			Src: localSource, Dest: remotePath, Method: "sftp", ValidateChecksum: true, Check: true, Diff: true,
+		},
+	)
+	if checkResult.Err != nil || !checkResult.WouldChange ||
+		!strings.Contains(checkResult.Output, "-payload") || !strings.Contains(checkResult.Output, "+updated") {
+		t.Fatalf("diff check result = %+v", checkResult)
+	}
+	assertCommandTestFile(t, filepath.Join(remoteRoot, remotePath, "nested", "it's ready.txt"), "payload")
+	if _, _, _, err := transferOne(context.Background(), *loaded, vault, transferOptions{
+		direction: "push", localPath: localSource, remotePath: remotePath, overwrite: true, validateChecksum: true,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	assertCommandTestFile(t, filepath.Join(remoteRoot, remotePath, "nested", "it's ready.txt"), "updated")
-	if _, _, err := transferOne(context.Background(), *loaded, vault, transferOptions{
-		direction: "pull", remotePath: remotePath, localPath: localDestination, overwrite: true,
+	if _, _, _, err := transferOne(context.Background(), *loaded, vault, transferOptions{
+		direction: "pull", remotePath: remotePath, localPath: localDestination, overwrite: true, validateChecksum: true,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	assertCommandTestFile(t, filepath.Join(expectedDestination, "nested", "it's ready.txt"), "updated")
+
+	if err := os.WriteFile(filepath.Join(localSource, "nested", "it's ready.txt"), []byte("backup-new"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := transferOne(context.Background(), *loaded, vault, transferOptions{
+		direction: "push", localPath: localSource, remotePath: remotePath, backup: true, validateChecksum: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	remoteBackups, err := filepath.Glob(filepath.Join(remoteRoot, remotePath+".bak.*"))
+	if err != nil || len(remoteBackups) != 1 {
+		t.Fatalf("remote backups = %v, err = %v", remoteBackups, err)
+	}
+	assertCommandTestFile(t, filepath.Join(remoteBackups[0], "nested", "it's ready.txt"), "updated")
+	if _, _, _, err := transferOne(context.Background(), *loaded, vault, transferOptions{
+		direction: "pull", remotePath: remotePath, localPath: localDestination, backup: true, validateChecksum: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	localBackups, err := filepath.Glob(expectedDestination + ".bak.*")
+	if err != nil || len(localBackups) != 1 {
+		t.Fatalf("local backups = %v, err = %v", localBackups, err)
+	}
+	assertCommandTestFile(t, filepath.Join(localBackups[0], "nested", "it's ready.txt"), "updated")
+	assertCommandTestFile(t, filepath.Join(expectedDestination, "nested", "it's ready.txt"), "backup-new")
+
+	if _, _, _, err := transferOne(context.Background(), *loaded, vault, transferOptions{
+		direction: "push", localPath: localSource, remotePath: remotePath, validateChecksum: false,
+	}); err == nil || !strings.Contains(err.Error(), "--overwrite") {
+		t.Fatalf("no-checksum existing target error = %v", err)
+	}
 
 	matches, err := filepath.Glob(filepath.Join(localDestination, host.Alias, "*.sshm-*"))
 	if err != nil || len(matches) != 0 {
@@ -134,18 +181,16 @@ func TestDeployRunnerExecutesCopyThenExecOverSharedExecutor(t *testing.T) {
 	app := &App{Store: store, ConfigPath: configPath, secretStore: vault}
 	plan := deploy.Plan{
 		Profile: "integration", Config: "<test>", Hosts: []config.Host{*loaded},
-		Strategy: deploy.Strategy{
-			Mode: "hidden", MaxParallel: 1,
-			ConnectTimeout: deploy.Duration{Duration: time.Second},
-			StepTimeout:    deploy.Duration{Duration: time.Second},
-		},
+		Batch:          batch.Options{Parallel: 1},
+		ConnectTimeout: deploy.Duration{Duration: time.Second},
+		Timeout:        deploy.Duration{Duration: time.Second},
 		Steps: []deploy.Step{
-			{Name: "copy", Type: "copy", Src: source, Dest: "deployed/package.txt", Method: "sftp"},
-			{Name: "exec", Type: "exec", Command: "verify package"},
+			{Name: "copy", Push: &deploy.PushAction{Src: source, Dest: "deployed/package.txt"}},
+			{Name: "exec", Exec: "verify package"},
 		},
 	}
 	result := (deploy.Runner{Executor: app.operationExecutor()}).Run(context.Background(), plan)
-	if result.OK != 1 || result.Failed != 0 || len(result.Results[0].Steps) != 2 {
+	if result.Summary.Changed != 1 || result.Summary.Failed != 0 || len(result.Results[0].Steps) != 2 {
 		t.Fatalf("deploy result = %+v", result)
 	}
 	assertCommandTestFile(t, filepath.Join(remoteRoot, "deployed", "package.txt"), "payload")

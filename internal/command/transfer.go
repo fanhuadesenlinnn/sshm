@@ -7,33 +7,40 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"runtime"
 	"strings"
-	"sync"
 	"time"
 
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/operation"
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/ops"
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/secret"
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/sshx"
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/ui"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/batch"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/operation"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/ops"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/secret"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/sshx"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/ui"
 	"github.com/pkg/sftp"
 )
 
 type transferOptions struct {
-	direction      string
-	localPath      string
-	remotePath     string
-	targets        []string
-	overwrite      bool
-	yes            bool
-	quiet          bool
-	method         string
-	connectTimeout time.Duration
+	direction        string
+	localPath        string
+	remotePath       string
+	targets          []string
+	batch            batchCLIOptions
+	overwrite        bool
+	backup           bool
+	validateChecksum bool
+	flat             bool
+	method           string
+	connectTimeout   time.Duration
+	destinationExact bool
+	check            bool
+	diffWriter       io.Writer
+	multi            bool
 }
 
 func (app *App) cmdPush(args []string) error {
-	options, err := parseTransferOptions(args, "push")
+	options, err := parseTransferOptions(args, "push", false)
 	if err != nil {
 		return err
 	}
@@ -41,37 +48,91 @@ func (app *App) cmdPush(args []string) error {
 }
 
 func (app *App) cmdPull(args []string) error {
-	options, err := parseTransferOptions(args, "pull")
+	options, err := parseTransferOptions(args, "pull", false)
 	if err != nil {
 		return err
 	}
 	return app.cmdTransfer(options)
 }
 
-func parseTransferOptions(args []string, direction string) (transferOptions, error) {
-	if len(args) < 3 {
-		if direction == "push" {
-			return transferOptions{}, fmt.Errorf("用法: sshm push <本地路径> <远程路径> <目标...> [--overwrite] [--yes] [--quiet]")
-		}
-		return transferOptions{}, fmt.Errorf("用法: sshm pull <远程路径> <本地目录> <目标...> [--overwrite] [--yes] [--quiet]")
+func (app *App) cmdPushTag(args []string) error {
+	options, err := parseTransferOptions(args, "push", true)
+	if err != nil {
+		return err
 	}
-	options := transferOptions{direction: direction, method: "auto"}
-	if direction == "push" {
-		options.localPath, options.remotePath = args[0], args[1]
-	} else {
-		options.remotePath, options.localPath = args[0], args[1]
+	return app.cmdTransfer(options)
+}
+
+func (app *App) cmdPullTag(args []string) error {
+	options, err := parseTransferOptions(args, "pull", true)
+	if err != nil {
+		return err
 	}
-	for _, arg := range args[2:] {
-		switch arg {
+	return app.cmdTransfer(options)
+}
+
+func parseTransferOptions(args []string, direction string, tag bool) (transferOptions, error) {
+	options := transferOptions{direction: direction, method: "auto", validateChecksum: true, multi: tag}
+	var commonArgs []string
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
 		case "--overwrite":
 			options.overwrite = true
-		case "--yes":
-			options.yes = true
-		case "--quiet":
-			options.quiet = true
+		case "--backup":
+			options.backup = true
+		case "--no-validate-checksum":
+			options.validateChecksum = false
+		case "--flat":
+			options.flat = true
+		case "--method":
+			if i+1 >= len(args) {
+				return options, fmt.Errorf("--method 缺少值")
+			}
+			i++
+			options.method = args[i]
 		default:
-			options.targets = append(options.targets, arg)
+			commonArgs = append(commonArgs, args[i])
 		}
+	}
+	batchOptions, positionals, err := parseBatchCLIOptions(commonArgs)
+	if err != nil {
+		return options, err
+	}
+	options.batch = batchOptions
+	if options.overwrite && options.backup {
+		return options, fmt.Errorf("--overwrite 与 --backup 不能同时使用")
+	}
+	if options.flat && direction != "pull" {
+		return options, fmt.Errorf("--flat 仅适用于 pull")
+	}
+	if options.method != "auto" && options.method != "sftp" && options.method != "rsync" {
+		return options, fmt.Errorf("--method 必须是 auto、sftp 或 rsync")
+	}
+	if len(positionals) != 3 {
+		target := "<host>"
+		command := direction
+		if tag {
+			target = "<tag>"
+			command += "-tag"
+		}
+		if direction == "push" {
+			return options, fmt.Errorf("用法: sshm %s %s <local> <remote> [选项]", command, target)
+		}
+		return options, fmt.Errorf("用法: sshm %s %s <remote> <local> [选项]", command, target)
+	}
+	if tag {
+		if positionals[0] == "all" {
+			options.targets = []string{"--all"}
+		} else {
+			options.targets = []string{"--tag", positionals[0]}
+		}
+	} else {
+		options.targets = []string{positionals[0]}
+	}
+	if direction == "push" {
+		options.localPath, options.remotePath = positionals[1], positionals[2]
+	} else {
+		options.remotePath, options.localPath = positionals[1], positionals[2]
 	}
 	return options, nil
 }
@@ -81,96 +142,123 @@ func (app *App) cmdTransfer(options transferOptions) error {
 	if err != nil {
 		return err
 	}
-	needsConfirmation := options.direction == "push" || options.overwrite || len(hosts) > 1
-	if needsConfirmation && !options.yes {
+	options.multi = options.multi || len(hosts) > 1
+	if options.direction == "push" {
+		if _, err := localManifest(options.localPath); err != nil {
+			return err
+		}
+	}
+
+	destinations := map[string]string{}
+	if options.direction == "pull" && options.multi {
+		var paths []string
+		for _, host := range hosts {
+			destination, err := multiPullDestination(options.localPath, host.Alias, options.remotePath, options.flat)
+			if err != nil {
+				return err
+			}
+			destinations[host.ID] = destination
+			paths = append(paths, destination)
+		}
+		if err := ensureUniqueDestinations(paths, localPathComparisonCaseInsensitive()); err != nil {
+			return err
+		}
+	}
+
+	needsConfirmation := options.multi || options.direction == "push" || options.overwrite || options.backup
+	if needsConfirmation && !options.batch.Yes {
 		if !ui.IsTerminal() {
 			return fmt.Errorf("该操作需要确认；非交互环境请显式使用 --yes")
 		}
-		fmt.Println()
 		fmt.Printf("即将%s %d 台主机:\n", transferVerb(options.direction), len(hosts))
 		for _, host := range hosts {
 			fmt.Printf("  - %s (%s@%s:%d)\n", host.Alias, host.User, host.Host, host.Port)
 		}
-		fmt.Printf("  源: %s\n  目标: %s\n  覆盖: %t\n\n", transferSource(options), transferDestination(options), options.overwrite)
+		fmt.Printf("源: %s\n目标: %s\n覆盖: %t\n备份: %t\n", transferSource(options), transferDestination(options), options.overwrite, options.backup)
 		if !ui.ReadYesNo("确认执行? [y/N]: ") {
 			ui.PrintWarn("已取消")
 			return nil
 		}
 	}
-
+	if err := app.unlockVaultForHosts(hosts); err != nil {
+		return &ExitError{Code: 4, Err: err}
+	}
+	batchOptions, timeout, connectTimeout, logDefaults, err := app.resolveBatchOptions(options.batch, true)
+	if err != nil {
+		return &ExitError{Code: 3, Err: err}
+	}
 	executor := app.operationExecutor()
-	results := make([]transferResult, len(hosts))
-	jobs := make(chan int)
-	var wg sync.WaitGroup
-	for range min(4, len(hosts)) {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for i := range jobs {
-				ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
-				transferOptions := ops.TransferOptions{
-					Direction: options.direction, Src: transferSource(options), Dest: transferDestination(options),
-					Method: options.method, Overwrite: options.overwrite,
-				}
-				var opResult ops.Result
-				if options.direction == "push" {
-					opResult = executor.Push(ctx, hosts[i], transferOptions)
-				} else {
-					opResult = executor.Pull(ctx, hosts[i], transferOptions)
-				}
-				cancel()
-				results[i] = transferResult{
-					host: hosts[i], method: opResult.Method, destination: opResult.Destination,
-					err: opResult.Err, duration: opResult.Duration,
-				}
-			}
-		}()
+	ctx, cancel := signalContext()
+	defer cancel()
+	runner := batch.Runner{Options: batchOptions}
+	runResult, err := runner.Run(ctx, hosts, func(ctx context.Context, host config.Host) batch.Result {
+		taskCtx, taskCancel := context.WithTimeout(ctx, timeout)
+		defer taskCancel()
+		source := transferSource(options)
+		destination := transferDestination(options)
+		destinationExact := false
+		if options.direction == "pull" && options.multi {
+			destination = destinations[host.ID]
+			destinationExact = true
+		}
+		transfer := ops.TransferOptions{
+			Direction: options.direction, Src: source, Dest: destination, Method: options.method,
+			Overwrite: options.overwrite, Backup: options.backup, ValidateChecksum: options.validateChecksum,
+			DestinationExact: destinationExact, ConnectTimeout: connectTimeout,
+		}
+		var opResult ops.Result
+		if options.direction == "push" {
+			opResult = executor.Push(taskCtx, host, transfer)
+		} else {
+			opResult = executor.Pull(taskCtx, host, transfer)
+		}
+		status := batchStatus(opResult)
+		if opResult.Err == nil && opResult.Changed {
+			status = batch.StatusChanged
+		}
+		return batch.Result{Status: status, Err: opResult.Err, Detail: opResult.Destination, Value: opResult}
+	})
+	if err != nil {
+		return &ExitError{Code: 3, Err: err}
 	}
-	for i := range hosts {
-		jobs <- i
-	}
-	close(jobs)
-	wg.Wait()
 
-	failed := 0
-	logResults := make([]operation.Result, 0, len(results))
-	for _, result := range results {
-		retry := transferRetryCommand(options, result.host.Alias)
-		opResult := newOperationResult(result.host,
-			fmt.Sprintf("method=%s\ndestination=%s\n", result.method, result.destination),
-			result.err, operation.StageTransfer, retry, result.duration)
-		logResults = append(logResults, opResult)
-		if result.err != nil {
-			failed++
-			printOperationFailure(opResult)
+	logResults := make([]operation.Result, 0, len(runResult.Results))
+	for _, result := range runResult.Results {
+		if result.Status == batch.StatusSkipped {
+			ui.PrintWarn("%s: skipped (%s)", result.Host.Alias, result.SkippedReason)
+			logResults = append(logResults, skippedOperationResult(result.Host, result.SkippedReason))
 			continue
 		}
-		ui.PrintSuccess("%s: %s完成 [%s] -> %s", result.host.Alias, transferVerb(options.direction), result.method, result.destination)
+		opResult := result.Value.(ops.Result)
+		logResult := newOperationResult(result.Host,
+			fmt.Sprintf("method=%s\ndestination=%s\nstatus=%s\n", opResult.Method, opResult.Destination, result.Status),
+			opResult.Err, operation.StageTransfer, transferRetryCommand(options, result.Host.Alias), opResult.Duration)
+		logResults = append(logResults, logResult)
+		if opResult.Err != nil {
+			printOperationFailure(logResult)
+			continue
+		}
+		fmt.Printf("%s  %-8s [%s] -> %s\n", result.Host.Alias, result.Status, opResult.Method, opResult.Destination)
 	}
-	fmt.Printf("%s完成：成功 %d，失败 %d\n", transferVerb(options.direction), len(results)-failed, failed)
-	if len(results) > 1 || options.quiet {
+	printBatchSummary(runResult.Summary)
+	if logDefaults.Enabled && !options.batch.NoLog {
 		if err := writeOperationLog(options.direction+"-batch", transferSource(options)+" -> "+transferDestination(options), logResults); err != nil {
 			return err
 		}
 	}
-	if failed > 0 {
-		return fmt.Errorf("有 %d 台主机传输失败", failed)
-	}
-	return nil
-}
-
-type transferResult struct {
-	host        config.Host
-	method      string
-	destination string
-	err         error
-	duration    time.Duration
+	return exitErrorForBatch(runResult)
 }
 
 func transferRetryCommand(options transferOptions, alias string) string {
-	command := fmt.Sprintf("sshm %s %q %q %s --yes", options.direction, transferSource(options), transferDestination(options), alias)
+	command := fmt.Sprintf("sshm %s %q %q %q --yes", options.direction, alias, transferSource(options), transferDestination(options))
 	if options.overwrite {
 		command += " --overwrite"
+	}
+	if options.backup {
+		command += " --backup"
+	}
+	if !options.validateChecksum {
+		command += " --no-validate-checksum"
 	}
 	return command
 }
@@ -196,7 +284,7 @@ func transferDestination(options transferOptions) string {
 	return options.remotePath
 }
 
-func transferOne(ctx context.Context, host config.Host, store *secret.FileStore, options transferOptions) (string, string, error) {
+func transferOne(ctx context.Context, host config.Host, store *secret.FileStore, options transferOptions) (string, string, bool, error) {
 	dialCtx := ctx
 	cancelDial := func() {}
 	if options.connectTimeout > 0 {
@@ -205,7 +293,7 @@ func transferOne(ctx context.Context, host config.Host, store *secret.FileStore,
 	client, _, err := sshx.DialContextWithTimeout(dialCtx, host, store, options.connectTimeout)
 	cancelDial()
 	if err != nil {
-		return "sftp", "", err
+		return "sftp", "", false, err
 	}
 	defer client.Close()
 	done := make(chan struct{})
@@ -219,77 +307,205 @@ func transferOne(ctx context.Context, host config.Host, store *secret.FileStore,
 	}()
 	sftpClient, err := sftp.NewClient(client)
 	if err != nil {
-		return "sftp", "", fmt.Errorf("启动 SFTP 失败: %w", err)
+		return "sftp", "", false, fmt.Errorf("启动 SFTP 失败: %w", err)
 	}
 	defer sftpClient.Close()
 
 	if options.method == "" {
 		options.method = "auto"
 	}
-	if options.method != "auto" && options.method != "sftp" && options.method != "rsync" {
-		return options.method, "", fmt.Errorf("无效传输方式: %s", options.method)
+	destination := options.localPath
+	if options.direction == "pull" && !options.destinationExact {
+		destination, err = singlePullDestination(options.remotePath, options.localPath)
+		if err != nil {
+			return "sftp", "", false, err
+		}
+		options.localPath = destination
+		options.destinationExact = true
 	}
 	if options.method != "sftp" {
-		if destination, used, err := tryRsyncTransfer(ctx, client, sftpClient, host, store, options); used {
-			return "rsync", destination, err
-		}
-		if options.method == "rsync" {
-			return "rsync", "", fmt.Errorf("显式 rsync 传输不可用或执行失败")
+		rsyncDestination, changed, used, err := tryRsyncTransfer(ctx, client, sftpClient, host, store, options)
+		if used {
+			return "rsync", rsyncDestination, changed, err
 		}
 	}
-
 	if options.direction == "push" {
-		err = pushSFTP(sftpClient, options.localPath, options.remotePath, options.overwrite)
-		return "sftp", options.remotePath, err
+		changed, err := pushSFTP(sftpClient, options.localPath, options.remotePath, options)
+		return "sftp", options.remotePath, changed, err
 	}
-	destination, err := pullSFTP(sftpClient, host.Alias, options.remotePath, options.localPath, options.overwrite)
-	return "sftp", destination, err
+	changed, err := pullSFTP(sftpClient, options.remotePath, destination, options)
+	return "sftp", destination, changed, err
 }
 
-func pushSFTP(client *sftp.Client, localPath, remotePath string, overwrite bool) error {
-	info, err := os.Stat(localPath)
+func pushSFTP(client *sftp.Client, localPath, remotePath string, options transferOptions) (bool, error) {
+	sourceManifest, err := localManifest(localPath)
 	if err != nil {
-		return fmt.Errorf("读取本地源失败: %w", err)
+		return false, err
+	}
+	info, err := os.Lstat(localPath)
+	if err != nil {
+		return false, fmt.Errorf("读取本地源失败: %w", err)
 	}
 	remotePath = path.Clean(remotePath)
 	if remotePath == "." || remotePath == "/" || strings.HasPrefix(remotePath, "~/") {
-		return fmt.Errorf("远程目标必须是明确路径，且不支持 ~ 展开: %s", remotePath)
+		return false, fmt.Errorf("远程目标必须是明确路径，且不支持 ~ 展开: %s", remotePath)
 	}
-	if _, err := client.Stat(remotePath); err == nil {
-		if !overwrite {
-			return fmt.Errorf("远程目标已存在；使用 --overwrite 明确覆盖")
+	exists := false
+	var targetManifest []manifestEntry
+	if _, err := client.Lstat(remotePath); err == nil {
+		exists = true
+		if options.validateChecksum {
+			targetManifest, err = remoteManifest(client, remotePath)
+			if err != nil {
+				return false, err
+			}
+			if manifestsEqual(sourceManifest, targetManifest) {
+				return false, nil
+			}
+		}
+		if options.diffWriter != nil {
+			if targetManifest == nil {
+				targetManifest, err = remoteManifest(client, remotePath)
+				if err != nil {
+					return false, err
+				}
+			}
+			if err := writePushDiff(options.diffWriter, client, localPath, remotePath, sourceManifest, targetManifest); err != nil {
+				return false, err
+			}
+		}
+		if !options.check && !options.overwrite && !options.backup {
+			return false, fmt.Errorf("远程目标已存在且内容不同；使用 --overwrite 或 --backup")
 		}
 	} else if !os.IsNotExist(err) {
-		return fmt.Errorf("检查远程目标失败: %w", err)
+		return false, fmt.Errorf("检查远程目标失败: %w", err)
+	} else if options.diffWriter != nil {
+		if err := writePushDiff(options.diffWriter, client, localPath, remotePath, sourceManifest, nil); err != nil {
+			return false, err
+		}
+	}
+	if options.check {
+		return true, nil
 	}
 	temp := remotePath + fmt.Sprintf(".sshm-tmp-%d", time.Now().UnixNano())
 	_ = client.RemoveAll(temp)
 	defer client.RemoveAll(temp)
 	if err := copyLocalToRemote(client, localPath, temp, info); err != nil {
-		return err
+		return false, err
 	}
-	return activateRemoteTemp(client, temp, remotePath, overwrite)
+	if options.validateChecksum {
+		tempManifest, err := remoteManifest(client, temp)
+		if err != nil {
+			return false, err
+		}
+		if !manifestsEqual(sourceManifest, tempManifest) {
+			return false, fmt.Errorf("远程临时目标 checksum 校验失败")
+		}
+	}
+	return true, activateRemoteTemp(client, temp, remotePath, exists, options.overwrite, options.backup)
+}
+
+func pullSFTP(client *sftp.Client, remotePath, destination string, options transferOptions) (bool, error) {
+	remotePath = path.Clean(remotePath)
+	sourceManifest, err := remoteManifest(client, remotePath)
+	if err != nil {
+		return false, err
+	}
+	if err := validateRemoteManifestDestinations(
+		destination, sourceManifest, runtime.GOOS == "windows", localPathComparisonCaseInsensitive(),
+	); err != nil {
+		return false, err
+	}
+	info, err := client.Lstat(remotePath)
+	if err != nil {
+		return false, fmt.Errorf("读取远程源失败: %w", err)
+	}
+	exists := false
+	if _, err := os.Lstat(destination); err == nil {
+		exists = true
+		if options.validateChecksum {
+			targetManifest, err := localManifest(destination)
+			if err != nil {
+				return false, err
+			}
+			if manifestsEqual(sourceManifest, targetManifest) {
+				return false, nil
+			}
+		}
+		if !options.check && !options.overwrite && !options.backup {
+			return false, fmt.Errorf("本地目标已存在且内容不同；使用 --overwrite 或 --backup")
+		}
+	} else if !os.IsNotExist(err) {
+		return false, fmt.Errorf("检查本地目标失败: %w", err)
+	}
+	if options.check {
+		return true, nil
+	}
+	if err := os.MkdirAll(filepath.Dir(destination), 0700); err != nil {
+		return false, err
+	}
+	temp := filepath.Join(filepath.Dir(destination), "."+filepath.Base(destination)+".sshm-tmp-"+fmt.Sprint(time.Now().UnixNano()))
+	_ = os.RemoveAll(temp)
+	defer os.RemoveAll(temp)
+	if err := copyRemoteToLocal(client, remotePath, temp, info); err != nil {
+		return false, err
+	}
+	if options.validateChecksum {
+		tempManifest, err := localManifest(temp)
+		if err != nil {
+			return false, err
+		}
+		if !manifestsEqual(sourceManifest, tempManifest) {
+			return false, fmt.Errorf("本地临时目标 checksum 校验失败")
+		}
+	}
+	return true, activateLocalTemp(temp, destination, exists, options.overwrite, options.backup)
+}
+
+func singlePullDestination(remotePath, localPath string) (string, error) {
+	parts, err := safeRemotePathParts(remotePath, runtime.GOOS == "windows")
+	if err != nil {
+		return "", err
+	}
+	if info, err := os.Stat(localPath); err == nil && info.IsDir() {
+		return confinedJoin(localPath, parts[len(parts)-1])
+	}
+	if strings.HasSuffix(localPath, string(os.PathSeparator)) || strings.HasSuffix(localPath, "/") {
+		return confinedJoin(localPath, parts[len(parts)-1])
+	}
+	absolute, err := filepath.Abs(localPath)
+	if err != nil {
+		return "", err
+	}
+	return absolute, nil
 }
 
 func copyLocalToRemote(client *sftp.Client, localPath, remotePath string, info os.FileInfo) error {
+	if !info.IsDir() && !info.Mode().IsRegular() {
+		return fmt.Errorf("不支持符号链接或特殊文件: %s", localPath)
+	}
 	if info.IsDir() {
 		if err := client.MkdirAll(remotePath); err != nil {
 			return fmt.Errorf("创建远程目录失败: %w", err)
 		}
-		return filepath.Walk(localPath, func(current string, entry os.FileInfo, err error) error {
+		if err := client.Chmod(remotePath, info.Mode().Perm()); err != nil {
+			return err
+		}
+		children, err := os.ReadDir(localPath)
+		if err != nil {
+			return err
+		}
+		for _, child := range children {
+			current := filepath.Join(localPath, child.Name())
+			childInfo, err := os.Lstat(current)
 			if err != nil {
 				return err
 			}
-			relative, err := filepath.Rel(localPath, current)
-			if err != nil || relative == "." {
+			if err := copyLocalToRemote(client, current, path.Join(remotePath, child.Name()), childInfo); err != nil {
 				return err
 			}
-			target := path.Join(remotePath, filepath.ToSlash(relative))
-			if entry.IsDir() {
-				return client.MkdirAll(target)
-			}
-			return copyLocalFileToRemote(client, current, target, entry.Mode())
-		})
+		}
+		return nil
 	}
 	if err := client.MkdirAll(path.Dir(remotePath)); err != nil {
 		return err
@@ -308,47 +524,20 @@ func copyLocalFileToRemote(client *sftp.Client, localPath, remotePath string, mo
 		return err
 	}
 	if _, err := io.Copy(target, source); err != nil {
-		target.Close()
+		_ = target.Close()
 		return err
 	}
 	if err := target.Chmod(mode.Perm()); err != nil {
-		target.Close()
+		_ = target.Close()
 		return err
 	}
 	return target.Close()
 }
 
-func pullSFTP(client *sftp.Client, hostAlias, remotePath, localDir string, overwrite bool) (string, error) {
-	remotePath = path.Clean(remotePath)
-	info, err := client.Stat(remotePath)
-	if err != nil {
-		return "", fmt.Errorf("读取远程源失败: %w", err)
-	}
-	name := path.Base(remotePath)
-	if name == "." || name == "/" {
-		return "", fmt.Errorf("远程源必须是明确文件或目录")
-	}
-	destination := filepath.Join(localDir, hostAlias, name)
-	if _, err := os.Stat(destination); err == nil {
-		if !overwrite {
-			return destination, fmt.Errorf("本地目标已存在；使用 --overwrite 明确覆盖")
-		}
-	} else if !os.IsNotExist(err) {
-		return destination, fmt.Errorf("检查本地目标失败: %w", err)
-	}
-	if err := os.MkdirAll(filepath.Dir(destination), 0700); err != nil {
-		return destination, err
-	}
-	temp := destination + fmt.Sprintf(".sshm-tmp-%d", time.Now().UnixNano())
-	_ = os.RemoveAll(temp)
-	defer os.RemoveAll(temp)
-	if err := copyRemoteToLocal(client, remotePath, temp, info); err != nil {
-		return destination, err
-	}
-	return destination, activateLocalTemp(temp, destination, overwrite)
-}
-
 func copyRemoteToLocal(client *sftp.Client, remotePath, localPath string, info os.FileInfo) error {
+	if !info.IsDir() && !info.Mode().IsRegular() {
+		return fmt.Errorf("不支持远程符号链接或特殊文件: %s", remotePath)
+	}
 	if info.IsDir() {
 		if err := os.MkdirAll(localPath, info.Mode().Perm()); err != nil {
 			return err
@@ -362,7 +551,14 @@ func copyRemoteToLocal(client *sftp.Client, remotePath, localPath string, info o
 			if err != nil {
 				return err
 			}
-			if err := copyRemoteToLocal(client, path.Join(remotePath, name), filepath.Join(localPath, name), entry); err != nil {
+			if err := validateLocalComponent(name, runtime.GOOS == "windows"); err != nil {
+				return fmt.Errorf("远程目录项 %q 无法安全保存: %w", name, err)
+			}
+			childInfo, err := client.Lstat(path.Join(remotePath, name))
+			if err != nil {
+				return err
+			}
+			if err := copyRemoteToLocal(client, path.Join(remotePath, name), filepath.Join(localPath, name), childInfo); err != nil {
 				return err
 			}
 		}
@@ -378,7 +574,7 @@ func copyRemoteToLocal(client *sftp.Client, remotePath, localPath string, info o
 		return err
 	}
 	if _, err := io.Copy(target, source); err != nil {
-		target.Close()
+		_ = target.Close()
 		return err
 	}
 	return target.Close()
@@ -391,75 +587,69 @@ func safeRemoteEntryName(name string) (string, error) {
 	return name, nil
 }
 
-func activateRemoteTemp(client *sftp.Client, temp, destination string, overwrite bool) error {
-	if !overwrite {
+func activateRemoteTemp(client *sftp.Client, temp, destination string, exists, overwrite, backup bool) error {
+	if !exists {
+		return client.Rename(temp, destination)
+	}
+	if backup {
+		backupPath := destination + ".bak." + time.Now().Format("20060102-150405")
+		if _, err := client.Lstat(backupPath); err == nil {
+			backupPath += fmt.Sprintf("-%d", time.Now().UnixNano())
+		}
+		if err := client.Rename(destination, backupPath); err != nil {
+			return fmt.Errorf("备份远程目标失败: %w", err)
+		}
 		if err := client.Rename(temp, destination); err != nil {
-			return fmt.Errorf("启用远程目标失败: %w", err)
+			_ = client.Rename(backupPath, destination)
+			return fmt.Errorf("启用远程目标失败，已尝试恢复备份: %w", err)
 		}
 		return nil
 	}
-	if _, err := client.Stat(destination); err != nil {
-		if os.IsNotExist(err) {
-			if err := client.Rename(temp, destination); err != nil {
-				return fmt.Errorf("启用远程目标失败: %w", err)
-			}
-			return nil
-		}
-		return fmt.Errorf("检查远程目标失败: %w", err)
+	if !overwrite {
+		return fmt.Errorf("远程目标已存在")
 	}
 	if err := client.PosixRename(temp, destination); err == nil {
 		return nil
 	}
-
-	backup := destination + fmt.Sprintf(".sshm-restore-%d", time.Now().UnixNano())
-	_ = client.RemoveAll(backup)
-	if err := client.Rename(destination, backup); err != nil {
-		return fmt.Errorf("准备远程目标替换失败，原目标未修改: %w", err)
+	restore := destination + fmt.Sprintf(".sshm-restore-%d", time.Now().UnixNano())
+	if err := client.Rename(destination, restore); err != nil {
+		return fmt.Errorf("准备远程目标替换失败: %w", err)
 	}
 	if err := client.Rename(temp, destination); err != nil {
-		restoreErr := client.Rename(backup, destination)
-		if restoreErr != nil {
-			return fmt.Errorf("启用远程目标失败且恢复原目标失败: %v；原始错误: %w", restoreErr, err)
-		}
-		return fmt.Errorf("启用远程目标失败，原目标已恢复: %w", err)
+		_ = client.Rename(restore, destination)
+		return fmt.Errorf("启用远程目标失败，已尝试恢复原目标: %w", err)
 	}
-	if err := client.RemoveAll(backup); err != nil {
-		return fmt.Errorf("远程目标已替换，但清理恢复副本失败: %w", err)
-	}
-	return nil
+	return client.RemoveAll(restore)
 }
 
-func activateLocalTemp(temp, destination string, overwrite bool) error {
-	if !overwrite {
+func activateLocalTemp(temp, destination string, exists, overwrite, backup bool) error {
+	if !exists {
+		return os.Rename(temp, destination)
+	}
+	if backup {
+		backupPath := destination + ".bak." + time.Now().Format("20060102-150405")
+		if _, err := os.Lstat(backupPath); err == nil {
+			backupPath += fmt.Sprintf("-%d", time.Now().UnixNano())
+		}
+		if err := os.Rename(destination, backupPath); err != nil {
+			return fmt.Errorf("备份本地目标失败: %w", err)
+		}
 		if err := os.Rename(temp, destination); err != nil {
-			return fmt.Errorf("启用本地目标失败: %w", err)
+			_ = os.Rename(backupPath, destination)
+			return fmt.Errorf("启用本地目标失败，已尝试恢复备份: %w", err)
 		}
 		return nil
 	}
-	if _, err := os.Stat(destination); err != nil {
-		if os.IsNotExist(err) {
-			if err := os.Rename(temp, destination); err != nil {
-				return fmt.Errorf("启用本地目标失败: %w", err)
-			}
-			return nil
-		}
-		return fmt.Errorf("检查本地目标失败: %w", err)
+	if !overwrite {
+		return fmt.Errorf("本地目标已存在")
 	}
-
-	backup := destination + fmt.Sprintf(".sshm-restore-%d", time.Now().UnixNano())
-	_ = os.RemoveAll(backup)
-	if err := os.Rename(destination, backup); err != nil {
-		return fmt.Errorf("准备本地目标替换失败，原目标未修改: %w", err)
+	restore := destination + fmt.Sprintf(".sshm-restore-%d", time.Now().UnixNano())
+	if err := os.Rename(destination, restore); err != nil {
+		return fmt.Errorf("准备本地目标替换失败: %w", err)
 	}
 	if err := os.Rename(temp, destination); err != nil {
-		restoreErr := os.Rename(backup, destination)
-		if restoreErr != nil {
-			return fmt.Errorf("启用本地目标失败且恢复原目标失败: %v；原始错误: %w", restoreErr, err)
-		}
-		return fmt.Errorf("启用本地目标失败，原目标已恢复: %w", err)
+		_ = os.Rename(restore, destination)
+		return fmt.Errorf("启用本地目标失败，已尝试恢复原目标: %w", err)
 	}
-	if err := os.RemoveAll(backup); err != nil {
-		return fmt.Errorf("本地目标已替换，但清理恢复副本失败: %w", err)
-	}
-	return nil
+	return os.RemoveAll(restore)
 }

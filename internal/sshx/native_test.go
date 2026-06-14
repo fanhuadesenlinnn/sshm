@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/secret"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/secret"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -59,6 +59,9 @@ func TestAcceptNewHostKeyIsStoredInConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(t.TempDir(), "sshm.yaml")
+	if err := config.NewRepositoryWithPath(path).Replace(config.DefaultDocument()); err != nil {
+		t.Fatal(err)
+	}
 	host := config.Host{
 		Alias: "server", Host: "example.com", Port: 2222, ConfigPath: path,
 		ResolvedHostKeyPolicy: config.HostKeyPolicyAcceptNew,
@@ -96,6 +99,9 @@ func TestExplicitInsecureHostPolicyDoesNotRequireStoreLoad(t *testing.T) {
 
 func TestHostKeyChangeIsRejected(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sshm.yaml")
+	if err := config.NewRepositoryWithPath(path).Replace(config.DefaultDocument()); err != nil {
+		t.Fatal(err)
+	}
 	host := config.Host{
 		Alias: "server", Host: "example.com", Port: 22, ConfigPath: path,
 		ResolvedHostKeyPolicy: config.HostKeyPolicyAcceptNew,

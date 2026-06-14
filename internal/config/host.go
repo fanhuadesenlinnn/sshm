@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 )
@@ -43,6 +44,7 @@ const (
 )
 
 var aliasRegexp = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+var windowsReservedAlias = regexp.MustCompile(`(?i)^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$`)
 var fallbackIDCounter uint64
 
 // NewID generates a stable 128-bit identifier.
@@ -108,15 +110,8 @@ func (hf *HostsFile) DuplicateAliases() []string {
 func (h *Host) Validate() []string {
 	var errs []string
 
-	if h.Alias == "" {
-		errs = append(errs, "别名不能为空")
-	} else if !aliasRegexp.MatchString(h.Alias) {
-		errs = append(errs, "别名只能包含字母、数字、点、下划线、短横线")
-	}
-	if h.Alias != "" {
-		if _, err := strconv.Atoi(h.Alias); err == nil {
-			errs = append(errs, "别名不能是纯数字")
-		}
+	if err := ValidateHostAlias(h.Alias); err != nil {
+		errs = append(errs, err.Error())
 	}
 
 	if h.User == "" {
@@ -150,6 +145,27 @@ func (h *Host) Validate() []string {
 	}
 
 	return errs
+}
+
+// ValidateHostAlias enforces the cross-platform alias contract used by pull
+// destination paths.
+func ValidateHostAlias(alias string) error {
+	switch {
+	case alias == "":
+		return fmt.Errorf("别名不能为空")
+	case !aliasRegexp.MatchString(alias):
+		return fmt.Errorf("别名只能包含字母、数字、点、下划线、短横线")
+	case alias == "." || alias == "..":
+		return fmt.Errorf("别名不能是 . 或 ..")
+	case windowsReservedAlias.MatchString(alias):
+		return fmt.Errorf("别名不能使用 Windows 保留名称")
+	case strings.HasSuffix(alias, ".") || strings.HasSuffix(alias, " "):
+		return fmt.Errorf("别名不能以点或空格结尾")
+	}
+	if _, err := strconv.Atoi(alias); err == nil {
+		return fmt.Errorf("别名不能是纯数字")
+	}
+	return nil
 }
 
 func (h *Host) EnsureDefaults() {

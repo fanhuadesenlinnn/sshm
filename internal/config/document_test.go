@@ -11,6 +11,9 @@ import (
 func TestRepositoryCreatesCommentedSingleFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sshm.yaml")
 	repo := NewRepositoryWithPath(path)
+	if err := repo.Replace(DefaultDocument()); err != nil {
+		t.Fatal(err)
+	}
 	doc, err := repo.Load()
 	if err != nil {
 		t.Fatal(err)
@@ -23,7 +26,7 @@ func TestRepositoryCreatesCommentedSingleFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(data)
-	for _, want := range []string{"# sshm 配置", "insecure(跳过验证)", "auth: auto | key | password", "tags:", "hosts: []", "managed_keys:"} {
+	for _, want := range []string{"# sshm 配置文件", "# 主机密钥策略:", "version: 2", "tags:", "hosts: []", "managed_keys:", "vault: null"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("default config missing %q:\n%s", want, text)
 		}
@@ -83,9 +86,9 @@ func TestRepositoryMutationFailureLeavesDocumentUnchanged(t *testing.T) {
 	}
 }
 
-func TestRepositoryPersistsGeneratedIDFromHandEditedConfig(t *testing.T) {
+func TestRepositoryRejectsMissingIDWithoutRewritingConfig(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sshm.yaml")
-	data := []byte(`version: 1
+	data := []byte(`version: 2
 defaults:
   host_key_policy: strict
 hosts:
@@ -101,22 +104,40 @@ host_trust:
 		t.Fatal(err)
 	}
 	repo := NewRepositoryWithPath(path)
-	first, err := repo.Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	second, err := repo.Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if first.Hosts[0].ID == "" || second.Hosts[0].ID != first.Hosts[0].ID {
-		t.Fatalf("generated ID was not persisted: %q then %q", first.Hosts[0].ID, second.Hosts[0].ID)
+	if _, err := repo.Load(); err == nil {
+		t.Fatal("missing stable ID should be rejected")
 	}
 	persisted, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(persisted), "id: "+first.Hosts[0].ID) {
-		t.Fatalf("generated ID missing from config:\n%s", persisted)
+	if string(persisted) != string(data) {
+		t.Fatalf("load rewrote hand-edited config:\n%s", persisted)
+	}
+}
+
+func TestConfigV2StrictlyRejectsMissingVersionUnknownFieldsAndUnsafeAlias(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want string
+	}{
+		{"missing version", "hosts: []\n", "version"},
+		{"unknown top field", "version: 2\nunknown: true\n", "field unknown"},
+		{"unknown custom field", "version: 2\ndefaults:\n  logs:\n    unknown: true\n", "未知字段"},
+		{"unsafe alias", `version: 2
+hosts:
+  - id: host-id
+    alias: ../escape
+    user: root
+    host: example.test
+`, "别名"},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := ValidateDocumentData([]byte(tt.body)); err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("error = %v, want %q", err, tt.want)
+			}
+		})
 	}
 }

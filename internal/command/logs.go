@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/operation"
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/ui"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/operation"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/ui"
 )
 
 func (app *App) cmdLogs(args []string) error {
@@ -19,7 +19,11 @@ func (app *App) cmdLogs(args []string) error {
 		ui.PrintSuccess("操作日志已清理")
 		return nil
 	}
-	if err := operation.CleanExpired(30 * 24 * time.Hour); err != nil {
+	retention := 30 * 24 * time.Hour
+	if doc, err := app.Store.Repository().Load(); err == nil {
+		retention = doc.Defaults.Logs.Retention.Duration
+	}
+	if err := operation.CleanExpired(retention); err != nil {
 		return err
 	}
 	entries, err := os.ReadDir(config.LogsDir())

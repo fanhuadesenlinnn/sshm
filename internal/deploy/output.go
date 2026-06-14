@@ -9,9 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/operation"
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/safefile"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/batch"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/operation"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/safefile"
 )
 
 func WriteJSON(writer io.Writer, value any) error {
@@ -28,58 +29,90 @@ func WritePlanText(writer io.Writer, plan Plan) {
 	if plan.Description != "" {
 		fmt.Fprintf(writer, "Description: %s\n", plan.Description)
 	}
+	fmt.Fprintf(writer, "Mode: check=%t diff=%t\n", plan.Check, plan.Diff)
+	fmt.Fprintf(writer, "Batch: serial=%d parallel=%d fail_fast=%t max_fail=%d max_fail_percent=%d\n",
+		plan.Batch.Serial, plan.Batch.Parallel, plan.Batch.FailFast, plan.Batch.MaxFail, plan.Batch.MaxFailPercent)
+	fmt.Fprintf(writer, "Timeouts: connect=%s step=%s\n", plan.ConnectTimeout, plan.Timeout)
 	fmt.Fprintln(writer, "\nTargets:")
 	for _, host := range plan.Hosts {
 		fmt.Fprintf(writer, "  - %s %s@%s:%d\n", host.Alias, host.User, host.Host, host.Port)
 	}
-	fmt.Fprintf(writer, "\nStrategy:\n  mode: %s\n  max_parallel: %d\n  connect_timeout: %s\n  step_timeout: %s\n  run_timeout: %s\n  retry_count: %d\n  retry_on_stage: %s\n",
-		plan.Strategy.Mode, plan.Strategy.MaxParallel, plan.Strategy.ConnectTimeout, plan.Strategy.StepTimeout,
-		plan.Strategy.RunTimeout, plan.Strategy.RetryCount, strings.Join(plan.Strategy.RetryOnStage, ","))
 	fmt.Fprintln(writer, "\nSteps:")
-	for index, step := range plan.Steps {
-		name := step.DisplayName(index)
-		timeout := ""
+	writeSteps(writer, plan.Steps)
+	if len(plan.Handlers) > 0 {
+		fmt.Fprintln(writer, "\nHandlers:")
+		writeSteps(writer, plan.Handlers)
+	}
+}
+
+func writeSteps(writer io.Writer, steps []Step) {
+	for index, step := range steps {
+		detail := step.ActionType()
+		switch step.ActionType() {
+		case "exec":
+			detail += " " + step.Exec
+		case "push":
+			detail += fmt.Sprintf(" %s -> %s", step.Push.Src, step.Push.Dest)
+		case "pull":
+			detail += fmt.Sprintf(" %s -> %s", step.Pull.Src, step.Pull.Dest)
+		case "mkdir":
+			detail += " " + step.Mkdir.Path
+		case "wait":
+			detail += " " + step.Wait.String()
+		case "confirm":
+			detail += " " + step.Confirm
+		}
 		if step.Timeout.Duration > 0 {
-			timeout = " timeout=" + step.Timeout.String()
+			detail += " timeout=" + step.Timeout.String()
 		}
-		if step.Type == "copy" {
-			fmt.Fprintf(writer, "  %d. [%s] copy %s -> %s method=%s overwrite=%t%s\n", index+1, name, step.Src, step.Dest, step.Method, step.Overwrite, timeout)
-		} else {
-			fmt.Fprintf(writer, "  %d. [%s] exec %s%s\n", index+1, name, step.Command, timeout)
+		if len(step.Notify) > 0 {
+			detail += " notify=" + strings.Join(step.Notify, ",")
 		}
+		fmt.Fprintf(writer, "  %d. [%s] %s\n", index+1, step.DisplayName(index), detail)
 	}
 }
 
 func WriteRunText(writer io.Writer, result RunResult) {
-	fmt.Fprintf(writer, "\nDeploy: %s\nTargets: %d\nMode: %s\n\n", result.Profile, result.Targets, result.Mode)
+	fmt.Fprintf(writer, "\nDeploy: %s\nTargets: %d\n\n", result.Profile, result.Targets)
 	for index, host := range result.Results {
-		status := "OK"
-		if !host.OK {
-			status = fmt.Sprintf("FAILED stage=%s reason=%s", host.Stage, host.Reason)
+		fmt.Fprintf(writer, "[%d/%d] %-20s %s", index+1, len(result.Results), host.HostAlias, host.Status)
+		if host.Reason != "" {
+			fmt.Fprintf(writer, " stage=%s reason=%s", host.Stage, host.Reason)
 		}
-		var steps []string
+		fmt.Fprintln(writer)
 		for _, step := range host.Steps {
-			steps = append(steps, fmt.Sprintf("%s=%s", step.Name, time.Duration(step.DurationMS)*time.Millisecond))
+			fmt.Fprintf(writer, "  - %-24s %-12s %s", step.Name, step.Status, time.Duration(step.DurationMS)*time.Millisecond)
+			if step.Ignored {
+				fmt.Fprint(writer, " ignored")
+			}
+			if step.Reason != "" {
+				fmt.Fprintf(writer, " reason=%s", step.Reason)
+			}
+			fmt.Fprintln(writer)
+			if step.Output != "" {
+				fmt.Fprint(writer, indent(step.Output, "      "))
+			}
 		}
-		if len(steps) > 0 {
-			status += " " + strings.Join(steps, " ")
-		}
-		fmt.Fprintf(writer, "[%d/%d] %s %s\n", index+1, len(result.Results), host.HostAlias, status)
-		if !host.OK {
+		if host.Status == batch.StatusFailed || host.Status == batch.StatusUnreachable {
 			fmt.Fprintf(writer, "  Suggestion: %s\n  Retry: %s\n", host.Suggestion, host.RetryCommand)
 		}
 	}
-	fmt.Fprintf(writer, "\nSummary:\n  OK: %d\n  Failed: %d\n", result.OK, result.Failed)
+	fmt.Fprintf(writer, "\nSummary: ok=%d changed=%d would-change=%d failed=%d unreachable=%d skipped=%d\n",
+		result.Summary.OK, result.Summary.Changed, result.Summary.WouldChange,
+		result.Summary.Failed, result.Summary.Unreachable, result.Summary.Skipped)
 	if result.Cancelled {
-		fmt.Fprintln(writer, "  Cancelled: true")
+		fmt.Fprintln(writer, "Cancelled: true")
+	}
+	if result.StopReason != "" {
+		fmt.Fprintf(writer, "Stop reason: %s\n", result.StopReason)
 	}
 	if result.LogPath != "" {
-		fmt.Fprintf(writer, "  Log: %s\n", result.LogPath)
+		fmt.Fprintf(writer, "Log: %s\n", result.LogPath)
 	}
 }
 
-func WriteLog(plan Plan, result *RunResult) (string, error) {
-	if err := operation.CleanExpired(30 * 24 * time.Hour); err != nil {
+func WriteLog(plan Plan, result *RunResult, retention time.Duration) (string, error) {
+	if err := operation.CleanExpired(retention); err != nil {
 		return "", err
 	}
 	name := time.Now().Format("20060102-150405.000000000") + "-deploy-" + sanitize(plan.Profile)
@@ -94,17 +127,19 @@ func WriteLog(plan Plan, result *RunResult) (string, error) {
 	if err := safefile.Write(filepath.Join(dir, "plan.json"), append(planData, '\n'), 0600); err != nil {
 		return "", err
 	}
-	for _, host := range result.Results {
-		data, err := json.MarshalIndent(host, "", "  ")
+	logResult := loggableRunResult(plan, *result)
+	for _, logHost := range logResult.Results {
+		data, err := json.MarshalIndent(logHost, "", "  ")
 		if err != nil {
 			return "", err
 		}
-		if err := safefile.Write(filepath.Join(dir, sanitize(host.HostAlias)+".json"), append(data, '\n'), 0600); err != nil {
+		if err := safefile.Write(filepath.Join(dir, sanitize(logHost.HostAlias)+".json"), append(data, '\n'), 0600); err != nil {
 			return "", err
 		}
 	}
 	result.LogPath = dir
-	data, err := json.MarshalIndent(result, "", "  ")
+	logResult.LogPath = dir
+	data, err := json.MarshalIndent(logResult, "", "  ")
 	if err != nil {
 		return "", err
 	}
@@ -112,6 +147,38 @@ func WriteLog(plan Plan, result *RunResult) (string, error) {
 		return "", err
 	}
 	return dir, nil
+}
+
+func loggableRunResult(plan Plan, result RunResult) RunResult {
+	result.Results = append([]HostResult(nil), result.Results...)
+	for hostIndex := range result.Results {
+		result.Results[hostIndex].Steps = append([]StepResult(nil), result.Results[hostIndex].Steps...)
+		if !plan.Diff {
+			continue
+		}
+		for stepIndex := range result.Results[hostIndex].Steps {
+			step := &result.Results[hostIndex].Steps[stepIndex]
+			if step.Type == "push" || step.Type == "pull" {
+				step.Output = ""
+			}
+		}
+	}
+	return result
+}
+
+func indent(value, prefix string) string {
+	lines := strings.SplitAfter(value, "\n")
+	var out strings.Builder
+	for _, line := range lines {
+		if line != "" {
+			out.WriteString(prefix)
+			out.WriteString(line)
+		}
+	}
+	if value != "" && !strings.HasSuffix(value, "\n") {
+		out.WriteByte('\n')
+	}
+	return out.String()
 }
 
 func sanitize(value string) string {

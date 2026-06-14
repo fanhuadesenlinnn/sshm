@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/secret"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/secret"
 )
 
 func TestManagedKeyCreateAndUse(t *testing.T) {

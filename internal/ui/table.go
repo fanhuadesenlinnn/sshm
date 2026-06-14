@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/fanhuadesenlinnn/sshm/v5/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
 	"golang.org/x/term"
 )
 
