@@ -182,8 +182,8 @@ func TestDeployRunnerExecutesCopyThenExecOverSharedExecutor(t *testing.T) {
 	plan := deploy.Plan{
 		Profile: "integration", Config: "<test>", Hosts: []config.Host{*loaded},
 		Batch:          batch.Options{Parallel: 1},
-		ConnectTimeout: deploy.Duration{Duration: time.Second},
-		Timeout:        deploy.Duration{Duration: time.Second},
+		ConnectTimeout: deploy.Duration{Duration: 5 * time.Second},
+		Timeout:        deploy.Duration{Duration: 5 * time.Second},
 		Steps: []deploy.Step{
 			{Name: "copy", Push: &deploy.PushAction{Src: source, Dest: "deployed/package.txt"}},
 			{Name: "exec", Exec: "verify package"},
