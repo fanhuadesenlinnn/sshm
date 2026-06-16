@@ -15,18 +15,19 @@ import (
 type FailureStage string
 
 const (
-	StageResolve  FailureStage = "resolve"
-	StageNetwork  FailureStage = "network"
-	StageJump     FailureStage = "jump-host"
-	StageTrust    FailureStage = "host-trust"
-	StageAuth     FailureStage = "authentication"
-	StageSession  FailureStage = "session"
-	StageExecute  FailureStage = "execute"
-	StageTransfer FailureStage = "transfer"
-	StageTimeout  FailureStage = "timeout"
-	StageConfig   FailureStage = "config"
-	StageVault    FailureStage = "vault"
-	StageUnknown  FailureStage = "unknown"
+	StageResolve    FailureStage = "resolve"
+	StageNetwork    FailureStage = "network"
+	StageJump       FailureStage = "jump-host"
+	StageTrust      FailureStage = "host-trust"
+	StageCredential FailureStage = "credential"
+	StageAuth       FailureStage = "authentication"
+	StageSession    FailureStage = "session"
+	StageExecute    FailureStage = "execute"
+	StageTransfer   FailureStage = "transfer"
+	StageTimeout    FailureStage = "timeout"
+	StageConfig     FailureStage = "config"
+	StageVault      FailureStage = "vault"
+	StageUnknown    FailureStage = "unknown"
 )
 
 type StageError struct {
@@ -60,6 +61,8 @@ func StageOf(err error, fallback FailureStage) FailureStage {
 		return StageJump
 	case strings.Contains(message, "主机密钥"), strings.Contains(message, "无法验证主机"), strings.Contains(message, "host key"), strings.Contains(message, "knownhosts"):
 		return StageTrust
+	case strings.Contains(message, "未配置可用的认证凭据"), strings.Contains(message, "未配置托管密钥"):
+		return StageCredential
 	case strings.Contains(message, "vault"), strings.Contains(message, "密码库"), strings.Contains(message, "需要先解锁"):
 		return StageVault
 	case strings.Contains(message, "认证"), strings.Contains(message, "凭据"), strings.Contains(message, "authenticate"), strings.Contains(message, "permission denied"):
@@ -77,6 +80,17 @@ func StageOf(err error, fallback FailureStage) FailureStage {
 	}
 }
 
+// IsConnectionFailure reports whether a stage means sshm could not establish
+// an authenticated SSH connection before the requested remote action ran.
+func IsConnectionFailure(stage FailureStage) bool {
+	switch stage {
+	case StageResolve, StageNetwork, StageJump, StageTrust, StageCredential, StageAuth:
+		return true
+	default:
+		return false
+	}
+}
+
 func Suggestion(stage FailureStage) string {
 	switch stage {
 	case StageResolve:
@@ -87,6 +101,8 @@ func Suggestion(stage FailureStage) string {
 		return "检查跳板机配置、认证和目标可达性"
 	case StageTrust:
 		return "核对主机密钥；确认无风险后再更新信任配置"
+	case StageCredential:
+		return "该主机尚未配置凭据；使用 sshm passwd 或 sshm key setup 后重试（此错误未尝试连接，若持续失败请另行确认主机网络可达）"
 	case StageAuth:
 		return "使用 sshm passwd 或 sshm key setup 配置可用凭据"
 	case StageSession:

@@ -199,12 +199,10 @@ func batchStatus(result ops.Result) batch.Status {
 	if result.Err == nil {
 		return batch.StatusOK
 	}
-	switch result.Stage {
-	case operation.StageResolve, operation.StageNetwork, operation.StageJump, operation.StageTrust, operation.StageAuth:
+	if operation.IsConnectionFailure(result.Stage) {
 		return batch.StatusUnreachable
-	default:
-		return batch.StatusFailed
 	}
+	return batch.StatusFailed
 }
 
 func exitErrorForBatch(result batch.RunResult) error {
@@ -235,9 +233,10 @@ func ExitCodeForError(err error) int {
 	if errors.Is(err, context.Canceled) {
 		return 130
 	}
-	switch operation.StageOf(err, operation.StageConfig) {
-	case operation.StageResolve, operation.StageNetwork, operation.StageJump, operation.StageTrust, operation.StageAuth:
+	if operation.IsConnectionFailure(operation.StageOf(err, operation.StageConfig)) {
 		return 2
+	}
+	switch operation.StageOf(err, operation.StageConfig) {
 	case operation.StageSession, operation.StageExecute, operation.StageTransfer, operation.StageTimeout:
 		return 1
 	default:

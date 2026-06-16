@@ -420,8 +420,7 @@ func failedStep(err error, stage operation.FailureStage) StepResult {
 		err = fmt.Errorf("操作失败")
 	}
 	status := batch.StatusFailed
-	switch stage {
-	case operation.StageResolve, operation.StageNetwork, operation.StageJump, operation.StageTrust, operation.StageAuth:
+	if operation.IsConnectionFailure(stage) {
 		status = batch.StatusUnreachable
 	}
 	return StepResult{Status: status, Stage: stage, Reason: err.Error(), RC: exitStatus(err)}

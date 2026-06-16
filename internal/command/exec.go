@@ -113,7 +113,7 @@ func (app *App) executeBatch(hosts []config.Host, command string, options batchC
 	runner := batch.Runner{
 		Options: batchOptions,
 		Progress: func(done, total int, _ batch.Result) {
-			fmt.Fprintf(os.Stderr, "\r  [%d/%d] 执行中...", done, total)
+			ui.RefreshLine("  [%d/%d] 执行中...", done, total)
 		},
 	}
 	runResult, err := runner.Run(ctx, hosts, func(ctx context.Context, host config.Host) batch.Result {
@@ -122,7 +122,7 @@ func (app *App) executeBatch(hosts []config.Host, command string, options batchC
 		opResult := executor.Exec(taskCtx, host, ops.ExecOptions{Command: command, ConnectTimeout: connectTimeout})
 		return batch.Result{Status: batchStatus(opResult), Err: opResult.Err, Detail: opResult.Output, Value: opResult}
 	})
-	fmt.Fprintln(os.Stderr)
+	ui.EndProgress()
 	if err != nil {
 		return &ExitError{Code: 3, Err: err}
 	}

@@ -100,9 +100,7 @@ func (app *App) cmdPing(args []string) error {
 			}
 			code := 2
 			for _, result := range results {
-				switch result.Stage {
-				case operation.StageResolve, operation.StageNetwork, operation.StageJump, operation.StageTrust, operation.StageAuth:
-				default:
+				if !operation.IsConnectionFailure(result.Stage) {
 					if result.Err != nil {
 						code = 1
 					}

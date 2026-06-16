@@ -84,6 +84,65 @@ func TestCompletionCandidatesMatchV6CommandSurface(t *testing.T) {
 	}
 }
 
+func TestCoreCommandHelpIncludesRunnableExamples(t *testing.T) {
+	root := newRootCommand(&App{})
+	if !strings.Contains(root.Example, "sshm init") || !strings.Contains(root.Example, "sshm passwd web01") {
+		t.Fatalf("root examples should include first-run path: %q", root.Example)
+	}
+	cases := []struct {
+		path        []string
+		wantUse     string
+		wantExample string
+	}{
+		{[]string{"exec"}, "exec [--yes] [--quiet] <别名|ID> <命令>", "sshm exec --yes web01"},
+		{[]string{"exec-tag"}, "exec-tag [批量选项] <标签|all> <命令>", "sshm exec-tag all"},
+		{[]string{"push"}, "push [选项] <别名|ID> <本地路径> <远程路径>", "sshm push web01"},
+		{[]string{"key"}, "key <命令> [参数]", "sshm key setup personal web01 --yes"},
+		{[]string{"tag"}, "tag <命令> [参数]", "sshm tag add prod"},
+		{[]string{"deploy", "run"}, "run <profile>", "sshm deploy run webapp --tag prod"},
+	}
+	for _, tt := range cases {
+		cmd, _, err := root.Find(tt.path)
+		if err != nil {
+			t.Fatalf("find %v: %v", tt.path, err)
+		}
+		if !strings.Contains(cmd.Use, tt.wantUse) {
+			t.Fatalf("%v use = %q, want %q", tt.path, cmd.Use, tt.wantUse)
+		}
+		if !strings.Contains(cmd.Example, tt.wantExample) {
+			t.Fatalf("%v example = %q, want to contain %q", tt.path, cmd.Example, tt.wantExample)
+		}
+	}
+}
+
+func TestCenterCommandsTreatNestedHelpAsHelp(t *testing.T) {
+	app := &App{}
+	for _, tt := range []struct {
+		name string
+		run  func() error
+	}{
+		{"key setup help", func() error { return app.cmdKey([]string{"setup", "--help"}) }},
+		{"tag add help", func() error { return app.cmdTag([]string{"add", "--help"}) }},
+		{"host add help", func() error { return app.cmdHost([]string{"add", "--help"}) }},
+	} {
+		if err := tt.run(); err != nil {
+			t.Fatalf("%s: %v", tt.name, err)
+		}
+	}
+}
+
+func TestUnknownCommandOrHostSuggestsClosestRootCommand(t *testing.T) {
+	root := newRootCommand(&App{})
+	cause := errors.New("missing host")
+	err := unknownCommandOrHostError(root, "lst", cause)
+	if err == nil || !strings.Contains(err.Error(), `"list"`) {
+		t.Fatalf("unexpected suggestion: %v", err)
+	}
+	if !errors.Is(err, cause) {
+		t.Fatalf("error should wrap cause: %v", err)
+	}
+}
+
 func TestExitCodeForErrorContract(t *testing.T) {
 	cases := []struct {
 		err  error

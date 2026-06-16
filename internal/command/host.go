@@ -20,6 +20,10 @@ func (app *App) cmdHost(args []string) error {
 		app.printHostHelp()
 		return nil
 	}
+	if containsHelpToken(args) {
+		app.printHostHelp()
+		return nil
+	}
 	switch args[0] {
 	case "list", "ls", "l":
 		return app.cmdList(args[1:])

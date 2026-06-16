@@ -22,6 +22,10 @@ func (app *App) cmdKey(args []string) error {
 		app.printKeyHelp()
 		return nil
 	}
+	if containsHelpToken(args) {
+		app.printKeyHelp()
+		return nil
+	}
 	switch args[0] {
 	case "list", "ls", "l":
 		return app.cmdKeyList(args[1:])

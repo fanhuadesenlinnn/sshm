@@ -85,6 +85,34 @@ func TestClientConfigUsesExplicitConnectionTimeout(t *testing.T) {
 	}
 }
 
+func TestClientConfigClassifiesMissingCredentials(t *testing.T) {
+	host := config.DefaultHost()
+	host.Alias, host.User, host.Host = "server", "test", "127.0.0.1"
+	host.HostKeyPolicy = config.HostKeyPolicyInsecure
+	_, _, err := clientConfigWithTimeout(host, nil, time.Second)
+	if err == nil {
+		t.Fatal("missing credentials should fail")
+	}
+	if stage := operation.StageOf(err, operation.StageAuth); stage != operation.StageCredential {
+		t.Fatalf("stage = %q, error = %v", stage, err)
+	}
+}
+
+func TestClientConfigPreservesManagedKeyVaultStage(t *testing.T) {
+	host := config.DefaultHost()
+	host.Alias, host.User, host.Host = "server", "test", "127.0.0.1"
+	host.Auth = "key"
+	host.Identity = config.ManagedIdentity("personal")
+	host.HostKeyPolicy = config.HostKeyPolicyInsecure
+	_, _, err := clientConfigWithTimeout(host, nil, time.Second)
+	if err == nil {
+		t.Fatal("locked managed key vault should fail")
+	}
+	if stage := operation.StageOf(err, operation.StageAuth); stage != operation.StageVault {
+		t.Fatalf("stage = %q, error = %v", stage, err)
+	}
+}
+
 func TestDialContextUsesSingleJumpHost(t *testing.T) {
 	targetAddr, closeTarget := startTestSSHServer(t, "target-pass", false)
 	defer closeTarget()

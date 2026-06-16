@@ -28,7 +28,7 @@ func runCobra(app *App, args []string) error {
 			return fmt.Errorf("检查配置文件失败: %w", err)
 		}
 		if _, _, _, err := app.Store.FindHost(args[0]); err != nil {
-			return fmt.Errorf("未知命令或主机 %q；使用 sshm --help 查看可用命令: %w", args[0], err)
+			return unknownCommandOrHostError(root, args[0], err)
 		}
 		return app.cmdConnect(args)
 	}
@@ -40,6 +40,8 @@ func newRootCommand(app *App) *cobra.Command {
 	root := &cobra.Command{
 		Use:           "sshm",
 		Short:         "本地优先的个人 SSH 运维工具",
+		Long:          "sshm 是本地优先的个人 SSH 运维工具，用来管理主机、凭据、标签、批量命令、安全传输和轻量 Deploy 编排。",
+		Example:       rootExamples(),
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		Version:       CurrentVersion(),
@@ -108,12 +110,22 @@ func newRootCommand(app *App) *cobra.Command {
 	return root
 }
 
+func rootExamples() string {
+	return strings.TrimSpace(`
+sshm init
+sshm add web01 root@10.0.0.11
+sshm passwd web01
+sshm ping web01
+sshm web01
+sshm exec-tag prod "uptime" --yes`)
+}
+
 func dispatchHelp(root *cobra.Command, args []string) (bool, error) {
 	if len(args) == 0 {
 		return false, nil
 	}
 	last := args[len(args)-1]
-	if last != "-h" && last != "--help" && last != "help" {
+	if !isHelpToken(last) {
 		return false, nil
 	}
 	path := args[:len(args)-1]
@@ -144,6 +156,7 @@ func legacyCommandWithAliases(use, short string, run func([]string) error, alias
 			return run(args)
 		},
 	}
+	applyLegacyHelp(cmd)
 	for _, annotation := range annotations {
 		if cmd.Annotations == nil {
 			cmd.Annotations = map[string]string{}
@@ -151,6 +164,137 @@ func legacyCommandWithAliases(use, short string, run func([]string) error, alias
 		cmd.Annotations[annotation] = "true"
 	}
 	return cmd
+}
+
+func isHelpToken(value string) bool {
+	return value == "-h" || value == "--help" || value == "help"
+}
+
+func containsHelpToken(args []string) bool {
+	for _, arg := range args {
+		if isHelpToken(arg) {
+			return true
+		}
+	}
+	return false
+}
+
+type commandHelp struct {
+	use     string
+	long    string
+	example string
+}
+
+var legacyHelp = map[string]commandHelp{
+	"add": {
+		use:  "add <别名> <用户@主机[:端口]> [选项]",
+		long: "添加一台主机。默认认证策略为 auto，可以之后用 passwd 保存密码，或用 key setup 绑定托管密钥。",
+		example: strings.TrimSpace(`
+sshm add web01 root@10.0.0.11
+sshm add web01 deploy@10.0.0.11:2222 --tags prod,web
+sshm passwd web01`),
+	},
+	"connect": {
+		use:  "connect <别名|ID>",
+		long: "连接到一台已保存主机。也可以直接运行 sshm <别名|ID> 快速连接。",
+		example: strings.TrimSpace(`
+sshm web01
+sshm connect web01`),
+	},
+	"exec": {
+		use:  "exec [--yes] [--quiet] <别名|ID> <命令>",
+		long: "在单台主机上执行远程命令。默认会在交互终端确认；脚本或 CI 中请显式传入 --yes。",
+		example: strings.TrimSpace(`
+sshm exec web01 "uptime"
+sshm exec --yes web01 "systemctl status app"
+sshm exec --yes --quiet web01 "hostname"`),
+	},
+	"exec-tag": {
+		use:  "exec-tag [批量选项] <标签|all> <命令>",
+		long: "按标签批量执行远程命令。使用虚拟标签 all 可选择全部主机；批量操作默认需要确认。",
+		example: strings.TrimSpace(`
+sshm exec-tag prod "uptime" --yes
+sshm exec-tag all "hostname" --parallel 8 --connect-timeout 5s --yes
+sshm exec-tag web "systemctl restart app" --serial 2 --max-fail 1 --yes`),
+	},
+	"ping": {
+		use:  "ping [--yes] [--quiet] [别名|ID]",
+		long: "测试主机 SSH 连接。不给目标时会测试全部主机；多主机模式默认需要确认。",
+		example: strings.TrimSpace(`
+sshm ping web01
+sshm ping --yes --quiet`),
+	},
+	"push": {
+		use:  "push [选项] <别名|ID> <本地路径> <远程路径>",
+		long: "向单台主机推送文件或目录。默认拒绝覆盖不同内容；需要覆盖时显式使用 --overwrite 或 --backup。",
+		example: strings.TrimSpace(`
+sshm push web01 ./dist/app.tar.gz /opt/app/app.tar.gz --yes
+sshm push web01 ./dist /opt/app --backup --yes
+sshm push web01 ./dist /opt/app --method rsync --yes`),
+	},
+	"pull": {
+		use:  "pull [选项] <别名|ID> <远程路径> <本地路径>",
+		long: "从单台主机拉取文件或目录。默认拒绝覆盖不同内容；需要覆盖时显式使用 --overwrite 或 --backup。",
+		example: strings.TrimSpace(`
+sshm pull web01 /etc/nginx/nginx.conf ./nginx.web01.conf --yes
+sshm pull web01 /var/log/app ./logs/web01 --backup --yes`),
+	},
+	"push-tag": {
+		use:  "push-tag [批量选项] <标签|all> <本地路径> <远程路径>",
+		long: "按标签批量推送文件或目录。批量操作默认需要确认，并会写入操作日志。",
+		example: strings.TrimSpace(`
+sshm push-tag prod ./dist/app.tar.gz /opt/app/app.tar.gz --backup --yes
+sshm push-tag all ./script.sh /tmp/script.sh --parallel 8 --yes`),
+	},
+	"pull-tag": {
+		use:  "pull-tag [批量选项] <标签|all> <远程路径> <本地路径>",
+		long: "按标签批量拉取文件或目录。默认按主机别名分目录保存；需要平铺时使用 --flat。",
+		example: strings.TrimSpace(`
+sshm pull-tag prod /etc/hosts ./backup --yes
+sshm pull-tag all /etc/nginx ./backup --flat --yes`),
+	},
+	"key": {
+		use:  "key <命令> [参数]",
+		long: "管理 sshm 托管密钥。常用流程是 create/import 创建本地托管密钥，再用 setup 推送、验证并绑定主机。",
+		example: strings.TrimSpace(`
+sshm key list
+sshm key create personal --default
+sshm key import personal ~/.ssh/id_ed25519 --default
+sshm key setup personal web01 --yes`),
+	},
+	"tag": {
+		use:  "tag <命令> [参数]",
+		long: "管理主机标签。标签用于搜索、分组和批量执行；虚拟标签 all 表示全部主机。",
+		example: strings.TrimSpace(`
+sshm tag list
+sshm tag create prod --note 生产环境
+sshm tag add prod web01 web02
+sshm exec-tag prod "uptime" --yes`),
+	},
+	"passwd": {
+		use:  "passwd <别名|ID>",
+		long: "为主机保存 SSH 密码。密码会写入 sshm.yaml 内的加密 vault，需要主密码解锁。",
+		example: strings.TrimSpace(`
+sshm passwd web01
+sshm ping web01`),
+	},
+	"forward": {
+		use:  "forward <别名|ID> <本地监听地址> <远程目标>",
+		long: "建立本地端口转发。适合临时访问远端内网服务。",
+		example: strings.TrimSpace(`
+sshm forward prod 127.0.0.1:8080 127.0.0.1:80
+sshm forward prod 127.0.0.1:15432 127.0.0.1:5432`),
+	},
+}
+
+func applyLegacyHelp(cmd *cobra.Command) {
+	help, ok := legacyHelp[cmd.Name()]
+	if !ok {
+		return
+	}
+	cmd.Use = help.use
+	cmd.Long = help.long
+	cmd.Example = help.example
 }
 
 func knownRootCommand(root *cobra.Command, name string) bool {
@@ -165,6 +309,35 @@ func knownRootCommand(root *cobra.Command, name string) bool {
 		}
 	}
 	return name == "help"
+}
+
+// rootCommandNames returns all registered root command names and aliases,
+// used as candidates for spell-check suggestions on unknown input.
+func rootCommandNames(root *cobra.Command) []string {
+	names := []string{"help"}
+	for _, command := range root.Commands() {
+		names = append(names, command.Name())
+		names = append(names, command.Aliases...)
+	}
+	return names
+}
+
+// unknownCommandOrHostError builds a clearer error for input that is neither a
+// known command nor a known host. It reuses the edit-distance spell-check so a
+// near miss like "lst" suggests "list".
+func unknownCommandOrHostError(root *cobra.Command, input string, cause error) error {
+	best := ""
+	bestDistance := 3
+	for _, name := range rootCommandNames(root) {
+		if distance := editDistance(input, name); distance < bestDistance {
+			best = name
+			bestDistance = distance
+		}
+	}
+	if best != "" {
+		return fmt.Errorf("未知命令或主机 %q；你是否想使用 %q？（使用 sshm --help 查看可用命令）: %w", input, best, cause)
+	}
+	return fmt.Errorf("未知命令或主机 %q；使用 sshm --help 查看可用命令: %w", input, cause)
 }
 
 func dispatchLegacyRootOption(app *App, args []string) (bool, error) {

@@ -17,6 +17,10 @@ func (app *App) cmdTag(args []string) error {
 		app.printTagHelp()
 		return nil
 	}
+	if containsHelpToken(args) {
+		app.printTagHelp()
+		return nil
+	}
 	switch args[0] {
 	case "list", "ls", "l":
 		return app.cmdTagList(args[1:])

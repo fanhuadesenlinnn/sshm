@@ -191,7 +191,8 @@ func (app *App) cmdConnect(args []string) (err error) {
 }
 
 func shouldTryTemporaryPassword(err error) bool {
-	return operation.StageOf(err, operation.StageSession) == operation.StageAuth
+	stage := operation.StageOf(err, operation.StageSession)
+	return stage == operation.StageAuth || stage == operation.StageCredential
 }
 
 func (app *App) promptAndConnect(h config.Host, fs *secret.FileStore) error {

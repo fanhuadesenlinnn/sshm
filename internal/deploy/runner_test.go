@@ -164,6 +164,14 @@ func TestFailedWhenCannotHideConnectionFailure(t *testing.T) {
 	if result.Summary.Unreachable != 1 || result.Results[0].Status != batch.StatusUnreachable {
 		t.Fatalf("result = %+v", result)
 	}
+
+	executor = &fakeExecutor{execResult: map[string]ops.Result{
+		"connect": {Stage: operation.StageCredential, Err: errors.New("missing credentials")},
+	}}
+	result = (Runner{Executor: executor}).Run(context.Background(), plan)
+	if result.Summary.Unreachable != 1 || result.Results[0].Status != batch.StatusUnreachable {
+		t.Fatalf("credential failure should be unreachable: %+v", result)
+	}
 }
 
 func TestMkdirCheckCannotHideConnectionFailure(t *testing.T) {

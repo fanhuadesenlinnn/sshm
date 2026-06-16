@@ -18,27 +18,82 @@ func newDeployCommand(app *App) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "deploy",
 		Short: "运行 Deploy v2 轻量编排",
+		Long:  "运行 Deploy v2 轻量编排。deploy 从 ~/.sshm/deploy.yaml 和 ~/.sshm/deploy.d/*.yaml 读取 profile；显式 --file 时只读取指定文件。",
+		Example: strings.TrimSpace(`
+sshm deploy init
+sshm deploy list
+sshm deploy plan webapp --host web01
+sshm deploy run webapp --tag prod --check --yes`),
 		RunE: func(_ *cobra.Command, _ []string) error {
 			app.printDeployHelp()
 			return nil
 		},
 	}
 	children := []struct {
-		use, short string
-		aliases    []string
-		run        func([]string) error
+		use, short, long, example string
+		aliases                   []string
+		run                       func([]string) error
 	}{
-		{"init", "生成中文 Deploy v2 示例", nil, app.cmdDeployInit},
-		{"validate", "严格校验 Deploy v2 配置", nil, app.cmdDeployValidate},
-		{"list", "列出 deploy profiles", []string{"ls"}, app.cmdDeployList},
-		{"show <profile>", "展示解析后的 profile", nil, func(args []string) error { return app.deployPlanCommand(args, true) }},
-		{"plan <profile>", "静态展示执行计划，不连接远端", nil, func(args []string) error { return app.deployPlanCommand(args, false) }},
-		{"run <profile>", "执行 profile，支持 --check 与 --diff", nil, app.cmdDeployRun},
+		{
+			use: "init [-f 文件] [--stdout] [--overwrite]", short: "生成中文 Deploy v2 示例",
+			long: "生成 Deploy v2 示例配置。默认写入 ~/.sshm/deploy.yaml；使用 --stdout 可只打印不写文件。",
+			example: strings.TrimSpace(`
+sshm deploy init
+sshm deploy init -f ./deploy.yaml
+sshm deploy init --stdout`),
+			run: app.cmdDeployInit,
+		},
+		{
+			use: "validate [-f 文件...] [--output text|json]", short: "严格校验 Deploy v2 配置",
+			long: "校验 Deploy v2 配置、profile、目标选择和 action DSL。适合在真正执行前做本地检查。",
+			example: strings.TrimSpace(`
+sshm deploy validate
+sshm deploy validate -f ./deploy.yaml
+sshm deploy validate -f base.yaml -f project.yaml --output json`),
+			run: app.cmdDeployValidate,
+		},
+		{
+			use: "list [-f 文件...] [--output text|json]", short: "列出 deploy profiles",
+			long: "列出可用 Deploy profiles 及其来源文件。",
+			example: strings.TrimSpace(`
+sshm deploy list
+sshm deploy list -f ./deploy.yaml
+sshm deploy list --output json`),
+			aliases: []string{"ls"}, run: app.cmdDeployList,
+		},
+		{
+			use: "show <profile> [-f 文件...] [目标覆盖]", short: "展示解析后的 profile",
+			long: "展示 profile 解析后的配置，包含目标、步骤和批量策略；不会连接远端。",
+			example: strings.TrimSpace(`
+sshm deploy show webapp
+sshm deploy show webapp --host web01
+sshm deploy show webapp -f ./deploy.yaml --tag prod`),
+			run: func(args []string) error { return app.deployPlanCommand(args, true) },
+		},
+		{
+			use: "plan <profile> [-f 文件...] [目标覆盖]", short: "静态展示执行计划，不连接远端",
+			long: "生成 Deploy 执行计划并展示将要影响的主机与步骤；不会连接远端。",
+			example: strings.TrimSpace(`
+sshm deploy plan webapp
+sshm deploy plan webapp --host web01
+sshm deploy plan webapp --tag prod --output json`),
+			run: func(args []string) error { return app.deployPlanCommand(args, false) },
+		},
+		{
+			use: "run <profile> [-f 文件...] [目标覆盖] [批量选项] [--check] [--diff] [--yes]", short: "执行 profile，支持 --check 与 --diff",
+			long: "执行 Deploy profile。默认会确认执行计划；脚本或 CI 中请显式传入 --yes。--check 只检查变化，--diff 展示差异。",
+			example: strings.TrimSpace(`
+sshm deploy run webapp --host web01 --check
+sshm deploy run webapp --tag prod --serial 2 --max-fail 1 --yes
+sshm deploy run webapp -f base.yaml -f project.yaml --all --diff --yes`),
+			run: app.cmdDeployRun,
+		},
 	}
 	for _, child := range children {
 		child := child
 		command.AddCommand(&cobra.Command{
-			Use: child.use, Short: child.short, Aliases: child.aliases, DisableFlagParsing: true,
+			Use: child.use, Short: child.short, Long: child.long, Example: child.example,
+			Aliases: child.aliases, DisableFlagParsing: true,
 			RunE: func(_ *cobra.Command, args []string) error { return child.run(args) },
 		})
 	}
@@ -477,15 +532,16 @@ func (app *App) executeDeployPlan(plan deploy.Plan, options deployCLIOptions, lo
 			return nil
 		},
 	}
-	if options.output != "json" && !options.batch.Quiet {
+	progressEnabled := options.output != "json" && !options.batch.Quiet
+	if progressEnabled {
 		runner.Progress = func(done, total int, result deploy.HostResult) {
-			fmt.Fprintf(os.Stderr, "\r[%d/%d] 已完成 %-20s %-12s", done, total, result.HostAlias, result.Status)
-			if done == total {
-				fmt.Fprintln(os.Stderr)
-			}
+			ui.RefreshLine("[%d/%d] 已完成 %-20s %-12s", done, total, result.HostAlias, result.Status)
 		}
 	}
 	result := runner.Run(ctx, plan)
+	if progressEnabled {
+		ui.EndProgress()
+	}
 	if logs.Enabled && !options.batch.NoLog {
 		if _, err := deploy.WriteLog(plan, &result, logs.Retention.Duration); err != nil {
 			return fmt.Errorf("写入 deploy 日志失败: %w", err)

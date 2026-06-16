@@ -69,11 +69,15 @@ func TestTemporaryPasswordRetryOnlyFollowsAuthenticationFailure(t *testing.T) {
 	if !shouldTryTemporaryPassword(operation.Wrap(operation.StageAuth, errors.New("bad credentials"))) {
 		t.Fatal("authentication failure should allow temporary password retry")
 	}
+	if !shouldTryTemporaryPassword(operation.Wrap(operation.StageCredential, errors.New("missing credentials"))) {
+		t.Fatal("missing credentials should allow temporary password retry")
+	}
 	for _, stage := range []operation.FailureStage{
 		operation.StageResolve,
 		operation.StageNetwork,
 		operation.StageJump,
 		operation.StageTrust,
+		operation.StageVault,
 		operation.StageSession,
 	} {
 		if shouldTryTemporaryPassword(operation.Wrap(stage, errors.New("failed"))) {

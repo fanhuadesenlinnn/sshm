@@ -193,7 +193,7 @@ func clientConfigWithTimeout(h config.Host, store *secret.FileStore, timeout tim
 			methods = append(methods, ssh.PublicKeys(signer))
 			labels = append(labels, "托管密钥")
 		} else if strategy == AuthKey {
-			return nil, "", err
+			return nil, "", operation.Wrap(operation.StageOf(err, operation.StageCredential), err)
 		}
 	}
 	if strategy != AuthKey && h.PasswordRef != "" && store != nil {
@@ -202,11 +202,11 @@ func clientConfigWithTimeout(h config.Host, store *secret.FileStore, timeout tim
 			methods = append(methods, ssh.Password(password))
 			labels = append(labels, "密码")
 		} else if strategy == AuthPassword {
-			return nil, "", err
+			return nil, "", operation.Wrap(operation.StageOf(err, operation.StageCredential), err)
 		}
 	}
 	if len(methods) == 0 {
-		return nil, "", fmt.Errorf("主机 %s 未配置可用的认证凭据", h.Alias)
+		return nil, "", operation.Wrap(operation.StageCredential, fmt.Errorf("主机 %s 未配置可用的认证凭据", h.Alias))
 	}
 	return &ssh.ClientConfig{
 		User:            h.User,
