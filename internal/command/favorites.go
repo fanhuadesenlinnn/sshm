@@ -66,6 +66,10 @@ func (app *App) cmdRecent(args []string) error {
 	}
 	if len(rows) == 0 {
 		ui.PrintWarn("暂无最近连接或收藏主机")
+		fmt.Println("  下一步:")
+		fmt.Println("    sshm list")
+		fmt.Println("    sshm pin <主机>")
+		fmt.Println()
 		return nil
 	}
 	hosts, indices := splitIndexedHosts(rows)

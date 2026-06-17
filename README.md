@@ -1,27 +1,27 @@
-# sshm v6.0.2
+# sshm v6.0.3
 
 sshm 是一个本地优先、面向个人使用的 SSH 主机管理与轻量运维工具。它使用 Go 原生 SSH 能力管理主机、标签、凭据、批量命令、安全文件传输和 Deploy v2 编排。
 
-> 版本说明：产品发布版本是 `v6.0.2`，Go module 是 `github.com/fanhuadesenlinnn/sshm/v6`，主配置与 Deploy 配置的 schema 都是 `version: 2`。
+> 版本说明：产品发布版本是 `v6.0.3`，Go module 是 `github.com/fanhuadesenlinnn/sshm/v6`，主配置与 Deploy 配置的 schema 都是 `version: 2`。
 
 ## 安装
 
 需要 Go 1.25 或直接下载 GitHub Release 中对应平台的二进制。
 
 ```bash
-go install github.com/fanhuadesenlinnn/sshm/v6@v6.0.2
+go install github.com/fanhuadesenlinnn/sshm/v6@v6.0.3
 ```
 
 如果 `proxy.golang.org` 访问较慢，可临时指定国内代理：
 
 ```bash
-GOPROXY=https://goproxy.cn,direct go install github.com/fanhuadesenlinnn/sshm/v6@v6.0.2
+GOPROXY=https://goproxy.cn,direct go install github.com/fanhuadesenlinnn/sshm/v6@v6.0.3
 ```
 
 PowerShell：
 
 ```powershell
-$env:GOPROXY = "https://goproxy.cn,direct"; go install github.com/fanhuadesenlinnn/sshm/v6@v6.0.2
+$env:GOPROXY = "https://goproxy.cn,direct"; go install github.com/fanhuadesenlinnn/sshm/v6@v6.0.3
 ```
 
 ## v6 破坏性变更
@@ -73,6 +73,9 @@ Cobra 提供根命令和 Deploy 子命令帮助：
 
 ```bash
 sshm --help
+sshm host --help
+sshm key --help
+sshm tag --help
 sshm deploy --help
 sshm deploy run --help
 ```
@@ -211,6 +214,8 @@ Deploy v2 支持：
 
 - 默认主机信任策略是 `strict`。
 - `--yes` 只跳过当前操作确认，不跳过主密码或 host trust。
+- `--all` 不能与具体主机或 `--tag` 混用，避免意外扩大操作范围。
+- 删除保存密码、删除托管密钥、清理日志和设置 `host-key-policy insecure` 默认需要确认；非交互环境必须显式使用 `--yes`。
 - 密码与托管私钥保存在 `sshm.yaml` 的加密 vault 中。
 - 主密码只在当前进程内按需解锁，`lock` 或进程退出后失效。
 - host alias 采用跨平台安全字符规则，可直接用于多主机 pull 目录。

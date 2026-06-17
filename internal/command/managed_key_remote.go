@@ -234,6 +234,9 @@ func parseHostSelector(args []string) (hostSelector, error) {
 			selector.aliases[args[i]] = true
 		}
 	}
+	if selector.all && (len(selector.aliases) > 0 || len(selector.tags) > 0) {
+		return selector, fmt.Errorf("--all 不能与具体主机或 --tag 混用")
+	}
 	return selector, nil
 }
 
@@ -259,10 +262,14 @@ func selectHostsFrom(hosts []config.Host, selector hostSelector) ([]config.Host,
 		}
 	}
 	if len(aliases) > 0 {
-		return nil, fmt.Errorf("未找到主机: %s", strings.Join(mapKeys(aliases), ", "))
+		missing := mapKeys(aliases)
+		if len(missing) == 1 {
+			return nil, missingHostSelectionError(missing[0], hosts)
+		}
+		return nil, fmt.Errorf("未找到主机: %s；使用 sshm list 查看全部主机", strings.Join(missing, ", "))
 	}
 	if len(selected) == 0 {
-		return nil, fmt.Errorf("目标选择结果为空")
+		return nil, fmt.Errorf("目标选择结果为空；使用 sshm list 或 sshm tag list 查看可用目标")
 	}
 	return selected, nil
 }

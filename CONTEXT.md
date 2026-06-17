@@ -4,7 +4,7 @@ sshm 是一个本地优先、面向个人使用的 SSH 主机管理与轻量运�
 
 ## 版本边界
 
-- 产品发布版本：`v6.0.2`
+- 产品发布版本：`v6.0.3`
 - Go module：`github.com/fanhuadesenlinnn/sshm/v6`
 - 主配置 schema：`version: 2`
 - Deploy schema：`version: 2`
@@ -38,7 +38,7 @@ sshm 拥有的全部本地状态根目录。默认是 `~/.sshm`，只允许通�
 当前 sshm 进程成功解锁 vault 后，到 `lock` 或进程退出为止的凭据使用时间段。
 
 **执行确认**
-用户看到动作和目标集合后，对一次远程操作的批准。`--yes` 仅跳过这一层确认。
+用户看到动作和目标集合后，对一次操作的批准。`--yes` 仅跳过这一层确认，不跳过主密码或 host trust。
 
 **BatchRunner**
 `exec-tag`、`push-tag`、`pull-tag` 与 `deploy run` 共享的批量调度器。它负责稳定顺序、serial、parallel、失败阈值、取消、skipped 和结果聚合，不负责凭据解锁、host trust 或操作确认。
@@ -74,12 +74,13 @@ Deploy Profile 静态解析出的来源文件、目标主机、steps、handlers 
 2. 除 `init`、`config path` 和 `doctor` 外，缺少主配置时不得静默创建。
 3. 主配置与 Deploy v2 严格拒绝缺失版本和未知字段。
 4. `--yes` 不跳过主密码和 host trust。
-5. 批量操作在调度任何主机前完成所需 vault 解锁。
-6. 多主机 pull 在下载前完成路径安全与冲突检查。
-7. 文件传输失败时不得把半成品暴露为最终目标。
-8. Deploy `plan` 不连接远端；`check` 不修改最终目标。
-9. diff 可能包含敏感内容，默认不写入操作日志。
-10. sshm 不提供后台任务、团队空间、完整 Ansible 兼容层或期望状态收敛。
+5. `--all` 不能与具体主机或标签选择器混用。
+6. 批量操作在调度任何主机前完成所需 vault 解锁。
+7. 多主机 pull 在下载前完成路径安全与冲突检查。
+8. 文件传输失败时不得把半成品暴露为最终目标。
+9. Deploy `plan` 不连接远端；`check` 不修改最终目标。
+10. diff 可能包含敏感内容，默认不写入操作日志。
+11. sshm 不提供后台任务、团队空间、完整 Ansible 兼容层或期望状态收敛。
 
 ## 接口
 

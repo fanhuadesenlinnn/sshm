@@ -100,7 +100,7 @@ func newRootCommand(app *App) *cobra.Command {
 	root.AddCommand(legacyCommand("auth", "", app.cmdAuth))
 	root.AddCommand(legacyCommand("export-ssh-config", "", app.cmdExportSSHConfig))
 	root.AddCommand(legacyCommand("import-ssh-config", "", app.cmdImportSSHConfig))
-	root.AddCommand(legacyCommand("completion", "", app.cmdCompletion))
+	root.AddCommand(legacyCommand("completion", "", app.cmdCompletion, allowWithoutConfig))
 	root.AddCommand(&cobra.Command{
 		Use:     "lock",
 		Short:   commandShort("lock", "锁定当前会话密码库"),
@@ -140,7 +140,28 @@ func dispatchHelp(root *cobra.Command, args []string) (bool, error) {
 	if err != nil || len(remaining) != 0 {
 		return false, nil
 	}
+	if printCenterHelp(command.Name()) {
+		return true, nil
+	}
 	return true, command.Help()
+}
+
+func printCenterHelp(name string) bool {
+	switch name {
+	case "host":
+		printHostCenterHelp()
+	case "key":
+		printKeyCenterHelp()
+	case "tag":
+		printTagCenterHelp()
+	case "logs":
+		printLogsHelp()
+	case "completion":
+		printCompletionHelp()
+	default:
+		return false
+	}
+	return true
 }
 
 func legacyCommand(use, short string, run func([]string) error, annotations ...string) *cobra.Command {
@@ -274,6 +295,15 @@ sshm key create personal --default
 sshm key import personal ~/.ssh/id_ed25519 --default
 sshm key setup personal web01 --yes`),
 	},
+	"host": {
+		use:  "host <命令> [参数]",
+		long: "管理 SSH 主机。可以列出、添加、批量添加、编辑、删除主机，也可以导入 OpenSSH 配置。",
+		example: strings.TrimSpace(`
+sshm host list
+sshm host add web01 root@10.0.0.11
+sshm host delete web01 --yes
+sshm host import-ssh-config ~/.ssh/config`),
+	},
 	"tag": {
 		use:  "tag <命令> [参数]",
 		long: "管理主机标签。标签用于搜索、分组和批量执行；虚拟标签 all 表示全部主机。",
@@ -289,6 +319,27 @@ sshm exec-tag prod "uptime" --yes`),
 		example: strings.TrimSpace(`
 sshm passwd web01
 sshm ping web01`),
+	},
+	"forget-pass": {
+		use:  "forget-pass <别名|ID> [--yes]",
+		long: "删除主机保存的 SSH 密码。删除前默认需要确认；脚本或 CI 中请显式传入 --yes。",
+		example: strings.TrimSpace(`
+sshm forget-pass web01
+sshm forget-pass web01 --yes`),
+	},
+	"logs": {
+		use:  "logs [clean --yes]",
+		long: "查看或清理本地操作日志。日志可能包含敏感远程输出，清理前默认需要确认。",
+		example: strings.TrimSpace(`
+sshm logs
+sshm logs clean --yes`),
+	},
+	"completion": {
+		use:  "completion <bash|zsh|fish>",
+		long: "生成 Shell 自动补全脚本。该命令不需要先运行 sshm init。",
+		example: strings.TrimSpace(`
+sshm completion zsh > ~/.zsh/completions/_sshm
+sshm completion bash > ~/.local/share/bash-completion/completions/sshm`),
 	},
 	"forward": {
 		use:  "forward <别名|ID> <本地监听地址> <远程目标>",

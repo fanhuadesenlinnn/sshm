@@ -80,6 +80,10 @@ func (app *App) keyCenter() error {
 }
 
 func (app *App) printKeyHelp() {
+	printKeyCenterHelp()
+}
+
+func printKeyCenterHelp() {
 	ui.PrintHeader("托管密钥中心")
 	fmt.Println()
 	fmt.Println("  l/list                         列出托管密钥")
@@ -94,8 +98,8 @@ func (app *App) printKeyHelp() {
 	fmt.Println("  setup <密钥> <目标...> [--yes] [--quiet]  推送、验证并绑定")
 	fmt.Println("  revoke <密钥> <目标...> [--yes] [--quiet] 从远端撤销公钥")
 	fmt.Println("  status [密钥]                  显示主机绑定状态")
-	fmt.Println("  delete <名称...>               删除本地托管密钥")
-	fmt.Println("  delete-unused                  删除未绑定且非默认的密钥")
+	fmt.Println("  delete <名称...> [--yes]       删除本地托管密钥")
+	fmt.Println("  delete-unused [--yes]          删除未绑定且非默认的密钥")
 	fmt.Println()
 	fmt.Println("  目标支持：别名...、--tag 标签、--all")
 	fmt.Println("  输入 back/q 返回主命令页")
@@ -266,7 +270,11 @@ func (app *App) cmdKeyDefault(args []string) error {
 	return nil
 }
 
-func (app *App) cmdKeyDeleteUnused(_ []string) error {
+func (app *App) cmdKeyDeleteUnused(args []string) error {
+	yes, args := removeFlag(args, "--yes")
+	if len(args) != 0 {
+		return fmt.Errorf("用法: sshm key delete-unused [--yes]")
+	}
 	kf, err := app.keyStore().Load()
 	if err != nil {
 		return err
@@ -291,6 +299,9 @@ func (app *App) cmdKeyDeleteUnused(_ []string) error {
 		ui.PrintWarn("没有可删除的未使用托管密钥")
 		return nil
 	}
+	if yes {
+		unused = append(unused, "--yes")
+	}
 	return app.cmdKeyDelete(unused)
 }
 
@@ -308,8 +319,9 @@ func (app *App) cmdKeyShow(args []string) error {
 }
 
 func (app *App) cmdKeyDelete(args []string) error {
+	yes, args := removeFlag(args, "--yes")
 	if len(args) == 0 {
-		return fmt.Errorf("用法: sshm key delete <名称...>")
+		return fmt.Errorf("用法: sshm key delete <名称...> [--yes]")
 	}
 	hf, err := app.Store.Load()
 	if err != nil {
@@ -324,6 +336,15 @@ func (app *App) cmdKeyDelete(args []string) error {
 		}
 		if len(aliases) > 0 {
 			return fmt.Errorf("密钥 %s 仍被主机使用: %s；请先执行 key use 重新绑定", name, strings.Join(aliases, ", "))
+		}
+	}
+	if !yes {
+		if !ui.IsTerminal() {
+			return fmt.Errorf("删除托管密钥需要确认；非交互环境请使用 --yes")
+		}
+		if !ui.ReadYesNo(fmt.Sprintf("确认删除托管密钥 %s? [y/N]: ", strings.Join(args, ", "))) {
+			ui.PrintWarn("已取消")
+			return nil
 		}
 	}
 	fs, err := app.requireSecretStore()

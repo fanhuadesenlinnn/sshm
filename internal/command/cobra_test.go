@@ -50,10 +50,13 @@ func TestOnlyDocumentedCommandsRunWithoutInitialization(t *testing.T) {
 			}
 		}
 	}
-	for _, args := range [][]string{{"list"}, {"completion", "bash"}, {"deploy", "init", "--stdout"}} {
+	for _, args := range [][]string{{"list"}, {"deploy", "init", "--stdout"}} {
 		if err := runCobra(app, args); !errors.Is(err, config.ErrNotInitialized) {
 			t.Fatalf("command %v should require initialization: %v", args, err)
 		}
+	}
+	if err := runCobra(app, []string{"completion", "bash"}); err != nil {
+		t.Fatalf("completion script should not require initialization: %v", err)
 	}
 	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("commands unexpectedly created config: %v", err)
@@ -158,5 +161,17 @@ func TestExitCodeForErrorContract(t *testing.T) {
 		if got := ExitCodeForError(tt.err); got != tt.code {
 			t.Fatalf("error %v: code=%d want=%d", tt.err, got, tt.code)
 		}
+	}
+}
+
+func TestConfigInsecureYesWorksThroughCobra(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sshm.yaml")
+	store := config.NewStoreWithPath(path)
+	if err := store.Repository().Replace(config.DefaultDocument()); err != nil {
+		t.Fatal(err)
+	}
+	app := &App{Store: store, ConfigPath: path}
+	if err := runCobra(app, []string{"config", "host-key-policy", "insecure", "--yes"}); err != nil {
+		t.Fatalf("config insecure --yes through cobra: %v", err)
 	}
 }

@@ -134,7 +134,6 @@ func (app *App) cmdAddWizard() error {
 		return fmt.Errorf("添加主机失败: %w", err)
 	}
 	printAddedHost(h, false)
-	fmt.Printf("  后续验证: sshm ping %s；保存密码: sshm passwd %s\n\n", h.Alias, h.Alias)
 	return nil
 }
 
@@ -166,5 +165,12 @@ func printAddedHost(h config.Host, savedPassword bool) {
 	if savedPassword {
 		fmt.Printf("  %s\n", ui.Info("密码", "已加密保存"))
 	}
+	fmt.Println()
+	fmt.Println("  下一步:")
+	fmt.Printf("    sshm ping %s\n", h.Alias)
+	if !savedPassword && h.Identity == "" {
+		fmt.Printf("    sshm passwd %s\n", h.Alias)
+	}
+	fmt.Printf("    sshm %s\n", h.Alias)
 	fmt.Println()
 }

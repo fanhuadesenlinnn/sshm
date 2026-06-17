@@ -67,6 +67,10 @@ func (app *App) tagCenter() error {
 }
 
 func (app *App) printTagHelp() {
+	printTagCenterHelp()
+}
+
+func printTagCenterHelp() {
 	ui.PrintHeader("标签管理中心")
 	fmt.Println()
 	fmt.Println("  l/list                         列出标签与使用统计")
@@ -101,6 +105,12 @@ func (app *App) cmdTagList(args []string) error {
 	}
 	ui.PrintHeader(fmt.Sprintf("标签 · %d 个，已分类 %d 台，未分类 %d 台", len(doc.Tags.Items), categorized, len(doc.Hosts)-categorized))
 	ui.RenderTagsTable(doc.Tags.Items, doc.Hosts)
+	if len(doc.Tags.Items) == 0 {
+		fmt.Println("  下一步:")
+		fmt.Println("    sshm tag create prod --note 生产环境")
+		fmt.Println("    sshm add web01 root@10.0.0.11 --tags prod")
+		fmt.Println()
+	}
 	return nil
 }
 
@@ -117,7 +127,7 @@ func (app *App) cmdTagShow(args []string) error {
 	if name != "--untagged" {
 		tag, ok := doc.Tags.Find(name)
 		if !ok {
-			return fmt.Errorf("未找到标签: %s", name)
+			return missingTagError(name, doc.Tags.Items)
 		}
 		note = tag.Note
 	}
@@ -175,7 +185,7 @@ func (app *App) cmdTagEdit(args []string) error {
 		}
 		tag, ok := doc.Tags.Find(name)
 		if !ok {
-			return fmt.Errorf("未找到标签: %s", name)
+			return missingTagError(name, doc.Tags.Items)
 		}
 		if !ui.IsTerminal() {
 			return fmt.Errorf("非交互环境请使用 --note 指定备注")
@@ -185,7 +195,7 @@ func (app *App) cmdTagEdit(args []string) error {
 	if err := app.Store.Repository().Update(func(doc *config.Document) error {
 		tag, ok := doc.Tags.Find(name)
 		if !ok {
-			return fmt.Errorf("未找到标签: %s", name)
+			return missingTagError(name, doc.Tags.Items)
 		}
 		tag.Note = note
 		return nil
@@ -208,7 +218,7 @@ func (app *App) cmdTagRename(args []string) error {
 	if err := app.Store.Repository().Update(func(doc *config.Document) error {
 		tag, ok := doc.Tags.Find(oldName)
 		if !ok {
-			return fmt.Errorf("未找到标签: %s", oldName)
+			return missingTagError(oldName, doc.Tags.Items)
 		}
 		if _, exists := doc.Tags.Find(newName); exists {
 			return fmt.Errorf("标签 %q 已存在", newName)
@@ -245,7 +255,7 @@ func (app *App) cmdTagDelete(args []string) error {
 	}
 	for name := range remove {
 		if _, ok := doc.Tags.Find(name); !ok {
-			return fmt.Errorf("未找到标签: %s", name)
+			return missingTagError(name, doc.Tags.Items)
 		}
 	}
 	var affected []string
@@ -279,7 +289,7 @@ func (app *App) cmdTagDelete(args []string) error {
 		}
 		for name := range remove {
 			if !found[name] {
-				return fmt.Errorf("未找到标签: %s", name)
+				return missingTagError(name, doc.Tags.Items)
 			}
 		}
 		doc.Tags.Items = filtered
@@ -329,7 +339,7 @@ func (app *App) cmdTagRemove(args []string) error {
 	}
 	selected, changed, err := app.updateSelectedHosts(args[1:], func(doc *config.Document) error {
 		if _, ok := doc.Tags.Find(name); !ok {
-			return fmt.Errorf("未找到标签: %s", name)
+			return missingTagError(name, doc.Tags.Items)
 		}
 		return nil
 	}, func(host *config.Host) bool {

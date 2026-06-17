@@ -22,7 +22,7 @@ func (app *App) cmdPing(args []string) error {
 
 	if len(args) > 0 {
 		// Ping specific host
-		h, _, _, err := app.Store.FindHost(args[0])
+		h, _, _, err := app.findHost(args[0])
 		if err != nil {
 			return err
 		}

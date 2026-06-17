@@ -24,7 +24,7 @@ func (app *App) cmdForward(args []string) error {
 	if _, _, err := net.SplitHostPort(args[2]); err != nil {
 		return fmt.Errorf("无效远程目标 %q: %w", args[2], err)
 	}
-	host, _, _, err := app.Store.FindHost(args[0])
+	host, _, _, err := app.findHost(args[0])
 	if err != nil {
 		return err
 	}

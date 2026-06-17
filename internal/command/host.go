@@ -64,6 +64,10 @@ func (app *App) hostCenter() error {
 }
 
 func (app *App) printHostHelp() {
+	printHostCenterHelp()
+}
+
+func printHostCenterHelp() {
 	ui.PrintHeader("主机管理中心")
 	fmt.Println()
 	fmt.Println("  l/list                         列出主机")

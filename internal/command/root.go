@@ -227,12 +227,12 @@ func (app *App) lockSecretStore() {
 // resolveHost finds a host by alias or ID from args, or prompts interactively.
 func (app *App) resolveHost(args []string, promptMsg string) (*config.Host, int, *config.HostsFile, error) {
 	if len(args) > 0 {
-		return app.Store.FindHost(args[0])
+		return app.findHost(args[0])
 	}
 	// Interactive prompt
 	alias := ui.ReadLine(promptMsg)
 	if alias == "" {
 		return nil, -1, nil, fmt.Errorf("已取消")
 	}
-	return app.Store.FindHost(alias)
+	return app.findHost(alias)
 }

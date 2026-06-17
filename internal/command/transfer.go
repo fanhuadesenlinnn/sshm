@@ -75,6 +75,10 @@ func parseTransferOptions(args []string, direction string, tag bool) (transferOp
 	options := transferOptions{direction: direction, method: "auto", validateChecksum: true, multi: tag}
 	var commonArgs []string
 	for i := 0; i < len(args); i++ {
+		if args[i] == "--" {
+			commonArgs = append(commonArgs, args[i:]...)
+			break
+		}
 		switch args[i] {
 		case "--overwrite":
 			options.overwrite = true

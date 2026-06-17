@@ -16,17 +16,16 @@ import (
 )
 
 func (app *App) cmdExec(args []string) error {
-	yes, quiet, noLog, args := parseOperationFlags(args)
-	if len(args) < 2 {
-		return fmt.Errorf("用法: sshm exec [--yes] [--quiet] [--no-log] <别名|ID> <命令>")
-	}
-
-	h, _, _, err := app.Store.FindHost(args[0])
+	yes, quiet, noLog, aliasOrID, command, err := parseExecArgs(args)
 	if err != nil {
 		return err
 	}
 
-	command := strings.Join(args[1:], " ")
+	h, _, _, err := app.findHost(aliasOrID)
+	if err != nil {
+		return err
+	}
+
 	if !yes {
 		if !ui.IsTerminal() {
 			return fmt.Errorf("远程命令执行需要确认；非交互环境请使用 --yes")
@@ -80,7 +79,7 @@ func (app *App) cmdExecTag(args []string) error {
 		}
 	}
 	if len(hosts) == 0 {
-		return fmt.Errorf("没有匹配标签 %q 的主机", tagName)
+		return fmt.Errorf("没有匹配标签 %q 的主机；使用 sshm tag list 查看标签，或 sshm tag add %s <主机> 绑定主机", tagName, tagName)
 	}
 	return app.executeBatch(hosts, command, options)
 }
@@ -185,6 +184,37 @@ func parseOperationFlags(args []string) (yes, quiet, noLog bool, rest []string) 
 		args = args[1:]
 	}
 	return yes, quiet, noLog, nil
+}
+
+func parseExecArgs(args []string) (yes, quiet, noLog bool, aliasOrID, command string, err error) {
+	yes, quiet, noLog, args = parseOperationFlags(args)
+	if len(args) < 2 {
+		return false, false, false, "", "", fmt.Errorf("用法: sshm exec [--yes] [--quiet] [--no-log] <别名|ID> <命令>")
+	}
+	aliasOrID = args[0]
+	commandArgs := append([]string(nil), args[1:]...)
+	if len(commandArgs) > 0 && commandArgs[0] == "--" {
+		commandArgs = commandArgs[1:]
+		if len(commandArgs) == 0 {
+			return false, false, false, "", "", fmt.Errorf("用法: sshm exec [--yes] [--quiet] [--no-log] <别名|ID> <命令>")
+		}
+		return yes, quiet, noLog, aliasOrID, strings.Join(commandArgs, " "), nil
+	}
+	for len(commandArgs) > 0 {
+		last := commandArgs[len(commandArgs)-1]
+		switch last {
+		case "--yes":
+			yes = true
+		case "--quiet":
+			quiet = true
+		case "--no-log":
+			noLog = true
+		default:
+			return yes, quiet, noLog, aliasOrID, strings.Join(commandArgs, " "), nil
+		}
+		commandArgs = commandArgs[:len(commandArgs)-1]
+	}
+	return false, false, false, "", "", fmt.Errorf("用法: sshm exec [--yes] [--quiet] [--no-log] <别名|ID> <命令>")
 }
 
 // tryGetSecretStore attempts to create a secret store, prompting for master password.

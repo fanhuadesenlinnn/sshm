@@ -155,6 +155,21 @@ func TestCompletionCandidatesIncludeCommandsAndHosts(t *testing.T) {
 	}
 }
 
+func TestCompletionCandidatesWorkWithoutInitialization(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sshm.yaml")
+	app := &App{Store: config.NewStoreWithPath(path), ConfigPath: path}
+	candidates, err := app.completionCandidates()
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := "\n" + strings.Join(candidates, "\n") + "\n"
+	for _, name := range []string{"init", "list", "host", "key", "tag", "deploy"} {
+		if !strings.Contains(joined, "\n"+name+"\n") {
+			t.Fatalf("missing completion candidate %q in %v", name, candidates)
+		}
+	}
+}
+
 func TestConfigEditRequiresInitializedConfig(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sshm.yaml")
 	store := config.NewStoreWithPath(path)
@@ -165,11 +180,63 @@ func TestConfigEditRequiresInitializedConfig(t *testing.T) {
 	}
 }
 
+func TestConfigInsecurePolicyRequiresConfirmationUnlessYes(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sshm.yaml")
+	store := config.NewStoreWithPath(path)
+	if err := store.Repository().Replace(config.DefaultDocument()); err != nil {
+		t.Fatal(err)
+	}
+	app := &App{Store: store, ConfigPath: path}
+	if err := app.cmdConfig([]string{"host-key-policy", "insecure"}); err == nil || !strings.Contains(err.Error(), "--yes") {
+		t.Fatalf("insecure policy without --yes should fail in non-interactive tests: %v", err)
+	}
+	if err := app.cmdConfig([]string{"host-key-policy", "insecure", "--yes"}); err != nil {
+		t.Fatalf("insecure policy with --yes: %v", err)
+	}
+}
+
 func TestSplitEditorCommandKeepsQuotedWindowsPath(t *testing.T) {
 	parts := splitEditorCommand(`"C:\Program Files\Editor\editor.exe" --wait`)
 	want := []string{`C:\Program Files\Editor\editor.exe`, "--wait"}
 	if !reflect.DeepEqual(parts, want) {
 		t.Fatalf("parts = %#v, want %#v", parts, want)
+	}
+}
+
+func TestParseExecArgsAcceptsTrailingOperationFlags(t *testing.T) {
+	yes, quiet, noLog, host, command, err := parseExecArgs([]string{"web01", "uptime", "--yes", "--quiet", "--no-log"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !yes || !quiet || !noLog || host != "web01" || command != "uptime" {
+		t.Fatalf("unexpected parse result: yes=%t quiet=%t noLog=%t host=%q command=%q", yes, quiet, noLog, host, command)
+	}
+	yes, quiet, noLog, host, command, err = parseExecArgs([]string{"--yes", "web01", "--", "deploy", "--yes"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !yes || quiet || noLog || host != "web01" || command != "deploy --yes" {
+		t.Fatalf("unexpected -- parse result: yes=%t quiet=%t noLog=%t host=%q command=%q", yes, quiet, noLog, host, command)
+	}
+}
+
+func TestHostSelectorRejectsAllMixedWithSpecificTargets(t *testing.T) {
+	for _, args := range [][]string{{"--all", "web01"}, {"--all", "--tag", "prod"}} {
+		if _, err := parseHostSelector(args); err == nil || !strings.Contains(err.Error(), "--all") {
+			t.Fatalf("parseHostSelector(%v) should reject mixed all selector: %v", args, err)
+		}
+	}
+}
+
+func TestLogsRejectUnknownSubcommand(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sshm.yaml")
+	store := config.NewStoreWithPath(path)
+	if err := store.Repository().Replace(config.DefaultDocument()); err != nil {
+		t.Fatal(err)
+	}
+	app := &App{Store: store, ConfigPath: path}
+	if err := app.cmdLogs([]string{"unknown"}); err == nil || !strings.Contains(err.Error(), "未知 logs 命令") {
+		t.Fatalf("logs unknown should fail: %v", err)
 	}
 }
 

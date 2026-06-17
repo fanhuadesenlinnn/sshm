@@ -475,7 +475,14 @@ func (app *App) deployOverrides(options deployCLIOptions) (deploy.Overrides, con
 func validateSelectedDeployProfile(catalog *deploy.Catalog, name string, hosts []config.Host, options deployCLIOptions) error {
 	profile, ok := catalog.ByName[name]
 	if !ok {
-		return fmt.Errorf("未找到 deploy profile: %s", name)
+		candidates := make([]string, 0, len(catalog.Profiles))
+		for _, profile := range catalog.Profiles {
+			candidates = append(candidates, profile.Name)
+		}
+		if best, suggested := closestString(name, candidates, 3); suggested {
+			return fmt.Errorf("未找到 deploy profile %q；你是否想使用 %q？使用 sshm deploy list 查看全部 profile", name, best)
+		}
+		return fmt.Errorf("未找到 deploy profile %q；使用 sshm deploy list 查看全部 profile", name)
 	}
 	if options.hasSelector {
 		profile.Targets = options.selector

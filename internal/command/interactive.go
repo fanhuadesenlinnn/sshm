@@ -17,6 +17,10 @@ func (app *App) interactiveMode() error {
 	if _, err := app.Store.Load(); err != nil {
 		return fmt.Errorf("加载主机配置失败: %w", err)
 	}
+	if !ui.IsTerminal() {
+		app.printHelp()
+		return nil
+	}
 	app.printWorkbench()
 
 	for {
@@ -158,7 +162,7 @@ func (app *App) cmdConnect(args []string) (err error) {
 
 	aliasOrID := args[0]
 
-	h, _, _, err := app.Store.FindHost(aliasOrID)
+	h, _, _, err := app.findHost(aliasOrID)
 	if err != nil {
 		return err
 	}

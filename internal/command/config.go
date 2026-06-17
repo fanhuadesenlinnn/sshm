@@ -25,14 +25,19 @@ func newInitCommand(app *App) *cobra.Command {
 }
 
 func newConfigCommand(app *App) *cobra.Command {
+	var yes bool
 	cmd := &cobra.Command{
 		Use:     "config",
 		Short:   commandShort("config", "查看和编辑主配置"),
 		GroupID: commandGroupID("config"),
 		RunE: func(_ *cobra.Command, args []string) error {
+			if yes {
+				args = append(args, "--yes")
+			}
 			return app.cmdConfig(args)
 		},
 	}
+	cmd.Flags().BoolVar(&yes, "yes", false, "确认安全降级等高风险配置变更")
 	cmd.AddCommand(&cobra.Command{
 		Use:         "path",
 		Short:       "显示当前 sshm 路径",
@@ -66,6 +71,10 @@ func (app *App) cmdInit(force bool) error {
 	if backup != "" {
 		fmt.Printf("backup:   %s\n", backup)
 	}
+	fmt.Println()
+	fmt.Println("下一步:")
+	fmt.Println("  sshm add web01 root@10.0.0.11")
+	fmt.Println("  sshm doctor")
 	return nil
 }
 
@@ -93,6 +102,7 @@ func (app *App) cmdConfig(args []string) error {
 		printConfigHelp()
 		return nil
 	}
+	yes, args := removeFlag(args, "--yes")
 	if len(args) == 0 || args[0] == "show" {
 		doc, err := app.Store.Repository().Load()
 		if err != nil {
@@ -106,6 +116,15 @@ func (app *App) cmdConfig(args []string) error {
 		if !config.ValidHostKeyPolicy(args[1]) {
 			return fmt.Errorf("策略必须是 strict、accept-new 或 insecure")
 		}
+		if args[1] == config.HostKeyPolicyInsecure && !yes {
+			if !ui.IsTerminal() {
+				return fmt.Errorf("insecure 会跳过主机身份验证；非交互环境请使用 --yes")
+			}
+			if !ui.ReadYesNo("insecure 会跳过主机身份验证，确认继续? [y/N]: ") {
+				ui.PrintWarn("已取消")
+				return nil
+			}
+		}
 		if err := app.Store.Repository().Update(func(doc *config.Document) error {
 			doc.Defaults.HostKeyPolicy = args[1]
 			return nil
@@ -115,13 +134,14 @@ func (app *App) cmdConfig(args []string) error {
 		ui.PrintSuccess("默认主机信任策略已设置为 %s", args[1])
 		return nil
 	}
-	return fmt.Errorf("用法: sshm config [show | host-key-policy <strict|accept-new|insecure>]")
+	return fmt.Errorf("用法: sshm config [show | host-key-policy <strict|accept-new|insecure> [--yes]]")
 }
 
 func printConfigHelp() {
 	fmt.Println("sshm 核心状态只使用一个文件：<SSHM_HOME>/sshm.yaml")
 	fmt.Println("deploy 工作流使用独立 deploy.yaml、deploy.d/*.yaml 或显式 --file")
 	fmt.Println("主机信任策略：strict | accept-new | insecure")
+	fmt.Println("设置 insecure 会跳过主机身份验证，非交互环境必须显式使用 --yes")
 	fmt.Println("主机的 host_key_policy 为空时继承 defaults.host_key_policy")
 	fmt.Println("标签定义保存在 tags.items；主机引用的新标签会自动登记")
 	fmt.Println("host_trust 与 vault 由 sshm 管理，请勿手动修改")
