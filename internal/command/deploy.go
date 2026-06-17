@@ -312,7 +312,27 @@ func (app *App) cmdDeployInit(args []string) error {
 		return err
 	}
 	fmt.Printf("已生成 deploy 配置: %s\n", path)
+	fmt.Println()
+	fmt.Println("下一步:")
+	fmt.Println("  sshm deploy validate")
+	if !app.hasHostWithAllTags("prod") {
+		fmt.Println("  sshm add web01 root@10.0.0.11 --tags prod")
+	}
+	fmt.Println("  sshm deploy plan update-app")
 	return nil
+}
+
+func (app *App) hasHostWithAllTags(tags ...string) bool {
+	hf, err := app.Store.Load()
+	if err != nil {
+		return false
+	}
+	for _, host := range hf.Hosts {
+		if host.MatchTags(tags) {
+			return true
+		}
+	}
+	return false
 }
 
 func hasDeployRunOptions(options deployCLIOptions) bool {
@@ -350,7 +370,7 @@ func (app *App) cmdDeployValidate(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := deploy.ValidateCatalog(catalog, hosts); err != nil {
+	if err := deploy.ValidateCatalogAllowEmptyTargetMatches(catalog, hosts); err != nil {
 		return err
 	}
 	if options.output == "json" {
@@ -372,7 +392,7 @@ func (app *App) cmdDeployList(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := deploy.ValidateCatalog(catalog, hosts); err != nil {
+	if err := deploy.ValidateCatalogAllowEmptyTargetMatches(catalog, hosts); err != nil {
 		return err
 	}
 	if options.output == "json" {
@@ -488,6 +508,9 @@ func validateSelectedDeployProfile(catalog *deploy.Catalog, name string, hosts [
 		profile.Targets = options.selector
 	}
 	if err := deploy.ValidateProfile(profile, hosts, false); err != nil {
+		if len(hosts) == 0 {
+			return fmt.Errorf("当前还没有主机；请先运行 sshm add web01 root@10.0.0.11 --tags prod，或修改 deploy targets: %w", err)
+		}
 		return err
 	}
 	for _, step := range profile.Steps {

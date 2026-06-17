@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
@@ -21,16 +22,20 @@ func (app *App) cmdLogs(args []string) error {
 		if len(rest) != 0 {
 			return fmt.Errorf("用法: sshm logs clean [--yes]")
 		}
+		logsDir, err := safeLogsDirForClean()
+		if err != nil {
+			return err
+		}
 		if !yes {
 			if !ui.IsTerminal() {
 				return fmt.Errorf("清理操作日志需要确认；非交互环境请使用 --yes")
 			}
-			if !ui.ReadYesNo(fmt.Sprintf("确认清理操作日志目录 %s? [y/N]: ", config.LogsDir())) {
+			if !ui.ReadYesNo(fmt.Sprintf("确认清理操作日志目录 %s? [y/N]: ", logsDir)) {
 				ui.PrintWarn("已取消")
 				return nil
 			}
 		}
-		if err := os.RemoveAll(config.LogsDir()); err != nil {
+		if err := os.RemoveAll(logsDir); err != nil {
 			return err
 		}
 		ui.PrintSuccess("操作日志已清理")
@@ -61,6 +66,26 @@ func (app *App) cmdLogs(args []string) error {
 		}
 	}
 	return nil
+}
+
+func safeLogsDirForClean() (string, error) {
+	paths, err := config.ResolvePaths()
+	if err != nil {
+		return "", err
+	}
+	home := filepath.Clean(paths.Home)
+	logsDir := filepath.Clean(paths.Logs)
+	if home == "" || logsDir == "" || filepath.Dir(home) == home {
+		return "", fmt.Errorf("拒绝清理日志：SSHM_HOME 不能是文件系统根目录")
+	}
+	if filepath.Base(logsDir) != "logs" {
+		return "", fmt.Errorf("拒绝清理日志：日志目录必须以 logs 结尾: %s", logsDir)
+	}
+	rel, err := filepath.Rel(home, logsDir)
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+		return "", fmt.Errorf("拒绝清理日志：日志目录不在 SSHM_HOME 内: %s", logsDir)
+	}
+	return logsDir, nil
 }
 
 func printLogsHelp() {

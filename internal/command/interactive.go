@@ -1,6 +1,7 @@
 package command
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -15,6 +16,10 @@ import (
 
 func (app *App) interactiveMode() error {
 	if _, err := app.Store.Load(); err != nil {
+		if errors.Is(err, config.ErrNotInitialized) {
+			app.printFirstRunGuide()
+			return nil
+		}
 		return fmt.Errorf("加载主机配置失败: %w", err)
 	}
 	if !ui.IsTerminal() {

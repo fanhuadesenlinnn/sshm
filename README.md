@@ -1,27 +1,27 @@
-# sshm v6.0.3
+# sshm v6.0.4
 
 sshm 是一个本地优先、面向个人使用的 SSH 主机管理与轻量运维工具。它使用 Go 原生 SSH 能力管理主机、标签、凭据、批量命令、安全文件传输和 Deploy v2 编排。
 
-> 版本说明：产品发布版本是 `v6.0.3`，Go module 是 `github.com/fanhuadesenlinnn/sshm/v6`，主配置与 Deploy 配置的 schema 都是 `version: 2`。
+> 版本说明：产品发布版本是 `v6.0.4`，Go module 是 `github.com/fanhuadesenlinnn/sshm/v6`，主配置与 Deploy 配置的 schema 都是 `version: 2`。
 
 ## 安装
 
 需要 Go 1.25 或直接下载 GitHub Release 中对应平台的二进制。
 
 ```bash
-go install github.com/fanhuadesenlinnn/sshm/v6@v6.0.3
+go install github.com/fanhuadesenlinnn/sshm/v6@v6.0.4
 ```
 
 如果 `proxy.golang.org` 访问较慢，可临时指定国内代理：
 
 ```bash
-GOPROXY=https://goproxy.cn,direct go install github.com/fanhuadesenlinnn/sshm/v6@v6.0.3
+GOPROXY=https://goproxy.cn,direct go install github.com/fanhuadesenlinnn/sshm/v6@v6.0.4
 ```
 
 PowerShell：
 
 ```powershell
-$env:GOPROXY = "https://goproxy.cn,direct"; go install github.com/fanhuadesenlinnn/sshm/v6@v6.0.3
+$env:GOPROXY = "https://goproxy.cn,direct"; go install github.com/fanhuadesenlinnn/sshm/v6@v6.0.4
 ```
 
 ## v6 破坏性变更
@@ -36,10 +36,13 @@ $env:GOPROXY = "https://goproxy.cn,direct"; go install github.com/fanhuadesenlin
 ## 首次使用
 
 ```bash
+sshm
 sshm init
 sshm config path
 sshm doctor
 ```
+
+未初始化时直接运行 `sshm` 会显示首次使用引导，不会直接进入空工作台。
 
 `sshm init` 创建：
 
@@ -144,6 +147,7 @@ sshm pull-tag all /etc/hosts ./backup --flat --yes
 - 文件默认使用 SHA-256；目录按逐文件 manifest 比较并聚合状态。
 - 默认拒绝覆盖不同内容；`--overwrite` 与 `--backup` 互斥。
 - push/pull 先写临时目标，校验后再 rename，不直接写最终文件。
+- 远端路径必须是明确路径，拒绝 `~`、根路径、空路径和上级目录组件。
 - 拒绝符号链接、设备文件、socket、FIFO 等特殊文件。
 - 多主机 pull 默认保存为 `local/host_alias/remote-path`。
 - `--flat` 会在执行前检查本次操作内部的目标冲突。
@@ -242,6 +246,8 @@ sshm logs clean
 ```bash
 go test ./...
 go vet ./...
+go run honnef.co/go/tools/cmd/staticcheck@v0.7.0 ./...
+go run golang.org/x/vuln/cmd/govulncheck@v1.3.0 ./...
 go build ./...
 go test -race ./...
 go list -m

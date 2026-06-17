@@ -9,11 +9,8 @@ import (
 )
 
 func ResolveTargets(hosts []config.Host, selector TargetSelector) ([]config.Host, error) {
-	if selector.Empty() {
-		return nil, fmt.Errorf("目标选择器为空")
-	}
-	if selector.All && (len(selector.Hosts) > 0 || len(selector.Tags) > 0) {
-		return nil, fmt.Errorf("all 不能与 hosts 或 tags 混用")
+	if err := validateTargetSelectorShape(selector); err != nil {
+		return nil, err
 	}
 	if selector.All {
 		if len(hosts) == 0 {
@@ -69,6 +66,45 @@ func ResolveTargets(hosts []config.Host, selector TargetSelector) ([]config.Host
 		return nil, fmt.Errorf("目标选择结果为空")
 	}
 	return selected, nil
+}
+
+func validateTargetSelectorShape(selector TargetSelector) error {
+	if selector.Empty() {
+		return fmt.Errorf("目标选择器为空")
+	}
+	if selector.All && (len(selector.Hosts) > 0 || len(selector.Tags) > 0) {
+		return fmt.Errorf("all 不能与 hosts 或 tags 混用")
+	}
+	if selector.All {
+		return nil
+	}
+	if err := validateSelectorValues("hosts", selector.Hosts); err != nil {
+		return err
+	}
+	if err := validateSelectorValues("tags", selector.Tags); err != nil {
+		return err
+	}
+	if len(expandSelectorValues(selector.Hosts))+len(expandSelectorValues(selector.Tags)) == 0 {
+		return fmt.Errorf("目标选择器为空")
+	}
+	return nil
+}
+
+func validateSelectorValues(name string, values []string) error {
+	for _, value := range values {
+		if strings.TrimSpace(value) == "" {
+			return fmt.Errorf("targets.%s 不能包含空值", name)
+		}
+	}
+	return nil
+}
+
+func expandSelectorValues(values []string) []string {
+	out := []string{}
+	for _, raw := range values {
+		out = append(out, split(raw)...)
+	}
+	return out
 }
 
 func split(value string) []string {

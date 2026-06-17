@@ -25,6 +25,12 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      - name: Staticcheck
+        run: go run honnef.co/go/tools/cmd/staticcheck@v0.7.0 ./...
+
+      - name: Govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.3.0 ./...
+
       - name: Test
         run: go test ./...
 
@@ -166,6 +172,9 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
       - name: Download artifacts
         uses: actions/download-artifact@v8
         with:
@@ -201,36 +210,47 @@ jobs:
           sha256sum -- * > checksums.txt
           cat checksums.txt
 
+      - name: Prepare release body
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          NOTES="docs/RELEASE_NOTES_${TAG}.md"
+          if [ -f "$NOTES" ]; then
+            cat "$NOTES" > release-body.md
+          else
+            printf '## sshm %s\n\n' "$TAG" > release-body.md
+          fi
+          cat >> release-body.md <<'EOF'
+
+          ## 支持平台
+
+          | 文件 | 平台 |
+          |------|------|
+          | `sshm_linux_amd64.tar.gz` | Linux x86_64 |
+          | `sshm_linux_arm64.tar.gz` | Linux ARM64 |
+          | `sshm_darwin_amd64.tar.gz` | macOS Intel |
+          | `sshm_darwin_arm64.tar.gz` | macOS Apple Silicon |
+          | `sshm_windows_amd64.zip` | Windows x86_64 |
+          | `sshm_windows_arm64.zip` | Windows ARM64 |
+
+          Linux 制品为纯 Go 静态二进制，不依赖目标系统的 glibc，可直接运行于 glibc 或 musl 环境。
+
+          ## 安装
+
+          ```bash
+          # macOS / Linux
+          OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+          ARCH=$(uname -m)
+          [ "$ARCH" = "x86_64" ] && ARCH=amd64
+          [ "$ARCH" = "aarch64" ] && ARCH=arm64
+          tar -xzf "sshm_${OS}_${ARCH}.tar.gz"
+          sudo mv sshm /usr/local/bin/
+          ```
+          EOF
+
       - name: Create Release
         uses: softprops/action-gh-release@v3
         with:
           name: ${{ github.ref_name }}
-          body: |
-            ## sshm ${{ github.ref_name }}
-
-            ### 支持平台
-
-            | 文件 | 平台 |
-            |------|------|
-            | `sshm_linux_amd64.tar.gz` | Linux x86_64 |
-            | `sshm_linux_arm64.tar.gz` | Linux ARM64 |
-            | `sshm_darwin_amd64.tar.gz` | macOS Intel |
-            | `sshm_darwin_arm64.tar.gz` | macOS Apple Silicon |
-            | `sshm_windows_amd64.zip` | Windows x86_64 |
-            | `sshm_windows_arm64.zip` | Windows ARM64 |
-
-            Linux 制品为纯 Go 静态二进制，不依赖目标系统的 glibc，可直接运行于 glibc 或 musl 环境。
-
-            ### 安装
-
-            ```bash
-            # macOS / Linux
-            OS=$(uname -s | tr '[:upper:]' '[:lower:]')
-            ARCH=$(uname -m)
-            [ "$ARCH" = "x86_64" ] && ARCH=amd64
-            [ "$ARCH" = "aarch64" ] && ARCH=arm64
-            tar -xzf "sshm_${OS}_${ARCH}.tar.gz"
-            sudo mv sshm /usr/local/bin/
-            ```
+          body_path: release-body.md
           files: artifacts/*
-          generate_release_notes: true

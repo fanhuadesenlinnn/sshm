@@ -69,6 +69,29 @@ func TestDeployInitRefusesOverwriteUnlessExplicitAndWritesV2(t *testing.T) {
 	}
 }
 
+func TestDeployValidateAllowsInitializedSampleBeforeHosts(t *testing.T) {
+	dir := t.TempDir()
+	store := config.NewStoreWithPath(filepath.Join(dir, "sshm.yaml"))
+	if err := store.Repository().Replace(config.DefaultDocument()); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "deploy.yaml")
+	app := &App{Store: store, ConfigPath: store.Path()}
+	if err := app.cmdDeployInit([]string{"-f", path}); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.cmdDeployValidate([]string{"-f", path}); err != nil {
+		t.Fatalf("sample should validate before hosts are added: %v", err)
+	}
+	if err := app.cmdDeployList([]string{"-f", path}); err != nil {
+		t.Fatalf("sample should list before hosts are added: %v", err)
+	}
+	err := app.deployPlanCommand([]string{"update-app", "-f", path}, false)
+	if err == nil || !strings.Contains(err.Error(), "还没有主机") {
+		t.Fatalf("plan without hosts should give next-step guidance: %v", err)
+	}
+}
+
 func containsText(value string, values ...string) bool {
 	for _, item := range values {
 		if !strings.Contains(value, item) {

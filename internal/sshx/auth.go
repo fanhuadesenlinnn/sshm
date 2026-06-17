@@ -76,13 +76,13 @@ func dialConfiguredContext(ctx context.Context, h config.Host, store *secret.Fil
 	}
 	conn, err := dialThroughJumpContext(ctx, jumpClient, "tcp", fmt.Sprintf("%s:%d", h.Host, h.Port))
 	if err != nil {
-		jumpClient.Close()
+		_ = jumpClient.Close()
 		return nil, "", operation.Wrap(operation.StageJump, fmt.Errorf("通过跳板机连接目标失败: %w", err))
 	}
 	client, err := newSSHClientContext(ctx, conn, fmt.Sprintf("%s:%d", h.Host, h.Port), targetConfig)
 	if err != nil {
-		conn.Close()
-		jumpClient.Close()
+		_ = conn.Close()
+		_ = jumpClient.Close()
 		return nil, "", operation.Wrap(operation.StageAuth, fmt.Errorf("目标 SSH 握手失败: %w", err))
 	}
 	go func() {
@@ -90,10 +90,6 @@ func dialConfiguredContext(ctx context.Context, h config.Host, store *secret.Fil
 		_ = jumpClient.Close()
 	}()
 	return client, label, nil
-}
-
-func dialDirectContext(ctx context.Context, h config.Host, store *secret.FileStore) (*ssh.Client, string, error) {
-	return dialDirectContextWithTimeout(ctx, h, store, 10*time.Second)
 }
 
 func dialDirectContextWithTimeout(ctx context.Context, h config.Host, store *secret.FileStore, timeout time.Duration) (*ssh.Client, string, error) {
@@ -121,7 +117,7 @@ func dialDirectWithConfig(ctx context.Context, h config.Host, sshConfig *ssh.Cli
 	}
 	client, err := newSSHClientContext(ctx, conn, addr, sshConfig)
 	if err != nil {
-		conn.Close()
+		_ = conn.Close()
 		stage := operation.StageAuth
 		if operation.StageOf(err, stage) == operation.StageTrust {
 			stage = operation.StageTrust
@@ -173,10 +169,6 @@ func newSSHClientContext(ctx context.Context, conn net.Conn, addr string, config
 	case result := <-done:
 		return result.client, result.err
 	}
-}
-
-func clientConfig(h config.Host, store *secret.FileStore) (*ssh.ClientConfig, string, error) {
-	return clientConfigWithTimeout(h, store, 10*time.Second)
 }
 
 func clientConfigWithTimeout(h config.Host, store *secret.FileStore, timeout time.Duration) (*ssh.ClientConfig, string, error) {

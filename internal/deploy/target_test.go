@@ -37,3 +37,20 @@ func TestResolveTargetsRejectsAllMixedAndMissingValues(t *testing.T) {
 		t.Fatalf("empty selector error = %v", err)
 	}
 }
+
+func TestValidateCatalogAllowEmptyTargetMatchesStillRejectsBadSelector(t *testing.T) {
+	for _, selector := range []TargetSelector{
+		{All: true, Tags: []string{"prod"}},
+		{Hosts: []string{""}},
+		{Tags: []string{"  "}},
+	} {
+		catalog := &Catalog{Profiles: []Profile{{
+			Name:    "bad",
+			Targets: selector,
+			Steps:   []Step{{Exec: "hostname"}},
+		}}}
+		if err := ValidateCatalogAllowEmptyTargetMatches(catalog, nil); err == nil {
+			t.Fatalf("selector should fail without hosts too: %+v", selector)
+		}
+	}
+}

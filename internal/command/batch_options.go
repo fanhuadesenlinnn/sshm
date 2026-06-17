@@ -216,11 +216,6 @@ func exitErrorForBatch(result batch.RunResult) error {
 	)}
 }
 
-func isExitCode(err error, code int) bool {
-	var exitErr *ExitError
-	return errors.As(err, &exitErr) && exitErr.Code == code
-}
-
 // ExitCodeForError maps command failures to the documented process exit codes.
 func ExitCodeForError(err error) int {
 	if err == nil {

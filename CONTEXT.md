@@ -4,7 +4,7 @@ sshm 是一个本地优先、面向个人使用的 SSH 主机管理与轻量运�
 
 ## 版本边界
 
-- 产品发布版本：`v6.0.3`
+- 产品发布版本：`v6.0.4`
 - Go module：`github.com/fanhuadesenlinnn/sshm/v6`
 - 主配置 schema：`version: 2`
 - Deploy schema：`version: 2`
@@ -84,7 +84,7 @@ Deploy Profile 静态解析出的来源文件、目标主机、steps、handlers 
 
 ## 接口
 
-- 无参数 `sshm`：轻量工作台。
+- 无参数 `sshm`：未初始化时显示首次使用引导；初始化后进入轻量工作台。
 - `sshm <alias|ID>`：最快直连路径。
 - Cobra CLI：可重复执行的完整命令接口。
 

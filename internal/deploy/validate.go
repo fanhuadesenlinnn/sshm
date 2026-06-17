@@ -14,6 +14,14 @@ import (
 var becomeUserPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]*$`)
 
 func ValidateCatalog(catalog *Catalog, hosts []config.Host) error {
+	return validateCatalog(catalog, hosts, false)
+}
+
+func ValidateCatalogAllowEmptyTargetMatches(catalog *Catalog, hosts []config.Host) error {
+	return validateCatalog(catalog, hosts, len(hosts) == 0)
+}
+
+func validateCatalog(catalog *Catalog, hosts []config.Host, allowEmptyTargetMatches bool) error {
 	if len(catalog.Profiles) == 0 {
 		return fmt.Errorf("deploy 配置不包含 profile")
 	}
@@ -23,7 +31,7 @@ func ValidateCatalog(catalog *Catalog, hosts []config.Host) error {
 		}
 	}
 	for _, profile := range catalog.Profiles {
-		if err := ValidateProfile(profile, hosts, false); err != nil {
+		if err := validateProfile(profile, hosts, false, allowEmptyTargetMatches); err != nil {
 			return fmt.Errorf("%s: profile %q: %w", profile.Source, profile.Name, err)
 		}
 		for _, step := range profile.Steps {
@@ -38,6 +46,10 @@ func ValidateCatalog(catalog *Catalog, hosts []config.Host) error {
 }
 
 func ValidateProfile(profile Profile, hosts []config.Host, allowEmptyTargets bool) error {
+	return validateProfile(profile, hosts, allowEmptyTargets, false)
+}
+
+func validateProfile(profile Profile, hosts []config.Host, allowEmptyTargets, allowEmptyTargetMatches bool) error {
 	if strings.TrimSpace(profile.Name) == "" {
 		return fmt.Errorf("名称不能为空")
 	}
@@ -60,6 +72,12 @@ func ValidateProfile(profile Profile, hosts []config.Host, allowEmptyTargets boo
 			return nil
 		}
 		return fmt.Errorf("targets 不能为空")
+	}
+	if err := validateTargetSelectorShape(profile.Targets); err != nil {
+		return err
+	}
+	if allowEmptyTargetMatches && len(hosts) == 0 {
+		return nil
 	}
 	_, err := ResolveTargets(hosts, profile.Targets)
 	return err
@@ -188,7 +206,7 @@ func validateRemotePath(value string) error {
 	}
 	for _, component := range strings.Split(value, "/") {
 		if component == ".." {
-			return fmt.Errorf("远端路径不能包含 ..")
+			return fmt.Errorf("远端路径不能包含上级目录组件")
 		}
 	}
 	clean := path.Clean(value)

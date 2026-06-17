@@ -1,6 +1,6 @@
-# sshm v6.0.3 产品设计
+# sshm v6.0.4 产品设计
 
-状态：v6.0.3 当前设计
+状态：v6.0.4 当前设计
 
 ## 产品定位
 
@@ -15,7 +15,7 @@ sshm 是供个人开发者和个人运维使用者管理约 5 到 100 台 SSH �
 
 ## 当前产品事实
 
-- 产品版本为 `v6.0.3`，Go module 为 `/v6`。
+- 产品版本为 `v6.0.4`，Go module 为 `/v6`。
 - 主配置与 Deploy 配置均为严格 YAML schema `version: 2`。
 - 默认数据目录只使用 `~/.sshm`，仅支持 `SSHM_HOME` 整体覆盖。
 - Cobra 提供 CLI 命令树，同时保留无参数工作台和 alias/ID 直连。
@@ -29,7 +29,7 @@ sshm 是供个人开发者和个人运维使用者管理约 5 到 100 台 SSH �
 
 新用户运行 `sshm init` 创建完整 v2 主配置和受限权限目录。发现旧 `~/.config/sshm/sshm.yaml` 时只警告，不读取、迁移或删除。
 
-用户可通过工作台、搜索、收藏、最近使用、标签和 `sshm <alias|ID>` 快速定位主机。
+未初始化时直接运行 `sshm` 会展示首次使用引导。初始化后，用户可通过工作台、搜索、收藏、最近使用、标签和 `sshm <alias|ID>` 快速定位主机。
 
 ### 安全认证
 
@@ -54,6 +54,8 @@ sshm 是供个人开发者和个人运维使用者管理约 5 到 100 台 SSH �
 push/pull 支持文件和目录。默认 SHA-256 校验，目录使用逐文件 manifest。目标不同且已存在时默认拒绝，用户必须显式选择 `--overwrite` 或 `--backup`。
 
 传输始终先写临时目标，校验后 rename。符号链接、设备文件、socket、FIFO 等特殊文件被拒绝。
+
+远端路径必须是明确路径，普通传输与 Deploy 共用同一类安全边界：拒绝空路径、根路径、`~` 和上级目录组件。
 
 多主机 pull 默认使用 `local/host_alias/remote-path`；`--flat` 在任何下载开始前检测冲突。
 
@@ -118,6 +120,8 @@ ok changed would-change failed unreachable skipped
 ```bash
 go test ./...
 go vet ./...
+go run honnef.co/go/tools/cmd/staticcheck@v0.7.0 ./...
+go run golang.org/x/vuln/cmd/govulncheck@v1.3.0 ./...
 go build ./...
 go test -race ./...
 go list -m

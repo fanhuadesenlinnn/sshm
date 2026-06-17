@@ -2,6 +2,7 @@ package config
 
 import (
 	"crypto/rand"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"regexp"
@@ -52,9 +53,8 @@ func NewID() string {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
 		seed := uint64(time.Now().UnixNano()) ^ atomic.AddUint64(&fallbackIDCounter, 1)
-		for i := range b {
-			b[i] = byte(seed >> ((i % 8) * 8))
-		}
+		binary.LittleEndian.PutUint64(b[:8], seed)
+		binary.LittleEndian.PutUint64(b[8:], seed^atomic.AddUint64(&fallbackIDCounter, 1))
 	}
 	return hex.EncodeToString(b)
 }
@@ -156,7 +156,7 @@ func ValidateHostAlias(alias string) error {
 	case !aliasRegexp.MatchString(alias):
 		return fmt.Errorf("别名只能包含字母、数字、点、下划线、短横线")
 	case alias == "." || alias == "..":
-		return fmt.Errorf("别名不能是 . 或 ..")
+		return fmt.Errorf("别名不能使用点或双点")
 	case windowsReservedAlias.MatchString(alias):
 		return fmt.Errorf("别名不能使用 Windows 保留名称")
 	case strings.HasSuffix(alias, ".") || strings.HasSuffix(alias, " "):

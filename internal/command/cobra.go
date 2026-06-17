@@ -50,6 +50,9 @@ func newRootCommand(app *App) *cobra.Command {
 			return app.interactiveMode()
 		},
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
+			if cmd.Parent() == nil {
+				return nil
+			}
 			if cmd.Annotations[allowWithoutConfig] == "true" {
 				return nil
 			}

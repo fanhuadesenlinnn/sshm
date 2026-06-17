@@ -181,6 +181,7 @@ func (app *App) cmdConfigEdit(_ []string) error {
 	if len(parts) == 0 {
 		return fmt.Errorf("编辑器命令为空")
 	}
+	// #nosec G204 G702 -- EDITOR/VISUAL is an explicit local user command.
 	cmd := exec.Command(parts[0], append(parts[1:], tmpPath)...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	if err := cmd.Run(); err != nil {

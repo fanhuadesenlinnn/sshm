@@ -123,6 +123,19 @@ func (app *App) printHelp() {
 	fmt.Println()
 }
 
+func (app *App) printFirstRunGuide() {
+	ui.PrintHeader("sshm 尚未初始化")
+	fmt.Println()
+	fmt.Println("先创建本地数据目录和配置文件：")
+	fmt.Println("  sshm init")
+	fmt.Println()
+	fmt.Println("初始化后可以继续：")
+	fmt.Println("  sshm add web01 root@10.0.0.11")
+	fmt.Println("  sshm doctor")
+	fmt.Println("  sshm web01")
+	fmt.Println()
+}
+
 // printInteractiveHelp shows help for interactive mode with short aliases.
 func (app *App) printInteractiveHelp() {
 	ui.PrintHeader("sshm - 交互模式帮助")

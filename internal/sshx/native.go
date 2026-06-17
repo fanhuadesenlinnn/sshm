@@ -27,6 +27,7 @@ func createHostKeyCallback(h config.Host) (ssh.HostKeyCallback, error) {
 	}
 	if policy == config.HostKeyPolicyInsecure {
 		fmt.Fprintf(os.Stderr, "%s\n", ui.Warn("主机 %s 已配置为跳过身份验证", h.Alias))
+		// #nosec G106 -- insecure is an explicit per-host or global user policy.
 		return ssh.InsecureIgnoreHostKey(), nil
 	}
 	if !config.ValidHostKeyPolicy(policy) {

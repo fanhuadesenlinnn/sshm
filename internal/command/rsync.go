@@ -8,7 +8,6 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"path"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -188,9 +187,9 @@ func pushRsync(ctx context.Context, rsyncPath, sshCommand string, client *sftp.C
 	if err != nil {
 		return options.remotePath, false, err
 	}
-	remotePath := path.Clean(options.remotePath)
-	if remotePath == "." || remotePath == "/" || strings.HasPrefix(remotePath, "~/") {
-		return remotePath, false, fmt.Errorf("远程目标必须是明确路径，且不支持 ~ 展开: %s", remotePath)
+	remotePath, err := cleanTransferRemotePath(options.remotePath)
+	if err != nil {
+		return options.remotePath, false, err
 	}
 	exists := false
 	var targetManifest []manifestEntry
@@ -248,7 +247,10 @@ func pushRsync(ctx context.Context, rsyncPath, sshCommand string, client *sftp.C
 }
 
 func pullRsync(ctx context.Context, rsyncPath, sshCommand string, client *sftp.Client, host config.Host, options transferOptions) (string, bool, error) {
-	remotePath := path.Clean(options.remotePath)
+	remotePath, err := cleanTransferRemotePath(options.remotePath)
+	if err != nil {
+		return options.localPath, false, err
+	}
 	sourceManifest, err := remoteManifest(client, remotePath)
 	if err != nil {
 		return options.localPath, false, err
@@ -309,6 +311,7 @@ func (e *rsyncFallbackError) Error() string { return e.err.Error() }
 func (e *rsyncFallbackError) Unwrap() error { return e.err }
 
 func runRsync(ctx context.Context, rsyncPath, sshCommand, source, destination string) error {
+	// #nosec G204 -- rsync/ssh paths are resolved with LookPath; data args are passed without a shell.
 	command := exec.CommandContext(ctx, rsyncPath,
 		"--archive",
 		"--protect-args",

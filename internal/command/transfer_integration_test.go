@@ -83,6 +83,9 @@ func TestTransferOnePushesAndPullsDirectoryOverSFTP(t *testing.T) {
 	if method != "sftp" || destination != expectedDestination {
 		t.Fatalf("method=%q destination=%q want=%q", method, destination, expectedDestination)
 	}
+	if !changed {
+		t.Fatal("first pull should be changed")
+	}
 	assertCommandTestFile(t, filepath.Join(expectedDestination, "nested", "it's ready.txt"), "payload")
 
 	if err := os.WriteFile(filepath.Join(localSource, "nested", "it's ready.txt"), []byte("updated"), 0600); err != nil {

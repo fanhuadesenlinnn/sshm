@@ -59,6 +59,17 @@ func TestSafeRemoteEntryNameRejectsTraversal(t *testing.T) {
 	}
 }
 
+func TestCleanTransferRemotePathRejectsUnsafePaths(t *testing.T) {
+	for _, remote := range []string{"", ".", "/", "~", "~/dest", "../secret", "/etc/../secret", "safe/\x00path"} {
+		if _, err := cleanTransferRemotePath(remote); err == nil {
+			t.Fatalf("remote path %q should be rejected", remote)
+		}
+	}
+	if got, err := cleanTransferRemotePath("folder with space/it's-ready"); err != nil || got != "folder with space/it's-ready" {
+		t.Fatalf("safe remote path = %q, err = %v", got, err)
+	}
+}
+
 func TestClassifyDiffDataDistinguishesTextAndBinary(t *testing.T) {
 	if _, text, err := classifyDiffData([]byte("old\nnew\n")); err != nil || !text {
 		t.Fatalf("text=%t err=%v", text, err)

@@ -1,6 +1,7 @@
 package command
 
 import (
+	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -237,6 +238,13 @@ func TestLogsRejectUnknownSubcommand(t *testing.T) {
 	app := &App{Store: store, ConfigPath: path}
 	if err := app.cmdLogs([]string{"unknown"}); err == nil || !strings.Contains(err.Error(), "未知 logs 命令") {
 		t.Fatalf("logs unknown should fail: %v", err)
+	}
+}
+
+func TestLogsCleanRejectsRootSSHMHome(t *testing.T) {
+	t.Setenv("SSHM_HOME", string(os.PathSeparator))
+	if _, err := safeLogsDirForClean(); err == nil || !strings.Contains(err.Error(), "根目录") {
+		t.Fatalf("root SSHM_HOME should be rejected: %v", err)
 	}
 }
 

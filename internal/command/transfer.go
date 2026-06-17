@@ -341,6 +341,25 @@ func transferOne(ctx context.Context, host config.Host, store *secret.FileStore,
 	return "sftp", destination, changed, err
 }
 
+func cleanTransferRemotePath(remotePath string) (string, error) {
+	if remotePath == "" || strings.ContainsRune(remotePath, '\x00') {
+		return "", fmt.Errorf("远程路径不能为空或包含 NUL")
+	}
+	if remotePath == "~" || strings.HasPrefix(remotePath, "~/") {
+		return "", fmt.Errorf("远程路径必须是明确路径，且不支持 ~ 展开: %s", remotePath)
+	}
+	for _, component := range strings.Split(remotePath, "/") {
+		if component == ".." {
+			return "", fmt.Errorf("远程路径不能包含上级目录组件: %s", remotePath)
+		}
+	}
+	clean := path.Clean(remotePath)
+	if clean == "." || clean == "/" {
+		return "", fmt.Errorf("远程路径必须指向明确文件或目录: %s", remotePath)
+	}
+	return clean, nil
+}
+
 func pushSFTP(client *sftp.Client, localPath, remotePath string, options transferOptions) (bool, error) {
 	sourceManifest, err := localManifest(localPath)
 	if err != nil {
@@ -350,9 +369,9 @@ func pushSFTP(client *sftp.Client, localPath, remotePath string, options transfe
 	if err != nil {
 		return false, fmt.Errorf("读取本地源失败: %w", err)
 	}
-	remotePath = path.Clean(remotePath)
-	if remotePath == "." || remotePath == "/" || strings.HasPrefix(remotePath, "~/") {
-		return false, fmt.Errorf("远程目标必须是明确路径，且不支持 ~ 展开: %s", remotePath)
+	remotePath, err = cleanTransferRemotePath(remotePath)
+	if err != nil {
+		return false, err
 	}
 	exists := false
 	var targetManifest []manifestEntry
@@ -410,7 +429,11 @@ func pushSFTP(client *sftp.Client, localPath, remotePath string, options transfe
 }
 
 func pullSFTP(client *sftp.Client, remotePath, destination string, options transferOptions) (bool, error) {
-	remotePath = path.Clean(remotePath)
+	var err error
+	remotePath, err = cleanTransferRemotePath(remotePath)
+	if err != nil {
+		return false, err
+	}
 	sourceManifest, err := remoteManifest(client, remotePath)
 	if err != nil {
 		return false, err

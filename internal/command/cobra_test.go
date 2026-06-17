@@ -40,6 +40,9 @@ func TestOnlyDocumentedCommandsRunWithoutInitialization(t *testing.T) {
 	t.Setenv("SSHM_HOME", t.TempDir())
 	path := config.ConfigFilePath()
 	app := &App{Store: config.NewStoreWithPath(path), ConfigPath: path}
+	if err := runCobra(app, nil); err != nil {
+		t.Fatalf("root command should show first-run guide without initialization: %v", err)
+	}
 	for _, args := range [][]string{{"init"}, {"config", "path"}, {"doctor"}} {
 		if err := runCobra(app, args); err != nil {
 			t.Fatalf("allowed command %v: %v", args, err)
