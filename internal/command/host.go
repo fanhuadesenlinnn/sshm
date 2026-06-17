@@ -70,7 +70,7 @@ func (app *App) printHostHelp() {
 	fmt.Println("  a/add [别名 用户@主机[:端口]]  添加单台主机")
 	fmt.Println("  ab/add-batch [别名=目标...]     批量添加主机")
 	fmt.Println("  e/edit <别名|ID>               交互式编辑主机")
-	fmt.Println("  d/delete <别名|ID>             删除主机")
+	fmt.Println("  d/delete <别名|ID> [--yes]     删除主机")
 	fmt.Println("  config-edit                    使用 $EDITOR 校验后更新 sshm.yaml")
 	fmt.Println("  import-ssh-config [路径]       导入 OpenSSH 配置")
 	fmt.Println()
@@ -173,7 +173,10 @@ func (app *App) cmdConfigEdit(_ []string) error {
 			editor = "vi"
 		}
 	}
-	parts := strings.Fields(editor)
+	parts := splitEditorCommand(editor)
+	if len(parts) == 0 {
+		return fmt.Errorf("编辑器命令为空")
+	}
 	cmd := exec.Command(parts[0], append(parts[1:], tmpPath)...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	if err := cmd.Run(); err != nil {
@@ -192,4 +195,8 @@ func (app *App) cmdConfigEdit(_ []string) error {
 	}
 	ui.PrintSuccess("配置已校验并更新：%s", app.Store.Path())
 	return nil
+}
+
+func splitEditorCommand(editor string) []string {
+	return parseArgs(editor)
 }

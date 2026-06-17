@@ -98,8 +98,9 @@ handlers:
 }
 
 func TestResolveStepsUsesDeclaringFileDirectory(t *testing.T) {
+	baseDir := filepath.FromSlash("/project/tasks")
 	profile := Profile{
-		Name: "app", BaseDir: "/project/tasks", Targets: TargetSelector{All: true},
+		Name: "app", BaseDir: baseDir, Targets: TargetSelector{All: true},
 		Steps: []Step{
 			{Name: "push", Push: &PushAction{Src: "./dist/app", Dest: "/opt/app"}},
 			{Name: "pull", Pull: &PullAction{Src: "/var/log/app.log", Dest: "./logs"}},
@@ -109,7 +110,7 @@ func TestResolveStepsUsesDeclaringFileDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if steps[0].Push.Src != "/project/tasks/dist/app" || steps[1].Pull.Dest != "/project/tasks/logs" {
+	if steps[0].Push.Src != filepath.Join(baseDir, "dist", "app") || steps[1].Pull.Dest != filepath.Join(baseDir, "logs") {
 		t.Fatalf("resolved steps = %+v", steps)
 	}
 }

@@ -8,6 +8,7 @@ import (
 )
 
 func (app *App) cmdDelete(args []string) error {
+	yes, args := removeFlag(args, "--yes")
 	h, idx, _, err := app.resolveHost(args, "请输入要删除的主机别名或ID: ")
 	if err != nil {
 		return err
@@ -15,10 +16,14 @@ func (app *App) cmdDelete(args []string) error {
 
 	ui.RenderHostDetail(*h, idx)
 
-	confirm := ui.ReadLine(fmt.Sprintf("确认删除 %s? [y/N]: ", h.Alias))
-	if confirm != "y" && confirm != "Y" && confirm != "yes" {
-		ui.PrintWarn("已取消")
-		return nil
+	if !yes {
+		if !ui.IsTerminal() {
+			return fmt.Errorf("删除主机需要确认；非交互环境请使用 --yes")
+		}
+		if !ui.ReadYesNo(fmt.Sprintf("确认删除 %s? [y/N]: ", h.Alias)) {
+			ui.PrintWarn("已取消")
+			return nil
+		}
 	}
 
 	removeHost := func(doc *config.Document) error {

@@ -12,7 +12,8 @@ func newInitCommand(app *App) *cobra.Command {
 	var force bool
 	cmd := &cobra.Command{
 		Use:         "init",
-		Short:       "初始化 ~/.sshm 工作目录和 v2 配置",
+		Short:       commandShort("init", "初始化 ~/.sshm 工作目录和 v2 配置"),
+		GroupID:     commandGroupID("init"),
 		Args:        cobra.NoArgs,
 		Annotations: map[string]string{allowWithoutConfig: "true"},
 		RunE: func(_ *cobra.Command, _ []string) error {
@@ -25,8 +26,9 @@ func newInitCommand(app *App) *cobra.Command {
 
 func newConfigCommand(app *App) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "config",
-		Short: "查看和编辑主配置",
+		Use:     "config",
+		Short:   commandShort("config", "查看和编辑主配置"),
+		GroupID: commandGroupID("config"),
 		RunE: func(_ *cobra.Command, args []string) error {
 			return app.cmdConfig(args)
 		},

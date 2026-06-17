@@ -62,46 +62,50 @@ func newRootCommand(app *App) *cobra.Command {
 		},
 	}
 	root.SetVersionTemplate("sshm {{.Version}}\n")
+	for _, group := range commandGroups {
+		root.AddGroup(&cobra.Group{ID: group.ID, Title: group.Title})
+	}
 
 	root.AddCommand(newInitCommand(app))
 	root.AddCommand(newConfigCommand(app))
-	root.AddCommand(legacyCommand("doctor", "检查配置与凭据环境", app.cmdDoctor, allowWithoutConfig))
-	root.AddCommand(legacyCommand("host", "管理主机", app.cmdHost))
-	root.AddCommand(legacyCommandWithAliases("key", "管理托管密钥", app.cmdKey, []string{"k"}))
-	root.AddCommand(legacyCommandWithAliases("tag", "管理标签", app.cmdTag, []string{"tags"}))
+	root.AddCommand(legacyCommand("doctor", "", app.cmdDoctor, allowWithoutConfig))
+	root.AddCommand(legacyCommand("host", "", app.cmdHost))
+	root.AddCommand(legacyCommand("key", "", app.cmdKey))
+	root.AddCommand(legacyCommand("tag", "", app.cmdTag))
 	root.AddCommand(newDeployCommand(app))
-	root.AddCommand(legacyCommandWithAliases("list", "列出主机", app.cmdList, []string{"ls"}))
-	root.AddCommand(legacyCommand("add", "添加主机", app.cmdAdd))
-	root.AddCommand(legacyCommand("add-batch", "批量添加主机", app.cmdAddBatch))
-	root.AddCommand(legacyCommand("edit", "编辑主机", app.cmdEdit))
-	root.AddCommand(legacyCommandWithAliases("delete", "删除主机", app.cmdDelete, []string{"del", "rm"}))
-	root.AddCommand(legacyCommandWithAliases("show", "显示主机详情", app.cmdShow, []string{"info"}))
-	root.AddCommand(legacyCommandWithAliases("search", "搜索主机", app.cmdSearch, []string{"find"}))
-	root.AddCommand(legacyCommandWithAliases("connect", "连接主机", app.cmdConnect, []string{"conn"}))
-	root.AddCommand(legacyCommand("ping", "测试 SSH 连接", app.cmdPing))
-	root.AddCommand(legacyCommand("exec", "在单台主机执行命令", app.cmdExec))
-	root.AddCommand(legacyCommand("exec-tag", "按标签批量执行命令", app.cmdExecTag))
-	root.AddCommand(legacyCommand("push", "向单台主机推送文件或目录", app.cmdPush))
-	root.AddCommand(legacyCommand("pull", "从单台主机拉取文件或目录", app.cmdPull))
-	root.AddCommand(legacyCommand("push-tag", "按标签批量推送文件或目录", app.cmdPushTag))
-	root.AddCommand(legacyCommand("pull-tag", "按标签批量拉取文件或目录", app.cmdPullTag))
-	root.AddCommand(legacyCommand("forward", "建立本地端口转发", app.cmdForward))
-	root.AddCommand(legacyCommand("logs", "查看或清理操作日志", app.cmdLogs))
-	root.AddCommand(legacyCommand("recent", "显示收藏和最近连接", app.cmdRecent))
-	root.AddCommand(legacyCommand("pin", "收藏主机", func(args []string) error { return app.cmdPin(args, true) }))
-	root.AddCommand(legacyCommand("unpin", "取消收藏主机", func(args []string) error { return app.cmdPin(args, false) }))
-	root.AddCommand(legacyCommand("pick", "打开主机选择器", app.cmdPick))
-	root.AddCommand(legacyCommand("passwd", "设置 SSH 密码", app.cmdPasswd))
-	root.AddCommand(legacyCommand("forget-pass", "删除 SSH 密码", app.cmdForgetPass))
-	root.AddCommand(legacyCommand("show-pubkey", "显示托管公钥", app.cmdShowPubkey))
-	root.AddCommand(legacyCommand("auth", "修改认证策略", app.cmdAuth))
-	root.AddCommand(legacyCommand("export-ssh-config", "导出 OpenSSH 配置", app.cmdExportSSHConfig))
-	root.AddCommand(legacyCommand("import-ssh-config", "导入 OpenSSH 配置", app.cmdImportSSHConfig))
-	root.AddCommand(legacyCommand("completion", "生成 Shell 自动补全脚本", app.cmdCompletion))
+	root.AddCommand(legacyCommand("list", "", app.cmdList))
+	root.AddCommand(legacyCommand("add", "", app.cmdAdd))
+	root.AddCommand(legacyCommand("add-batch", "", app.cmdAddBatch))
+	root.AddCommand(legacyCommand("edit", "", app.cmdEdit))
+	root.AddCommand(legacyCommand("delete", "", app.cmdDelete))
+	root.AddCommand(legacyCommand("show", "", app.cmdShow))
+	root.AddCommand(legacyCommand("search", "", app.cmdSearch))
+	root.AddCommand(legacyCommand("connect", "", app.cmdConnect))
+	root.AddCommand(legacyCommand("ping", "", app.cmdPing))
+	root.AddCommand(legacyCommand("exec", "", app.cmdExec))
+	root.AddCommand(legacyCommand("exec-tag", "", app.cmdExecTag))
+	root.AddCommand(legacyCommand("push", "", app.cmdPush))
+	root.AddCommand(legacyCommand("pull", "", app.cmdPull))
+	root.AddCommand(legacyCommand("push-tag", "", app.cmdPushTag))
+	root.AddCommand(legacyCommand("pull-tag", "", app.cmdPullTag))
+	root.AddCommand(legacyCommand("forward", "", app.cmdForward))
+	root.AddCommand(legacyCommand("logs", "", app.cmdLogs))
+	root.AddCommand(legacyCommand("recent", "", app.cmdRecent))
+	root.AddCommand(legacyCommand("pin", "", func(args []string) error { return app.cmdPin(args, true) }))
+	root.AddCommand(legacyCommand("unpin", "", func(args []string) error { return app.cmdPin(args, false) }))
+	root.AddCommand(legacyCommand("pick", "", app.cmdPick))
+	root.AddCommand(legacyCommand("passwd", "", app.cmdPasswd))
+	root.AddCommand(legacyCommand("forget-pass", "", app.cmdForgetPass))
+	root.AddCommand(legacyCommand("show-pubkey", "", app.cmdShowPubkey))
+	root.AddCommand(legacyCommand("auth", "", app.cmdAuth))
+	root.AddCommand(legacyCommand("export-ssh-config", "", app.cmdExportSSHConfig))
+	root.AddCommand(legacyCommand("import-ssh-config", "", app.cmdImportSSHConfig))
+	root.AddCommand(legacyCommand("completion", "", app.cmdCompletion))
 	root.AddCommand(&cobra.Command{
-		Use:   "lock",
-		Short: "锁定当前会话密码库",
-		Args:  cobra.NoArgs,
+		Use:     "lock",
+		Short:   commandShort("lock", "锁定当前会话密码库"),
+		GroupID: commandGroupID("lock"),
+		Args:    cobra.NoArgs,
 		Run: func(_ *cobra.Command, _ []string) {
 			app.lockSecretStore()
 			ui.PrintSuccess("当前会话密码库已锁定")
@@ -144,10 +148,18 @@ func legacyCommand(use, short string, run func([]string) error, annotations ...s
 }
 
 func legacyCommandWithAliases(use, short string, run func([]string) error, aliases []string, annotations ...string) *cobra.Command {
+	name := strings.Fields(use)[0]
+	if short == "" {
+		short = commandShort(name, short)
+	}
+	if len(aliases) == 0 {
+		aliases = commandAliases(name)
+	}
 	cmd := &cobra.Command{
 		Use:                use,
 		Aliases:            aliases,
 		Short:              short,
+		GroupID:            commandGroupID(name),
 		DisableFlagParsing: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 1 && (args[0] == "-h" || args[0] == "--help" || args[0] == "help") {
@@ -202,12 +214,12 @@ sshm web01
 sshm connect web01`),
 	},
 	"exec": {
-		use:  "exec [--yes] [--quiet] <别名|ID> <命令>",
-		long: "在单台主机上执行远程命令。默认会在交互终端确认；脚本或 CI 中请显式传入 --yes。",
+		use:  "exec [--yes] [--quiet] [--no-log] <别名|ID> <命令>",
+		long: "在单台主机上执行远程命令。默认会在交互终端确认并写入操作日志；脚本或 CI 中请显式传入 --yes。",
 		example: strings.TrimSpace(`
 sshm exec web01 "uptime"
 sshm exec --yes web01 "systemctl status app"
-sshm exec --yes --quiet web01 "hostname"`),
+sshm exec --yes --quiet --no-log web01 "hostname"`),
 	},
 	"exec-tag": {
 		use:  "exec-tag [批量选项] <标签|all> <命令>",
@@ -351,6 +363,7 @@ func dispatchLegacyRootOption(app *App, args []string) (bool, error) {
 		"--delete": app.cmdDelete, "--del": app.cmdDelete, "-d": app.cmdDelete,
 		"--show":   app.cmdShow,
 		"--search": app.cmdSearch, "--find": app.cmdSearch, "-s": app.cmdSearch,
+		"--tag":  app.cmdTag,
 		"--ping": app.cmdPing, "-p": app.cmdPing,
 		"--exec": app.cmdExec, "-x": app.cmdExec,
 		"--exec-tag": app.cmdExecTag, "--xt": app.cmdExecTag,
@@ -360,6 +373,11 @@ func dispatchLegacyRootOption(app *App, args []string) (bool, error) {
 		"--forget-pass":       app.cmdForgetPass,
 		"--show-pubkey":       app.cmdShowPubkey,
 		"--auth":              app.cmdAuth,
+		"--lock": func([]string) error {
+			app.lockSecretStore()
+			ui.PrintSuccess("当前会话密码库已锁定")
+			return nil
+		},
 	}
 	handler, ok := handlers[args[0]]
 	if !ok {

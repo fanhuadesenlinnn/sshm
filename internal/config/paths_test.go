@@ -3,14 +3,25 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 )
 
+func setTestUserHome(t *testing.T, home string) {
+	t.Helper()
+	t.Setenv("HOME", home)
+	if runtime.GOOS == "windows" {
+		t.Setenv("USERPROFILE", home)
+		t.Setenv("HOMEDRIVE", "")
+		t.Setenv("HOMEPATH", "")
+	}
+}
+
 func TestResolvePathsUsesDotSSHMAndIgnoresLegacyOverrides(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setTestUserHome(t, home)
 	t.Setenv("SSHM_HOME", "")
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "xdg"))
 	t.Setenv("SSHM_CONFIG_FILE", filepath.Join(home, "ignored.yaml"))
@@ -70,7 +81,7 @@ func TestInitializeCreatesChineseV2ConfigAndForceBackup(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if info.Mode().Perm() != 0700 {
+		if runtime.GOOS != "windows" && info.Mode().Perm() != 0700 {
 			t.Fatalf("%s mode = %o", path, info.Mode().Perm())
 		}
 	}
@@ -85,7 +96,17 @@ func TestInitializeCreatesChineseV2ConfigAndForceBackup(t *testing.T) {
 	if backup == "" {
 		t.Fatal("force init should create backup")
 	}
-	if info, err := os.Stat(backup); err != nil || info.Mode().Perm() != 0600 {
+	if info, err := os.Stat(backup); err != nil || (runtime.GOOS != "windows" && info.Mode().Perm() != 0600) {
 		t.Fatalf("backup stat = %v, %v", info, err)
+	}
+}
+
+func TestExpandPathSupportsWindowsTildeSeparator(t *testing.T) {
+	home := t.TempDir()
+	setTestUserHome(t, home)
+	got := ExpandPath(`~\keys\id_ed25519`)
+	want := filepath.Join(home, "keys", "id_ed25519")
+	if got != want {
+		t.Fatalf("ExpandPath windows tilde = %q, want %q", got, want)
 	}
 }

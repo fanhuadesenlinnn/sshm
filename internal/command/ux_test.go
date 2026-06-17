@@ -164,3 +164,32 @@ func TestConfigEditRequiresInitializedConfig(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+func TestSplitEditorCommandKeepsQuotedWindowsPath(t *testing.T) {
+	parts := splitEditorCommand(`"C:\Program Files\Editor\editor.exe" --wait`)
+	want := []string{`C:\Program Files\Editor\editor.exe`, "--wait"}
+	if !reflect.DeepEqual(parts, want) {
+		t.Fatalf("parts = %#v, want %#v", parts, want)
+	}
+}
+
+func TestDeleteRequiresConfirmationUnlessYes(t *testing.T) {
+	store := config.NewStoreWithPath(filepath.Join(t.TempDir(), "sshm.yaml"))
+	host := config.DefaultHost()
+	host.Alias = "prod"
+	host.User = "root"
+	host.Host = "example.com"
+	if err := store.Add(host); err != nil {
+		t.Fatal(err)
+	}
+	app := &App{Store: store, ConfigPath: store.Path()}
+	if err := app.cmdDelete([]string{"prod"}); err == nil || !strings.Contains(err.Error(), "--yes") {
+		t.Fatalf("delete without --yes in non-interactive test should fail: %v", err)
+	}
+	if err := app.cmdDelete([]string{"prod", "--yes"}); err != nil {
+		t.Fatalf("delete with --yes: %v", err)
+	}
+	if _, _, _, err := store.FindHost("prod"); err == nil {
+		t.Fatal("host should be deleted")
+	}
+}

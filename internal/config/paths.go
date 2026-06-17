@@ -141,7 +141,7 @@ func ExpandPath(p string) string {
 		home, _ := os.UserHomeDir()
 		return home
 	}
-	if len(p) >= 2 && p[:2] == "~/" {
+	if len(p) >= 2 && (p[:2] == "~/" || p[:2] == `~\`) {
 		home, _ := os.UserHomeDir()
 		return filepath.Join(home, p[2:])
 	}

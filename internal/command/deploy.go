@@ -16,9 +16,10 @@ import (
 
 func newDeployCommand(app *App) *cobra.Command {
 	command := &cobra.Command{
-		Use:   "deploy",
-		Short: "运行 Deploy v2 轻量编排",
-		Long:  "运行 Deploy v2 轻量编排。deploy 从 ~/.sshm/deploy.yaml 和 ~/.sshm/deploy.d/*.yaml 读取 profile；显式 --file 时只读取指定文件。",
+		Use:     "deploy",
+		Short:   commandShort("deploy", "运行 Deploy v2 轻量编排"),
+		GroupID: commandGroupID("deploy"),
+		Long:    "运行 Deploy v2 轻量编排。deploy 从 ~/.sshm/deploy.yaml 和 ~/.sshm/deploy.d/*.yaml 读取 profile；显式 --file 时只读取指定文件。",
 		Example: strings.TrimSpace(`
 sshm deploy init
 sshm deploy list

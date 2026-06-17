@@ -16,9 +16,9 @@ import (
 )
 
 func (app *App) cmdExec(args []string) error {
-	yes, quiet, args := parseOperationFlags(args)
+	yes, quiet, noLog, args := parseOperationFlags(args)
 	if len(args) < 2 {
-		return fmt.Errorf("用法: sshm exec [--yes] [--quiet] <别名|ID> <命令>")
+		return fmt.Errorf("用法: sshm exec [--yes] [--quiet] [--no-log] <别名|ID> <命令>")
 	}
 
 	h, _, _, err := app.Store.FindHost(args[0])
@@ -47,7 +47,8 @@ func (app *App) cmdExec(args []string) error {
 	}
 	if !quiet {
 		fmt.Print(opResult.Output)
-	} else {
+	}
+	if !noLog {
 		if logErr := writeOperationLog("exec", command, []operation.Result{result}); logErr != nil {
 			return logErr
 		}
@@ -169,19 +170,21 @@ func printBatchSummary(summary batch.Summary) {
 	fmt.Printf("  skipped: %d\n", summary.Skipped)
 }
 
-func parseOperationFlags(args []string) (yes, quiet bool, rest []string) {
+func parseOperationFlags(args []string) (yes, quiet, noLog bool, rest []string) {
 	for len(args) > 0 {
 		switch args[0] {
 		case "--yes":
 			yes = true
 		case "--quiet":
 			quiet = true
+		case "--no-log":
+			noLog = true
 		default:
-			return yes, quiet, args
+			return yes, quiet, noLog, args
 		}
 		args = args[1:]
 	}
-	return yes, quiet, nil
+	return yes, quiet, noLog, nil
 }
 
 // tryGetSecretStore attempts to create a secret store, prompting for master password.

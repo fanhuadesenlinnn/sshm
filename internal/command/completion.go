@@ -8,13 +8,6 @@ import (
 	"github.com/fanhuadesenlinnn/sshm/v6/internal/deploy"
 )
 
-var completionCommands = []string{
-	"add", "add-batch", "auth", "completion", "config", "connect", "delete", "doctor", "edit", "exec",
-	"exec-tag", "export-ssh-config", "forget-pass", "push", "push-tag", "pull", "pull-tag", "forward", "tag", "deploy",
-	"help", "host", "import-ssh-config", "init", "key", "list", "lock", "logs", "passwd", "pin",
-	"pick", "ping", "recent", "search", "show", "show-pubkey", "unpin",
-}
-
 func (app *App) cmdCompletion(args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("用法: sshm completion <bash|zsh|fish>")
@@ -51,7 +44,7 @@ func (app *App) completionCandidates() ([]string, error) {
 			candidates = append(candidates, value)
 		}
 	}
-	for _, command := range completionCommands {
+	for _, command := range commandNamesForCompletion() {
 		add(command)
 	}
 	for _, host := range doc.Hosts {

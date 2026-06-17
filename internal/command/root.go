@@ -64,16 +64,9 @@ func Run(args []string) error {
 }
 
 func unknownOptionError(option string) error {
-	commands := append([]string{}, completionCommands...)
-	commands = append(commands,
-		"--list", "--add", "--edit", "--delete", "--show", "--search",
-		"--tag", "--ping", "--exec", "--exec-tag", "--passwd",
-		"--forget-pass", "--show-pubkey", "--auth",
-		"--lock", "--export-ssh-config", "--import-ssh-config", "--help", "--version",
-	)
 	best := ""
 	bestDistance := 4
-	for _, command := range commands {
+	for _, command := range legacyOptionCandidates() {
 		if distance := editDistance(option, command); distance < bestDistance {
 			best = command
 			bestDistance = distance
@@ -116,38 +109,15 @@ func (app *App) printHelp() {
 	fmt.Println("  sshm <命令> [参数...]           执行管理命令")
 	fmt.Println()
 	fmt.Println("常用命令（旧版 --参数仍然兼容）:")
-	fmt.Println("  list [--compact|--wide]       列出所有主机")
-	fmt.Println("  host                          进入主机管理中心")
-	fmt.Println("  key                           进入托管密钥中心")
-	fmt.Println("  add [别名 user@主机[:端口]]    添加主机")
-	fmt.Println("  add-batch [别名=目标...]        批量添加主机")
-	fmt.Println("  edit <别名|ID>                编辑主机")
-	fmt.Println("  delete <别名|ID>              删除主机")
-	fmt.Println("  show <别名|ID>                显示主机详情")
-	fmt.Println("  search <关键词...>            搜索主机")
-	fmt.Println("  tag                           进入标签管理中心")
-	fmt.Println("  deploy                        批量部署工作流")
-	fmt.Println("  recent [数量]                 显示收藏和最近连接")
-	fmt.Println("  pin/unpin <别名|ID>           收藏或取消收藏")
-	fmt.Println("  completion <bash|zsh|fish>     生成 Shell 自动补全脚本")
-	fmt.Println("  pick                          打开可搜索主机选择器")
-	fmt.Println("  connect <别名|ID>              显式连接主机")
-	fmt.Println("  doctor                        检查配置与凭据环境")
-	fmt.Println("  ping [--yes] [--quiet] [目标]  测试连接")
-	fmt.Println("  exec [--yes] [--quiet] ...     执行命令")
-	fmt.Println("  exec-tag [--yes] [--quiet] ... 按标签执行命令")
-	fmt.Println("  push/pull ...                  安全传输文件或目录，可选 rsync 加速")
-	fmt.Println("  forward <主机> <本地> <远程>   建立本地端口转发")
-	fmt.Println("  logs [clean]                   查看或清理操作日志")
-	fmt.Println("  passwd <别名|ID>              设置 SSH 密码")
-	fmt.Println("  forget-pass <别名|ID>         删除 SSH 密码")
-	fmt.Println("  show-pubkey <别名|ID>         显示公钥")
-	fmt.Println("  auth <别名|ID>                修改认证策略")
-	fmt.Println("  lock                           锁定当前会话密码库")
-	fmt.Println("  init                           初始化 ~/.sshm 工作目录")
-	fmt.Println("  config path/edit               查看路径或校验后编辑 sshm.yaml")
-	fmt.Println("  export-ssh-config <文件>      导出 SSH 配置")
-	fmt.Println("  import-ssh-config [文件]      导入 SSH 配置")
+	for _, group := range commandGroups {
+		fmt.Printf("  %s\n", group.Title)
+		for _, entry := range commandCatalog {
+			if entry.Group != group.ID || entry.HelpUsage == "" {
+				continue
+			}
+			fmt.Printf("    %-32s %s\n", entry.HelpUsage, entry.HelpSummary)
+		}
+	}
 	fmt.Println("  --help, -h                    显示帮助")
 	fmt.Println("  --version, -v                 显示版本")
 	fmt.Println()
