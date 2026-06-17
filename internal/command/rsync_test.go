@@ -1,6 +1,7 @@
 package command
 
 import (
+	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/pem"
@@ -32,6 +33,48 @@ func TestRsyncRemoteKeepsSpecialPathForProtectArgs(t *testing.T) {
 
 func commandTestHost() config.Host {
 	return config.Host{User: "user", Host: "example.test"}
+}
+
+func TestExplicitRsyncFailsWhenCapabilityProbeCannotGuaranteeSemantics(t *testing.T) {
+	_, _, used, err := tryRsyncTransfer(context.Background(), nil, nil, commandTestHost(), nil, transferOptions{
+		method: "rsync", localPath: "local", remotePath: "remote",
+	})
+	if !used || err == nil || !strings.Contains(err.Error(), "显式 rsync 不可用") {
+		t.Fatalf("used=%t err=%v", used, err)
+	}
+}
+
+func TestAutoRsyncFallsBackWhenCapabilityProbeCannotGuaranteeSemantics(t *testing.T) {
+	_, _, used, err := tryRsyncTransfer(context.Background(), nil, nil, commandTestHost(), nil, transferOptions{
+		method: "auto", localPath: "local", remotePath: "remote",
+	})
+	if used || err != nil {
+		t.Fatalf("auto rsync should silently fall back to SFTP: used=%t err=%v", used, err)
+	}
+}
+
+func TestRsyncAvailableRejectsUnsupportedInputsBeforeExternalProbe(t *testing.T) {
+	vault := secret.NewFileStore(filepath.Join(t.TempDir(), "sshm.yaml"), "master")
+	host := commandTestHost()
+	host.Identity = config.ManagedIdentity("personal")
+	options := transferOptions{localPath: "local", remotePath: "remote"}
+	if _, _, ok := rsyncAvailable(nil, host, nil, options); ok {
+		t.Fatal("rsync should require an unlocked managed-key store")
+	}
+	host.JumpHost = "jump"
+	if _, _, ok := rsyncAvailable(nil, host, vault, options); ok {
+		t.Fatal("rsync should reject jump-host transfers")
+	}
+	host.JumpHost = ""
+	host.Host = "example test"
+	if _, _, ok := rsyncAvailable(nil, host, vault, options); ok {
+		t.Fatal("rsync should reject unsafe endpoint syntax")
+	}
+	host.Host = "example.test"
+	options.remotePath = "remote\npath"
+	if _, _, ok := rsyncAvailable(nil, host, vault, options); ok {
+		t.Fatal("rsync should reject unsafe remote paths before probing")
+	}
 }
 
 func TestPrepareRsyncTransportPinsTrustAndDisablesPassword(t *testing.T) {

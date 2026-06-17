@@ -9,7 +9,7 @@
 - 更精细的文本 unified diff 与可配置 diff 日志策略。
 - Deploy 简单变量替换的正式契约。
 - 更丰富的 BatchRunner 机器可读输出。
-- rsync 能力探测与跨平台高保真集成测试。
+- rsync 跨平台高保真集成测试环境，覆盖真实远端 `rsync --server` 行为。
 - Windows 路径与发布制品的持续兼容性测试扩展。
 
 ## 持续非目标

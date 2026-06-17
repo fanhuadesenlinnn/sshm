@@ -9,8 +9,14 @@ import (
 )
 
 const (
-	lockTimeout = 30 * time.Second
-	staleAfter  = 2 * time.Minute
+	defaultLockTimeout = 30 * time.Second
+	defaultStaleAfter  = 2 * time.Minute
+)
+
+var (
+	lockTimeout    = defaultLockTimeout
+	staleAfter     = defaultStaleAfter
+	heartbeatEvery = 30 * time.Second
 )
 
 // WithLock serializes a complete read-modify-write transaction across processes.
@@ -26,6 +32,8 @@ func WithLock(path string, fn func() error) error {
 		if err == nil {
 			_, _ = fmt.Fprintf(lock, "%d\n", os.Getpid())
 			_ = lock.Close()
+			stopHeartbeat := startLockHeartbeat(lockPath)
+			defer stopHeartbeat()
 			defer os.Remove(lockPath)
 			return fn()
 		}
@@ -33,7 +41,7 @@ func WithLock(path string, fn func() error) error {
 			return fmt.Errorf("创建文件锁失败: %w", err)
 		}
 
-		if info, statErr := os.Stat(lockPath); statErr == nil && time.Since(info.ModTime()) > staleAfter {
+		if lockIsStale(lockPath) {
 			_ = os.Remove(lockPath)
 			continue
 		}
@@ -42,6 +50,51 @@ func WithLock(path string, fn func() error) error {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
+}
+
+func startLockHeartbeat(lockPath string) func() {
+	interval := heartbeatEvery
+	if interval <= 0 || interval >= staleAfter {
+		interval = staleAfter / 4
+	}
+	if interval <= 0 {
+		interval = 50 * time.Millisecond
+	}
+	done := make(chan struct{})
+	stopped := make(chan struct{})
+	go func() {
+		defer close(stopped)
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case now := <-ticker.C:
+				_ = os.Chtimes(lockPath, now, now)
+			}
+		}
+	}()
+	return func() {
+		close(done)
+		<-stopped
+	}
+}
+
+func lockIsStale(lockPath string) bool {
+	info, err := os.Stat(lockPath)
+	if err != nil || time.Since(info.ModTime()) <= staleAfter {
+		return false
+	}
+	data, err := os.ReadFile(lockPath)
+	if err != nil {
+		return true
+	}
+	var pid int
+	if _, err := fmt.Sscanf(string(data), "%d", &pid); err != nil {
+		return true
+	}
+	return !processAlive(pid)
 }
 
 // Write atomically replaces a file without creating backup copies.

@@ -255,7 +255,7 @@ func (r Runner) executeStep(ctx context.Context, host config.Host, plan Plan, st
 		if plan.Check {
 			return StepResult{Status: batch.StatusSkipped}
 		}
-		return StepResult{Status: batch.StatusOK}
+		return StepResult{Status: batch.StatusOK, Output: "已在当前 serial 批次开始前确认\n"}
 	default:
 		return failedStep(fmt.Errorf("未知 deploy action"), operation.StageConfig)
 	}

@@ -1,5 +1,6 @@
 # Binary
 sshm
+dist/
 
 # IDE
 .idea/

@@ -205,6 +205,19 @@ func TestRunnerConfirmOncePerSerialBatch(t *testing.T) {
 	if len(prompts) != 2 || result.Summary.OK != 3 {
 		t.Fatalf("prompts=%v summary=%+v", prompts, result.Summary)
 	}
+	if got := result.Results[0].Steps[0].Output; !strings.Contains(got, "serial 批次开始前确认") {
+		t.Fatalf("confirm step output = %q", got)
+	}
+}
+
+func TestPlanTextMarksConfirmAsBatchGate(t *testing.T) {
+	plan := testPlan("one")
+	plan.Steps = []Step{{Name: "gate", Confirm: "继续？"}}
+	var output strings.Builder
+	WritePlanText(&output, plan)
+	if !strings.Contains(output.String(), "confirm(batch gate)") {
+		t.Fatalf("plan text should mark confirm as a batch gate:\n%s", output.String())
+	}
 }
 
 func TestRunnerRefusedLaterBatchKeepsCompletedResults(t *testing.T) {

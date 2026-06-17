@@ -60,7 +60,7 @@ func writeSteps(writer io.Writer, steps []Step) {
 		case "wait":
 			detail += " " + step.Wait.String()
 		case "confirm":
-			detail += " " + step.Confirm
+			detail += "(batch gate) " + step.Confirm
 		}
 		if step.Timeout.Duration > 0 {
 			detail += " timeout=" + step.Timeout.String()

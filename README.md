@@ -1,27 +1,27 @@
-# sshm v6.0.4
+# sshm v6.0.5
 
 sshm 是一个本地优先、面向个人使用的 SSH 主机管理与轻量运维工具。它使用 Go 原生 SSH 能力管理主机、标签、凭据、批量命令、安全文件传输和 Deploy v2 编排。
 
-> 版本说明：产品发布版本是 `v6.0.4`，Go module 是 `github.com/fanhuadesenlinnn/sshm/v6`，主配置与 Deploy 配置的 schema 都是 `version: 2`。
+> 版本说明：产品发布版本是 `v6.0.5`，Go module 是 `github.com/fanhuadesenlinnn/sshm/v6`，主配置与 Deploy 配置的 schema 都是 `version: 2`。
 
 ## 安装
 
 需要 Go 1.25 或直接下载 GitHub Release 中对应平台的二进制。
 
 ```bash
-go install github.com/fanhuadesenlinnn/sshm/v6@v6.0.4
+go install github.com/fanhuadesenlinnn/sshm/v6@v6.0.5
 ```
 
 如果 `proxy.golang.org` 访问较慢，可临时指定国内代理：
 
 ```bash
-GOPROXY=https://goproxy.cn,direct go install github.com/fanhuadesenlinnn/sshm/v6@v6.0.4
+GOPROXY=https://goproxy.cn,direct go install github.com/fanhuadesenlinnn/sshm/v6@v6.0.5
 ```
 
 PowerShell：
 
 ```powershell
-$env:GOPROXY = "https://goproxy.cn,direct"; go install github.com/fanhuadesenlinnn/sshm/v6@v6.0.4
+$env:GOPROXY = "https://goproxy.cn,direct"; go install github.com/fanhuadesenlinnn/sshm/v6@v6.0.5
 ```
 
 ## v6 破坏性变更
@@ -203,7 +203,7 @@ handlers:
     become: true
 ```
 
-一个 step 或 handler 必须且只能包含一个 action：`exec`、`push`、`pull`、`mkdir`、`wait`、`confirm`。handler 不允许 `confirm` 或继续 `notify`。
+一个 step 或 handler 必须且只能包含一个 action：`exec`、`push`、`pull`、`mkdir`、`wait`、`confirm`。`confirm` 是 serial 批次门禁，会在当前批次开始前确认；handler 不允许 `confirm` 或继续 `notify`。
 
 Deploy v2 支持：
 

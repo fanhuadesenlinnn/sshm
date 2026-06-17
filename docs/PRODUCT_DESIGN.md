@@ -1,6 +1,6 @@
-# sshm v6.0.4 产品设计
+# sshm v6.0.5 产品设计
 
-状态：v6.0.4 当前设计
+状态：v6.0.5 当前设计
 
 ## 产品定位
 
@@ -15,7 +15,7 @@ sshm 是供个人开发者和个人运维使用者管理约 5 到 100 台 SSH �
 
 ## 当前产品事实
 
-- 产品版本为 `v6.0.4`，Go module 为 `/v6`。
+- 产品版本为 `v6.0.5`，Go module 为 `/v6`。
 - 主配置与 Deploy 配置均为严格 YAML schema `version: 2`。
 - 默认数据目录只使用 `~/.sshm`，仅支持 `SSHM_HOME` 整体覆盖。
 - Cobra 提供 CLI 命令树，同时保留无参数工作台和 alias/ID 直连。
@@ -67,7 +67,7 @@ Deploy v2 是轻量 Ansible 风格执行模型，不是通用工作流语言。
 - 显式 `--file` 时只加载指定文件。
 - 不隐式发现当前目录文件。
 - 一个 step 或 handler 必须且只能包含一个嵌套 action。
-- 支持 exec、push、pull、mkdir、wait、confirm。
+- 支持 exec、push、pull、mkdir、wait、confirm。`confirm` 是 serial 批次门禁，会在当前批次开始前确认。
 - 支持 plan、check、diff、changed、notify/handlers、ignore_error、简单 rc conditions 和 become。
 - serial、parallel 和失败策略复用共享 BatchRunner。
 
