@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // Paths contains every persistent path owned by sshm.
@@ -143,7 +144,8 @@ func ExpandPath(p string) string {
 	}
 	if len(p) >= 2 && (p[:2] == "~/" || p[:2] == `~\`) {
 		home, _ := os.UserHomeDir()
-		return filepath.Join(home, p[2:])
+		rest := strings.ReplaceAll(p[2:], `\`, string(filepath.Separator))
+		return filepath.Join(home, rest)
 	}
 	absolute, err := filepath.Abs(p)
 	if err != nil {
