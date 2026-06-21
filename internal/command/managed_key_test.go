@@ -13,6 +13,7 @@ func TestManagedKeyCreateAndUse(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "sshm.yaml")
 	hostStore := config.NewStoreWithPath(configPath)
+	initCommandTestStore(t, hostStore)
 	host := config.DefaultHost()
 	host.Alias = "server"
 	host.User = "root"
@@ -48,6 +49,7 @@ func TestManagedKeyCreateAndUse(t *testing.T) {
 func TestSelectHostsSupportsTagAndAlias(t *testing.T) {
 	dir := t.TempDir()
 	store := config.NewStoreWithPath(filepath.Join(dir, "sshm.yaml"))
+	initCommandTestStore(t, store)
 	for _, host := range []config.Host{
 		{ID: config.NewID(), Alias: "one", User: "root", Host: "one", Port: 22, Auth: "auto", Tags: []string{"prod"}},
 		{ID: config.NewID(), Alias: "two", User: "root", Host: "two", Port: 22, Auth: "auto", Tags: []string{"linux"}},
@@ -84,5 +86,18 @@ func TestInstallAndRevokeCommandsQuotePublicKey(t *testing.T) {
 	}
 	if !strings.Contains(install, "grep -qxF") || !strings.Contains(revoke, "grep -Fvx") {
 		t.Fatal("commands are not idempotent/exact")
+	}
+	if !strings.Contains(revoke, "rc=$?") || !strings.Contains(revoke, "exit \"$rc\"") || strings.Contains(revoke, "|| true") {
+		t.Fatalf("revoke command should preserve real grep/write failures: %s", revoke)
+	}
+}
+
+func TestManagedKeyCreateAndImportRejectUnknownTrailingArgs(t *testing.T) {
+	app := &App{}
+	if err := app.cmdKeyCreate([]string{"personal", "--defualt"}); err == nil || !strings.Contains(err.Error(), "未知选项") {
+		t.Fatalf("create unknown flag error = %v", err)
+	}
+	if err := app.cmdKeyImport([]string{"personal", "/tmp/id_ed25519", "extra"}); err == nil || !strings.Contains(err.Error(), "多余参数") {
+		t.Fatalf("import extra arg error = %v", err)
 	}
 }

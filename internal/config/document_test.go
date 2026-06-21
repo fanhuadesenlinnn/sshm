@@ -36,6 +36,9 @@ func TestRepositoryCreatesCommentedSingleFile(t *testing.T) {
 func TestRepositoryRejectsDuplicateStableIDs(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sshm.yaml")
 	repo := NewRepositoryWithPath(path)
+	if err := repo.Replace(DefaultDocument()); err != nil {
+		t.Fatal(err)
+	}
 	err := repo.Update(func(doc *Document) error {
 		doc.Hosts = []Host{
 			{ID: "same", Alias: "one", User: "root", Host: "one", Port: 22, Auth: "auto"},
@@ -61,6 +64,9 @@ func TestEffectiveHostKeyPolicy(t *testing.T) {
 func TestRepositoryMutationFailureLeavesDocumentUnchanged(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sshm.yaml")
 	repo := NewRepositoryWithPath(path)
+	if err := repo.Replace(DefaultDocument()); err != nil {
+		t.Fatal(err)
+	}
 	if err := repo.Update(func(doc *Document) error {
 		doc.Hosts = append(doc.Hosts, Host{ID: NewID(), Alias: "one", User: "root", Host: "one", Port: 22, Auth: "auto"})
 		return nil

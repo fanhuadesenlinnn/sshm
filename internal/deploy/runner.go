@@ -9,6 +9,7 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -454,7 +455,49 @@ func remoteExitStatus(err error) (int, bool) {
 }
 
 func retryCommand(plan Plan, alias string) string {
-	return fmt.Sprintf("sshm deploy run %s --host %s --yes --file %s", shellQuote(plan.Profile), shellQuote(alias), shellQuote(plan.Config))
+	args := []string{"sshm", "deploy", "run", shellQuote(plan.Profile)}
+	for _, source := range retrySources(plan) {
+		args = append(args, "--file", shellQuote(source))
+	}
+	args = append(args, "--host", shellQuote(alias), "--yes")
+	if plan.Check {
+		args = append(args, "--check")
+	}
+	if plan.Diff {
+		args = append(args, "--diff")
+	}
+	if plan.Batch.Serial > 0 {
+		args = append(args, "--serial", strconv.Itoa(plan.Batch.Serial))
+	}
+	if plan.Batch.Parallel > 0 {
+		args = append(args, "--parallel", strconv.Itoa(plan.Batch.Parallel))
+	}
+	if plan.Batch.FailFast {
+		args = append(args, "--fail-fast")
+	}
+	if plan.Batch.MaxFail > 0 {
+		args = append(args, "--max-fail", strconv.Itoa(plan.Batch.MaxFail))
+	}
+	if plan.Batch.MaxFailPercent > 0 {
+		args = append(args, "--max-fail-percent", strconv.Itoa(plan.Batch.MaxFailPercent))
+	}
+	if plan.Timeout.Duration > 0 {
+		args = append(args, "--timeout", shellQuote(plan.Timeout.String()))
+	}
+	if plan.ConnectTimeout.Duration > 0 {
+		args = append(args, "--connect-timeout", shellQuote(plan.ConnectTimeout.String()))
+	}
+	return strings.Join(args, " ")
+}
+
+func retrySources(plan Plan) []string {
+	if len(plan.Sources) > 0 {
+		return append([]string(nil), plan.Sources...)
+	}
+	if plan.Config != "" {
+		return []string{plan.Config}
+	}
+	return nil
 }
 
 func shellQuote(value string) string {

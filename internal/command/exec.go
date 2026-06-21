@@ -40,7 +40,7 @@ func (app *App) cmdExec(args []string) error {
 	opResult := app.operationExecutor().Exec(context.Background(), *h, ops.ExecOptions{Command: command})
 	err = opResult.Err
 	result := newOperationResult(*h, opResult.Output, err, operation.StageExecute,
-		fmt.Sprintf("sshm exec --yes %s %q", h.Alias, command), opResult.Duration)
+		fmt.Sprintf("sshm exec --yes %s %s", shellSingleQuote(h.Alias), shellSingleQuote(command)), opResult.Duration)
 	if err != nil {
 		printOperationFailure(result)
 	}
@@ -143,7 +143,7 @@ func (app *App) executeBatch(hosts []config.Host, command string, options batchC
 			fmt.Print(opResult.Output)
 		}
 		logResult := newOperationResult(result.Host, opResult.Output, opResult.Err, operation.StageExecute,
-			fmt.Sprintf("sshm exec --yes %s %q", result.Host.Alias, command), opResult.Duration)
+			fmt.Sprintf("sshm exec --yes %s %s", shellSingleQuote(result.Host.Alias), shellSingleQuote(command)), opResult.Duration)
 		logResults = append(logResults, logResult)
 		if opResult.Err != nil {
 			printOperationFailure(logResult)

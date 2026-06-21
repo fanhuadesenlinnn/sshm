@@ -12,7 +12,7 @@ import (
 )
 
 func TestFileStorePersistsAndVerifiesPassword(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "sshm.yaml")
+	path := initializedSecretConfig(t)
 	store := NewFileStore(path, "master-password")
 
 	if err := store.SetPassword("server", " ssh:password "); err != nil {
@@ -33,7 +33,7 @@ func TestFileStorePersistsAndVerifiesPassword(t *testing.T) {
 }
 
 func TestFileStorePreservesArbitraryPasswordCharacters(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "sshm.yaml")
+	path := initializedSecretConfig(t)
 	store := NewFileStore(path, "master-password")
 	want := "line one\nline two:with:colons\x00end"
 	if err := store.SetPassword("server", want); err != nil {
@@ -49,7 +49,7 @@ func TestFileStorePreservesArbitraryPasswordCharacters(t *testing.T) {
 }
 
 func TestFileStoreWrongPassphraseDoesNotOverwriteExistingFile(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "sshm.yaml")
+	path := initializedSecretConfig(t)
 	store := NewFileStore(path, "correct-password")
 	if err := store.SetPassword("server", "original-password"); err != nil {
 		t.Fatalf("SetPassword() error = %v", err)
@@ -104,7 +104,7 @@ func TestFileStoreCorruptFileDoesNotGetOverwritten(t *testing.T) {
 }
 
 func TestFileStoreDoesNotCreateBackup(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "sshm.yaml")
+	path := initializedSecretConfig(t)
 	store := NewFileStore(path, "master-password")
 
 	if err := store.SetPassword("server", "pass1"); err != nil {
@@ -140,7 +140,7 @@ func TestFileStoreDoesNotCreateBackup(t *testing.T) {
 }
 
 func TestFileStoreConcurrentWritesDoNotLosePasswords(t *testing.T) {
-	store := NewFileStore(filepath.Join(t.TempDir(), "sshm.yaml"), "master-password")
+	store := NewFileStore(initializedSecretConfig(t), "master-password")
 	var wg sync.WaitGroup
 	for i := 0; i < 10; i++ {
 		wg.Add(1)
@@ -162,7 +162,7 @@ func TestFileStoreConcurrentWritesDoNotLosePasswords(t *testing.T) {
 }
 
 func TestFileStoreManagedKeyAndPasswordCoexist(t *testing.T) {
-	store := NewFileStore(filepath.Join(t.TempDir(), "sshm.yaml"), "master-password")
+	store := NewFileStore(initializedSecretConfig(t), "master-password")
 	privateKey := []byte("private:key:data")
 	if err := store.SetPassword("server", "password:with:colons"); err != nil {
 		t.Fatal(err)
@@ -192,7 +192,7 @@ func TestFileStoreManagedKeyAndPasswordCoexist(t *testing.T) {
 }
 
 func TestUpdateDocumentFailureLeavesHostAndVaultUnchanged(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "sshm.yaml")
+	path := initializedSecretConfig(t)
 	store := NewFileStore(path, "master-password")
 	if err := store.SetPassword("stable-id", "original"); err != nil {
 		t.Fatal(err)
@@ -222,7 +222,7 @@ func TestUpdateDocumentFailureLeavesHostAndVaultUnchanged(t *testing.T) {
 }
 
 func TestCopiedSingleConfigRetainsHostsAndCredentials(t *testing.T) {
-	sourcePath := filepath.Join(t.TempDir(), "sshm.yaml")
+	sourcePath := initializedSecretConfig(t)
 	host := config.DefaultHost()
 	host.Alias, host.User, host.Host, host.PasswordRef = "portable", "root", "example.test", host.ID
 	store := NewFileStore(sourcePath, "master-password")
@@ -252,4 +252,13 @@ func TestCopiedSingleConfigRetainsHostsAndCredentials(t *testing.T) {
 	if err != nil || password != "secret" {
 		t.Fatalf("copied password = %q, err = %v", password, err)
 	}
+}
+
+func initializedSecretConfig(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "sshm.yaml")
+	if err := config.NewRepositoryWithPath(path).Replace(config.DefaultDocument()); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }

@@ -110,6 +110,7 @@ func TestCompletionScripts(t *testing.T) {
 
 func TestCmdQuickAddPersistsDefaultsAndOptions(t *testing.T) {
 	store := config.NewStoreWithPath(filepath.Join(t.TempDir(), "sshm.yaml"))
+	initCommandTestStore(t, store)
 	app := &App{Store: store, ConfigPath: store.Path()}
 	err := app.cmdQuickAdd([]string{
 		"prod", "deploy@example.com:2222",
@@ -132,6 +133,7 @@ func TestCmdQuickAddPersistsDefaultsAndOptions(t *testing.T) {
 
 func TestCompletionCandidatesIncludeCommandsAndHosts(t *testing.T) {
 	store := config.NewStoreWithPath(filepath.Join(t.TempDir(), "sshm.yaml"))
+	initCommandTestStore(t, store)
 	host := config.DefaultHost()
 	host.Alias = "my-server"
 	host.User = "root"
@@ -250,6 +252,7 @@ func TestLogsCleanRejectsRootSSHMHome(t *testing.T) {
 
 func TestDeleteRequiresConfirmationUnlessYes(t *testing.T) {
 	store := config.NewStoreWithPath(filepath.Join(t.TempDir(), "sshm.yaml"))
+	initCommandTestStore(t, store)
 	host := config.DefaultHost()
 	host.Alias = "prod"
 	host.User = "root"

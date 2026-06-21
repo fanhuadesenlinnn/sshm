@@ -172,7 +172,11 @@ func TestManagedKeyMaterialLoadsSigner(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	store := secret.NewFileStore(filepath.Join(t.TempDir(), "sshm.yaml"), "master")
+	path := filepath.Join(t.TempDir(), "sshm.yaml")
+	if err := config.NewRepositoryWithPath(path).Replace(config.DefaultDocument()); err != nil {
+		t.Fatal(err)
+	}
+	store := secret.NewFileStore(path, "master")
 	if err := store.SetManagedKey("personal", pem.EncodeToMemory(block)); err != nil {
 		t.Fatal(err)
 	}

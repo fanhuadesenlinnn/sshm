@@ -41,6 +41,7 @@ func TestRunLocalForwardCarriesTraffic(t *testing.T) {
 	hostName, port := splitCommandTestAddress(t, sshAddr)
 	configPath := filepath.Join(t.TempDir(), "sshm.yaml")
 	store := config.NewStoreWithPath(configPath)
+	initCommandTestStore(t, store)
 	host := config.DefaultHost()
 	host.Alias, host.User, host.Host, host.Port = "forwarder", "test", hostName, port
 	host.PasswordRef, host.HostKeyPolicy = host.ID, config.HostKeyPolicyAcceptNew

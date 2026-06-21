@@ -99,6 +99,7 @@ func TestHostEditPatchOnlyAppliesSpecifiedFields(t *testing.T) {
 func newEditTestApp(t *testing.T) *App {
 	t.Helper()
 	store := config.NewStoreWithPath(filepath.Join(t.TempDir(), "sshm.yaml"))
+	initCommandTestStore(t, store)
 	host := config.Host{
 		ID:            config.NewID(),
 		Alias:         "server",

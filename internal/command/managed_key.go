@@ -134,7 +134,10 @@ func (app *App) cmdKeyCreate(args []string) error {
 		return fmt.Errorf("用法: sshm key create <名称> [--default]")
 	}
 	name := args[0]
-	makeDefault := containsArg(args[1:], "--default")
+	makeDefault, err := parseOnlyDefaultFlag(args[1:])
+	if err != nil {
+		return err
+	}
 	if err := config.ValidateManagedKeyName(name); err != nil {
 		return err
 	}
@@ -167,6 +170,10 @@ func (app *App) cmdKeyImport(args []string) error {
 		return fmt.Errorf("用法: sshm key import <名称> <私钥路径> [--default]")
 	}
 	name := args[0]
+	makeDefault, flagErr := parseOnlyDefaultFlag(args[2:])
+	if flagErr != nil {
+		return flagErr
+	}
 	if err := config.ValidateManagedKeyName(name); err != nil {
 		return err
 	}
@@ -188,7 +195,7 @@ func (app *App) cmdKeyImport(args []string) error {
 	if err != nil {
 		return err
 	}
-	return app.saveManagedKey(name, parsed, publicKey, containsArg(args[2:], "--default"))
+	return app.saveManagedKey(name, parsed, publicKey, makeDefault)
 }
 
 func (app *App) cmdKeyImportBatch(args []string) error {
@@ -391,11 +398,17 @@ func publicKeyFingerprint(line string) string {
 	return ssh.FingerprintSHA256(key)
 }
 
-func containsArg(args []string, target string) bool {
+func parseOnlyDefaultFlag(args []string) (bool, error) {
+	makeDefault := false
 	for _, arg := range args {
-		if arg == target {
-			return true
+		if arg == "--default" {
+			makeDefault = true
+			continue
 		}
+		if strings.HasPrefix(arg, "-") {
+			return false, unknownOptionError(arg)
+		}
+		return false, fmt.Errorf("多余参数 %q；用法: sshm key create/import <名称> ... [--default]", arg)
 	}
-	return false
+	return makeDefault, nil
 }

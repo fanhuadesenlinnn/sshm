@@ -338,8 +338,9 @@ func installPublicKeyCommand(publicKey string) string {
 
 func revokePublicKeyCommand(publicKey string) string {
 	key := shellSingleQuote(strings.TrimSpace(publicKey))
-	return "if [ -f ~/.ssh/authorized_keys ]; then umask 077; tmp=$(mktemp ~/.ssh/authorized_keys.sshm.XXXXXX); " +
-		"grep -Fvx -- " + key + " ~/.ssh/authorized_keys > \"$tmp\" || true; chmod 600 \"$tmp\"; mv \"$tmp\" ~/.ssh/authorized_keys; fi"
+	return "if [ -f ~/.ssh/authorized_keys ]; then umask 077; tmp=$(mktemp ~/.ssh/authorized_keys.sshm.XXXXXX) || exit 1; " +
+		"if grep -Fvx -- " + key + " ~/.ssh/authorized_keys > \"$tmp\"; then chmod 600 \"$tmp\" && mv \"$tmp\" ~/.ssh/authorized_keys; " +
+		"else rc=$?; if [ \"$rc\" -eq 1 ]; then chmod 600 \"$tmp\" && mv \"$tmp\" ~/.ssh/authorized_keys; else rm -f \"$tmp\"; exit \"$rc\"; fi; fi; fi"
 }
 
 func shellSingleQuote(value string) string {

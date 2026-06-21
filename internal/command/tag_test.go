@@ -114,6 +114,7 @@ func TestTagCommandsRejectInvalidOrMissingInputs(t *testing.T) {
 func newTagTestApp(t *testing.T) *App {
 	t.Helper()
 	store := config.NewStoreWithPath(filepath.Join(t.TempDir(), "sshm.yaml"))
+	initCommandTestStore(t, store)
 	for _, host := range []config.Host{
 		{ID: config.NewID(), Alias: "one", User: "root", Host: "one", Port: 22, Auth: "auto", Tags: []string{"prod", "linux"}},
 		{ID: config.NewID(), Alias: "two", User: "root", Host: "two", Port: 22, Auth: "auto", Tags: []string{"linux"}},

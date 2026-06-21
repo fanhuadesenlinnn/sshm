@@ -98,6 +98,9 @@ func TestPrepareRsyncTransportPinsTrustAndDisablesPassword(t *testing.T) {
 	host.Alias, host.User, host.Host = "server", "user", "example.test"
 	host.Identity, host.HostKeyPolicy = config.ManagedIdentity("personal"), config.HostKeyPolicyStrict
 	repo := config.NewRepositoryWithPath(configPath)
+	if err := repo.Replace(config.DefaultDocument()); err != nil {
+		t.Fatal(err)
+	}
 	if err := repo.Update(func(doc *config.Document) error {
 		doc.ManagedKeys.Keys = []config.ManagedKey{{Name: "personal", PublicKey: publicText}}
 		doc.ManagedKeys.Default = "personal"

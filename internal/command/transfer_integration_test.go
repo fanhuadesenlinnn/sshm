@@ -29,6 +29,7 @@ func TestTransferOnePushesAndPullsDirectoryOverSFTP(t *testing.T) {
 
 	configPath := filepath.Join(t.TempDir(), "sshm.yaml")
 	store := config.NewStoreWithPath(configPath)
+	initCommandTestStore(t, store)
 	host := config.DefaultHost()
 	host.Alias, host.User, host.Host, host.Port = "target", "test", hostName, port
 	host.PasswordRef, host.HostKeyPolicy = host.ID, config.HostKeyPolicyAcceptNew
@@ -163,6 +164,7 @@ func TestDeployRunnerExecutesCopyThenExecOverSharedExecutor(t *testing.T) {
 
 	configPath := filepath.Join(t.TempDir(), "sshm.yaml")
 	store := config.NewStoreWithPath(configPath)
+	initCommandTestStore(t, store)
 	host := config.DefaultHost()
 	host.Alias, host.User, host.Host, host.Port = "target", "test", hostName, port
 	host.PasswordRef, host.HostKeyPolicy = host.ID, config.HostKeyPolicyAcceptNew

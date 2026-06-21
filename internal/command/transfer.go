@@ -254,7 +254,12 @@ func (app *App) cmdTransfer(options transferOptions) error {
 }
 
 func transferRetryCommand(options transferOptions, alias string) string {
-	command := fmt.Sprintf("sshm %s %q %q %q --yes", options.direction, alias, transferSource(options), transferDestination(options))
+	command := fmt.Sprintf("sshm %s %s %s %s --yes",
+		options.direction,
+		shellSingleQuote(alias),
+		shellSingleQuote(transferSource(options)),
+		shellSingleQuote(transferDestination(options)),
+	)
 	if options.overwrite {
 		command += " --overwrite"
 	}
@@ -263,6 +268,9 @@ func transferRetryCommand(options transferOptions, alias string) string {
 	}
 	if !options.validateChecksum {
 		command += " --no-validate-checksum"
+	}
+	if options.method != "" && options.method != "auto" {
+		command += " --method " + shellSingleQuote(options.method)
 	}
 	return command
 }

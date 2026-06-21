@@ -3,6 +3,7 @@ package deploy
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -247,6 +248,49 @@ func TestRunnerRejectsFlatPullConflictBeforeExecution(t *testing.T) {
 	result := (Runner{Executor: executor}).Run(context.Background(), plan)
 	if result.Summary.Failed != 2 || len(executor.calls) != 0 || !strings.Contains(result.StopReason, "冲突") {
 		t.Fatalf("result=%+v calls=%v", result, executor.calls)
+	}
+}
+
+func TestRetryCommandPreservesPlanInputsAndDryRunMode(t *testing.T) {
+	plan := testPlan("one")
+	plan.Profile = "app prod"
+	plan.Config = "/tmp/base deploy.yaml"
+	plan.Sources = []string{"/tmp/base deploy.yaml", "/tmp/project's deploy.yaml"}
+	plan.Check = true
+	plan.Diff = true
+	plan.Batch = batch.Options{Parallel: 3, Serial: 2, FailFast: true, MaxFail: 1, MaxFailPercent: 50}
+	plan.Timeout = Duration{Duration: 45 * time.Second}
+	plan.ConnectTimeout = Duration{Duration: 7 * time.Second}
+
+	got := retryCommand(plan, "web'01")
+	for _, want := range []string{
+		"sshm deploy run 'app prod'",
+		"--file '/tmp/base deploy.yaml'",
+		"--file '/tmp/project'\"'\"'s deploy.yaml'",
+		"--host 'web'\"'\"'01'",
+		"--yes",
+		"--check",
+		"--diff",
+		"--serial 2",
+		"--parallel 3",
+		"--fail-fast",
+		"--max-fail 1",
+		"--max-fail-percent 50",
+		"--timeout '45s'",
+		"--connect-timeout '7s'",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("retry command missing %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestRetryCommandFallsBackToConfigWhenSourcesAreMissing(t *testing.T) {
+	plan := testPlan("one")
+	plan.Sources = nil
+	got := retryCommand(plan, "one")
+	if want := fmt.Sprintf("--file %s", shellQuote(plan.Config)); !strings.Contains(got, want) {
+		t.Fatalf("retry command = %s, want %s", got, want)
 	}
 }
 

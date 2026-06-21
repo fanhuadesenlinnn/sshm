@@ -173,9 +173,7 @@ func (r *Repository) Load() (*Document, error) {
 func (r *Repository) Update(mutate func(*Document) error) error {
 	return safefile.WithLock(r.path, func() error {
 		doc, err := r.loadUnlocked()
-		if errors.Is(err, ErrNotInitialized) {
-			doc = DefaultDocument()
-		} else if err != nil {
+		if err != nil {
 			return err
 		}
 		if err := mutate(doc); err != nil {

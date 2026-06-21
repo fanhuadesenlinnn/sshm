@@ -9,6 +9,9 @@ import (
 
 func TestRepositoryRegistersReferencedTags(t *testing.T) {
 	repo := NewRepositoryWithPath(filepath.Join(t.TempDir(), "sshm.yaml"))
+	if err := repo.Replace(DefaultDocument()); err != nil {
+		t.Fatal(err)
+	}
 	if err := repo.Update(func(doc *Document) error {
 		doc.Tags.Items = append(doc.Tags.Items, Tag{Name: "prod", Note: "生产环境"})
 		doc.Hosts = append(doc.Hosts, Host{

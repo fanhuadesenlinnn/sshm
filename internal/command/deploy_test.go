@@ -29,6 +29,7 @@ func TestParseDeployCLIOptionsSupportsV2RunFlags(t *testing.T) {
 func TestDeployPlanAllowsRuntimeTargetForTargetlessProfile(t *testing.T) {
 	dir := t.TempDir()
 	store := config.NewStoreWithPath(filepath.Join(dir, "sshm.yaml"))
+	initCommandTestStore(t, store)
 	host := config.DefaultHost()
 	host.Alias, host.User, host.Host = "one", "root", "127.0.0.1"
 	if err := store.Add(host); err != nil {

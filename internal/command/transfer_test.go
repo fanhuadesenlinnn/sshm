@@ -86,6 +86,23 @@ func TestClassifyDiffDataDistinguishesTextAndBinary(t *testing.T) {
 	}
 }
 
+func TestTransferRetryCommandUsesShellSafeQuotingAndPreservesMethod(t *testing.T) {
+	got := transferRetryCommand(transferOptions{
+		direction: "push", localPath: "dist/$(uname).tar.gz", remotePath: "/opt/app it's.tar.gz",
+		method: "rsync", overwrite: true, validateChecksum: false,
+	}, "web'01")
+	for _, want := range []string{
+		"sshm push 'web'\"'\"'01' 'dist/$(uname).tar.gz' '/opt/app it'\"'\"'s.tar.gz' --yes",
+		"--overwrite",
+		"--no-validate-checksum",
+		"--method 'rsync'",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("retry command missing %q:\n%s", want, got)
+		}
+	}
+}
+
 func TestLocalManifestEntryRejectsSpecialFile(t *testing.T) {
 	for name, mode := range map[string]os.FileMode{
 		"fifo": os.ModeNamedPipe | 0600,
