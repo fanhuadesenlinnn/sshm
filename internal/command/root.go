@@ -13,6 +13,8 @@ import (
 
 var Version = "dev"
 
+const masterPasswordEnv = "SSHM_MASTER_PASSWORD"
+
 func CurrentVersion() string {
 	moduleVersion := ""
 	if info, ok := debug.ReadBuildInfo(); ok {
@@ -215,6 +217,10 @@ func (app *App) requireSecretStore() (*secret.FileStore, error) {
 		return app.secretStore, nil
 	}
 
+	if fs, ok, err := app.secretStoreFromEnv(); ok || err != nil {
+		return fs, err
+	}
+
 	for attempt := 1; attempt <= 3; attempt++ {
 		pass, err := ui.ReadPassword("请输入 sshm 主密码: ")
 		if err != nil {
@@ -231,6 +237,19 @@ func (app *App) requireSecretStore() (*secret.FileStore, error) {
 		}
 	}
 	return nil, secret.ErrIncorrectPassphrase
+}
+
+func (app *App) secretStoreFromEnv() (*secret.FileStore, bool, error) {
+	pass := os.Getenv(masterPasswordEnv)
+	if pass == "" {
+		return nil, false, nil
+	}
+	fs := secret.NewFileStore(app.ConfigPath, pass)
+	if err := fs.VerifyPassphrase(); err != nil {
+		return nil, true, fmt.Errorf("%s 无法解锁 vault: %w", masterPasswordEnv, err)
+	}
+	app.secretStore = fs
+	return fs, true, nil
 }
 
 func (app *App) lockSecretStore() {

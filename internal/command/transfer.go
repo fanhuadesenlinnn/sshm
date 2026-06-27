@@ -236,7 +236,7 @@ func (app *App) cmdTransfer(options transferOptions) error {
 		opResult := result.Value.(ops.Result)
 		logResult := newOperationResult(result.Host,
 			fmt.Sprintf("method=%s\ndestination=%s\nstatus=%s\n", opResult.Method, opResult.Destination, result.Status),
-			opResult.Err, operation.StageTransfer, transferRetryCommand(options, result.Host.Alias), opResult.Duration)
+			opResult.Err, operation.StageTransfer, transferRetryCommandForError(options, result.Host.Alias, opResult.Err), opResult.Duration)
 		logResults = append(logResults, logResult)
 		if opResult.Err != nil {
 			printOperationFailure(logResult)
@@ -273,6 +273,13 @@ func transferRetryCommand(options transferOptions, alias string) string {
 		command += " --method " + shellSingleQuote(options.method)
 	}
 	return command
+}
+
+func transferRetryCommandForError(options transferOptions, alias string, err error) string {
+	if err != nil && !options.overwrite && !options.backup && strings.Contains(err.Error(), "使用 --overwrite 或 --backup") {
+		options.backup = true
+	}
+	return transferRetryCommand(options, alias)
 }
 
 func transferVerb(direction string) string {

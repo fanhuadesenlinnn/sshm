@@ -162,6 +162,12 @@ func printAddedHost(h config.Host, savedPassword bool) {
 	if h.Identity != "" {
 		fmt.Printf("  %s\n", ui.Info("密钥", h.Identity))
 	}
+	if len(h.Tags) > 0 {
+		fmt.Printf("  %s\n", ui.Info("标签", config.TagsToString(h.Tags)))
+	}
+	if h.Note != "" {
+		fmt.Printf("  %s\n", ui.Info("备注", h.Note))
+	}
 	if savedPassword {
 		fmt.Printf("  %s\n", ui.Info("密码", "已加密保存"))
 	}

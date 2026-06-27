@@ -228,6 +228,14 @@ func (app *App) tryGetSecretStore() *secret.FileStore {
 	if err != nil || !exists {
 		return nil
 	}
+	fs, ok, err := app.secretStoreFromEnv()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, ui.Warn("%v", err))
+		return nil
+	}
+	if ok {
+		return fs
+	}
 	// Only prompt if stdin is a terminal
 	if !ui.IsTerminal() {
 		return nil

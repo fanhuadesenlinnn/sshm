@@ -52,8 +52,15 @@ func TestDeployPlanAllowsRuntimeTargetForTargetlessProfile(t *testing.T) {
 func TestDeployInitRefusesOverwriteUnlessExplicitAndWritesV2(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "deploy.yaml")
 	app := NewApp()
-	if err := app.cmdDeployInit([]string{"-f", path}); err != nil {
+	var err error
+	output := captureStdout(t, func() {
+		err = app.cmdDeployInit([]string{"-f", path})
+	})
+	if err != nil {
 		t.Fatal(err)
+	}
+	if !strings.Contains(output, "sshm deploy validate -f") || !strings.Contains(output, "sshm deploy plan update-app -f") {
+		t.Fatalf("explicit deploy init should print next steps with -f path: %q", output)
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {

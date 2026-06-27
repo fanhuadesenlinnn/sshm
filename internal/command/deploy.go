@@ -314,11 +314,15 @@ func (app *App) cmdDeployInit(args []string) error {
 	fmt.Printf("已生成 deploy 配置: %s\n", path)
 	fmt.Println()
 	fmt.Println("下一步:")
-	fmt.Println("  sshm deploy validate")
+	fileArg := ""
+	if len(options.files) == 1 {
+		fileArg = " -f " + shellSingleQuote(path)
+	}
+	fmt.Printf("  sshm deploy validate%s\n", fileArg)
 	if !app.hasHostWithAllTags("prod") {
 		fmt.Println("  sshm add web01 root@10.0.0.11 --tags prod")
 	}
-	fmt.Println("  sshm deploy plan update-app")
+	fmt.Printf("  sshm deploy plan update-app%s\n", fileArg)
 	return nil
 }
 

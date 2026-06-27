@@ -108,7 +108,7 @@ func Suggestion(stage FailureStage) string {
 	case StageSession:
 		return "检查远端 SSH 会话与 Shell 配置"
 	case StageTransfer:
-		return "检查源、目标、权限和 --overwrite 设置"
+		return "检查源、目标、权限和 --overwrite/--backup 设置"
 	case StageTimeout:
 		return "检查超时设置、网络状态和远端命令耗时"
 	case StageConfig:

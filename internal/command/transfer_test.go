@@ -103,6 +103,29 @@ func TestTransferRetryCommandUsesShellSafeQuotingAndPreservesMethod(t *testing.T
 	}
 }
 
+func TestTransferRetryCommandForExistingDifferentTargetSuggestsBackup(t *testing.T) {
+	got := transferRetryCommandForError(transferOptions{
+		direction: "push", localPath: "local.txt", remotePath: "/tmp/remote.txt",
+		method: "sftp", validateChecksum: true,
+	}, "web01", os.ErrExist)
+	if strings.Contains(got, "--backup") {
+		t.Fatalf("generic errors should not add backup: %s", got)
+	}
+	got = transferRetryCommandForError(transferOptions{
+		direction: "push", localPath: "local.txt", remotePath: "/tmp/remote.txt",
+		method: "sftp", validateChecksum: true,
+	}, "web01", errExistingDifferentTargetForTest{})
+	if !strings.Contains(got, "--backup") {
+		t.Fatalf("existing different target should suggest backup retry: %s", got)
+	}
+}
+
+type errExistingDifferentTargetForTest struct{}
+
+func (errExistingDifferentTargetForTest) Error() string {
+	return "远程目标已存在且内容不同；使用 --overwrite 或 --backup"
+}
+
 func TestLocalManifestEntryRejectsSpecialFile(t *testing.T) {
 	for name, mode := range map[string]os.FileMode{
 		"fifo": os.ModeNamedPipe | 0600,

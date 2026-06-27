@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/secret"
 )
 
 func TestParseSSHTarget(t *testing.T) {
@@ -261,13 +262,76 @@ func TestDeleteRequiresConfirmationUnlessYes(t *testing.T) {
 		t.Fatal(err)
 	}
 	app := &App{Store: store, ConfigPath: store.Path()}
-	if err := app.cmdDelete([]string{"prod"}); err == nil || !strings.Contains(err.Error(), "--yes") {
+	var err error
+	output := captureStdout(t, func() {
+		err = app.cmdDelete([]string{"prod"})
+	})
+	if err == nil || !strings.Contains(err.Error(), "--yes") {
 		t.Fatalf("delete without --yes in non-interactive test should fail: %v", err)
+	}
+	if strings.Contains(output, "主机详情") {
+		t.Fatalf("delete without --yes should not print detail before confirmation error: %q", output)
 	}
 	if err := app.cmdDelete([]string{"prod", "--yes"}); err != nil {
 		t.Fatalf("delete with --yes: %v", err)
 	}
 	if _, _, _, err := store.FindHost("prod"); err == nil {
 		t.Fatal("host should be deleted")
+	}
+}
+
+func TestPrintAddedHostIncludesTagsAndNote(t *testing.T) {
+	host := config.DefaultHost()
+	host.Alias = "web01"
+	host.User = "root"
+	host.Host = "127.0.0.1"
+	host.Tags = []string{"prod", "web"}
+	host.Note = "nginx"
+	output := captureStdout(t, func() {
+		printAddedHost(host, false)
+	})
+	if !strings.Contains(output, "标签") || !strings.Contains(output, "prod web") || !strings.Contains(output, "备注") || !strings.Contains(output, "nginx") {
+		t.Fatalf("added host output should include tags and note: %q", output)
+	}
+}
+
+func TestSecretStoreCanUnlockFromEnvironment(t *testing.T) {
+	store := config.NewStoreWithPath(filepath.Join(t.TempDir(), "sshm.yaml"))
+	initCommandTestStore(t, store)
+	fs := secret.NewFileStore(store.Path(), "master")
+	if err := fs.SetPassword("host-id", "ssh-password"); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(masterPasswordEnv, "master")
+	app := &App{Store: store, ConfigPath: store.Path()}
+	unlocked := app.tryGetSecretStore()
+	if unlocked == nil {
+		t.Fatal("expected secret store from environment")
+	}
+	got, err := unlocked.GetPassword("host-id")
+	if err != nil || got != "ssh-password" {
+		t.Fatalf("password = %q, err = %v", got, err)
+	}
+}
+
+func TestUnlockVaultForHostsMentionsEnvironmentInNonInteractiveMode(t *testing.T) {
+	store := config.NewStoreWithPath(filepath.Join(t.TempDir(), "sshm.yaml"))
+	initCommandTestStore(t, store)
+	host := config.DefaultHost()
+	host.Alias = "web01"
+	host.User = "root"
+	host.Host = "example.com"
+	host.PasswordRef = host.ID
+	if err := store.Add(host); err != nil {
+		t.Fatal(err)
+	}
+	fs := secret.NewFileStore(store.Path(), "master")
+	if err := fs.SetPassword(host.ID, "ssh-password"); err != nil {
+		t.Fatal(err)
+	}
+	app := &App{Store: store, ConfigPath: store.Path()}
+	err := app.unlockVaultForHosts([]config.Host{host})
+	if err == nil || !strings.Contains(err.Error(), masterPasswordEnv) {
+		t.Fatalf("expected non-interactive error to mention %s: %v", masterPasswordEnv, err)
 	}
 }

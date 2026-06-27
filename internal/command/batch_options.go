@@ -184,8 +184,11 @@ func (app *App) unlockVaultForHosts(hosts []config.Host) error {
 	if !exists {
 		return fmt.Errorf("目标主机需要 vault 凭据，但 vault 尚未初始化")
 	}
+	if _, ok, err := app.secretStoreFromEnv(); ok || err != nil {
+		return err
+	}
 	if !ui.IsTerminal() {
-		return fmt.Errorf("目标主机需要 vault 凭据；非交互环境无法解锁")
+		return fmt.Errorf("目标主机需要 vault 凭据；非交互环境请设置 %s", masterPasswordEnv)
 	}
 	_, err = app.requireSecretStore()
 	return err

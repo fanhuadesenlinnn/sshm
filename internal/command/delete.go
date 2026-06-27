@@ -14,12 +14,11 @@ func (app *App) cmdDelete(args []string) error {
 		return err
 	}
 
-	ui.RenderHostDetail(*h, idx)
-
 	if !yes {
 		if !ui.IsTerminal() {
 			return fmt.Errorf("删除主机需要确认；非交互环境请使用 --yes")
 		}
+		ui.RenderHostDetail(*h, idx)
 		if !ui.ReadYesNo(fmt.Sprintf("确认删除 %s? [y/N]: ", h.Alias)) {
 			ui.PrintWarn("已取消")
 			return nil
