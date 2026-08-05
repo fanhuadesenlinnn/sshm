@@ -412,20 +412,109 @@ func encodeDocument(doc *Document) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	var root yaml.Node
+	if err := yaml.Unmarshal(body, &root); err != nil {
+		return nil, err
+	}
+	annotateDocument(&root)
+	var rendered bytes.Buffer
+	encoder := yaml.NewEncoder(&rendered)
+	encoder.SetIndent(2)
+	if err := encoder.Encode(&root); err != nil {
+		return nil, err
+	}
+	if err := encoder.Close(); err != nil {
+		return nil, err
+	}
 	header := `# sshm 配置文件
-# 数据目录: ~/.sshm
-# 主配置:   ~/.sshm/sshm.yaml
-# 日志目录: ~/.sshm/logs
-# 编排配置: ~/.sshm/deploy.yaml 或 ~/.sshm/deploy.d/*.yaml
 #
-# 主机密钥策略:
+# 快速开始：
+#   添加主机：sshm add web01 root@10.0.0.11 --tags prod,web
+#   保存密码：sshm passwd web01
+#   测试连接：sshm ping web01
+#   连接主机：sshm web01
+#
+# 默认数据目录是 ~/.sshm；设置 SSHM_HOME 后，所有路径改用指定目录。
+# Deploy 编排请编辑同目录的 deploy.yaml 或 deploy.d/*.yaml。
+#
+# 主机密钥策略：
 #   strict      首次连接需要确认，主机密钥变化会被拒绝
 #   accept-new  新主机自动信任，主机密钥变化会被拒绝
 #   insecure    跳过主机密钥校验，不推荐
 #
+# 也可以手工添加主机，把 hosts: [] 替换为：
+# hosts:
+#   - alias: web01
+#     user: root
+#     host: 10.0.0.11
+#     port: 22
+#     auth: auto
+#     tags: [prod, web]
+#     note: 生产 Web 服务器
+#
 # 手工新增 hosts 条目时可以省略 id，sshm 校验后会自动生成并写回
 # 已有主机的 id 用于关联凭据，请勿修改
-# host_trust 与 vault 由 sshm 管理，请勿手动编辑
+# 不要在 YAML 中保存明文密码；请使用 sshm passwd
+# managed_keys、host_trust 与 vault 由 sshm 管理，请勿手动编辑
+# sshm 保存时会规范化 YAML；自定义说明请写入主机或标签的 note 字段
 `
-	return append([]byte(header), body...), nil
+	return append([]byte(header), rendered.Bytes()...), nil
+}
+
+func annotateDocument(root *yaml.Node) {
+	if root.Kind != yaml.DocumentNode || len(root.Content) == 0 {
+		return
+	}
+	document := root.Content[0]
+	setMappingHeadComment(document, "version", "配置格式版本；当前必须是 2。")
+	setMappingHeadComment(document, "defaults", "全局默认值；单台主机可以覆盖主机信任策略。")
+	setMappingHeadComment(document, "tags", "标签定义；主机引用新标签时 sshm 会自动登记。")
+	setMappingHeadComment(document, "hosts", "主机列表；推荐使用 sshm add，也支持按文件顶部示例手工编辑。")
+	setMappingHeadComment(document, "managed_keys", "sshm 托管的密钥元数据；请通过 sshm key 命令维护。")
+	setMappingHeadComment(document, "host_trust", "已确认的 SSH 主机公钥；由 sshm 自动维护，请勿手工修改。")
+	setMappingHeadComment(document, "vault", "加密凭据数据；由 sshm 自动维护，绝不能改成明文密码。")
+
+	defaults := mappingValue(document, "defaults")
+	setMappingHeadComment(defaults, "host_key_policy", "主机密钥策略：strict | accept-new | insecure（不推荐）。")
+	setMappingHeadComment(defaults, "batch", "批量操作的默认并发数和连接超时。")
+	setMappingHeadComment(defaults, "exec", "远程命令的默认执行超时。")
+	setMappingHeadComment(defaults, "transfer", "push/pull 文件传输的默认超时。")
+	setMappingHeadComment(defaults, "logs", "操作日志开关和保留时间。")
+
+	batch := mappingValue(defaults, "batch")
+	setMappingHeadComment(batch, "parallel", "最大并发主机数，允许 1-128。")
+	setMappingHeadComment(batch, "connect_timeout", "单台主机建立 SSH 连接的最长等待时间。")
+	setMappingHeadComment(mappingValue(defaults, "exec"), "timeout", "单条远程命令的最长执行时间。")
+	setMappingHeadComment(mappingValue(defaults, "transfer"), "timeout", "单次文件传输的最长执行时间。")
+	logs := mappingValue(defaults, "logs")
+	setMappingHeadComment(logs, "enabled", "是否记录操作日志。")
+	setMappingHeadComment(logs, "retention", "日志保留时间，例如 30d、12h。")
+
+	setMappingHeadComment(mappingValue(document, "tags"), "items", "标签名称及可选说明。")
+	setMappingHeadComment(mappingValue(document, "managed_keys"), "items", "托管密钥公钥信息；私钥加密保存在 vault 中。")
+	setMappingHeadComment(mappingValue(document, "host_trust"), "entries", "每个地址和端口对应的已确认 SSH 公钥。")
+}
+
+func mappingValue(mapping *yaml.Node, key string) *yaml.Node {
+	if mapping == nil || mapping.Kind != yaml.MappingNode {
+		return nil
+	}
+	for index := 0; index+1 < len(mapping.Content); index += 2 {
+		if mapping.Content[index].Value == key {
+			return mapping.Content[index+1]
+		}
+	}
+	return nil
+}
+
+func setMappingHeadComment(mapping *yaml.Node, key, comment string) {
+	if mapping == nil || mapping.Kind != yaml.MappingNode {
+		return
+	}
+	for index := 0; index+1 < len(mapping.Content); index += 2 {
+		if mapping.Content[index].Value == key {
+			mapping.Content[index].HeadComment = comment
+			return
+		}
+	}
 }

@@ -22,9 +22,6 @@ func ValidateCatalogAllowEmptyTargetMatches(catalog *Catalog, hosts []config.Hos
 }
 
 func validateCatalog(catalog *Catalog, hosts []config.Host, allowEmptyTargetMatches bool) error {
-	if len(catalog.Profiles) == 0 {
-		return fmt.Errorf("deploy 配置不包含 profile")
-	}
 	for _, handler := range catalog.Handlers {
 		if err := validateHandler(handler); err != nil {
 			return fmt.Errorf("handler %q: %w", handler.Name, err)

@@ -61,7 +61,7 @@ var commandCatalog = []commandCatalogEntry{
 	{Name: "show-pubkey", Group: commandGroupSecrets, Short: "显示托管公钥", HelpUsage: "show-pubkey <别名|ID>", HelpSummary: "显示公钥", LegacyOptions: []string{"--show-pubkey"}},
 	{Name: "auth", Group: commandGroupSecrets, Short: "修改认证策略", HelpUsage: "auth <别名|ID>", HelpSummary: "修改认证策略", LegacyOptions: []string{"--auth"}},
 	{Name: "lock", Group: commandGroupSecrets, Short: "锁定当前会话密码库", HelpUsage: "lock", HelpSummary: "锁定当前会话密码库", LegacyOptions: []string{"--lock"}},
-	{Name: "init", Group: commandGroupConfig, Short: "初始化 ~/.sshm 工作目录和 v2 配置", HelpUsage: "init", HelpSummary: "初始化 ~/.sshm 工作目录"},
+	{Name: "init", Group: commandGroupConfig, Short: "初始化 ~/.sshm 工作目录和 v2 配置文件", HelpUsage: "init", HelpSummary: "初始化 ~/.sshm 工作目录"},
 	{Name: "config", Group: commandGroupConfig, Short: "查看和编辑主配置", HelpUsage: "config path/edit", HelpSummary: "查看路径或校验后编辑 sshm.yaml"},
 	{Name: "doctor", Group: commandGroupConfig, Short: "检查配置与凭据环境", HelpUsage: "doctor", HelpSummary: "检查配置与凭据环境"},
 	{Name: "logs", Group: commandGroupConfig, Short: "查看或清理操作日志", HelpUsage: "logs [clean --yes]", HelpSummary: "查看或清理操作日志"},

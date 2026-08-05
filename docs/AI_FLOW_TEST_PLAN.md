@@ -75,6 +75,9 @@ Steps:
 ```bash
 go run . init
 test -f "$SSHM_HOME/sshm.yaml"
+test -f "$SSHM_HOME/deploy.yaml"
+go run . deploy validate
+go run . deploy list
 test -d "$SSHM_HOME/deploy.d"
 test -d "$SSHM_HOME/logs"
 test -d "$SSHM_HOME/backups"
@@ -83,7 +86,8 @@ test -d "$SSHM_HOME/tmp"
 
 Expected:
 
-- Config file exists.
+- Main and Deploy config files exist.
+- The safe empty Deploy template validates and lists successfully.
 - Owned directories exist.
 - Re-running `go run . init` without force does not damage the config.
 
@@ -1143,7 +1147,7 @@ Expected:
 
 ## Deploy Flows
 
-### F110: Generate deploy sample
+### F110: Inspect initialized Deploy template and sample
 
 Type: local
 
@@ -1157,14 +1161,15 @@ go run . init
 Steps:
 
 ```bash
-go run . deploy init
 test -f "$SSHM_HOME/deploy.yaml"
+go run . deploy validate
+go run . deploy list
 go run . deploy init --stdout >/tmp/sshm-deploy-sample.yaml
 ```
 
 Expected:
 
-- Default deploy file is created.
+- Global init creates a valid Deploy file with no active profiles.
 - `--stdout` prints sample YAML without writing.
 
 ### F111: Deploy init refuses overwrite by default
@@ -1176,7 +1181,6 @@ Setup:
 ```bash
 export SSHM_HOME="$(mktemp -d)"
 go run . init
-go run . deploy init
 ```
 
 Steps:
@@ -1201,7 +1205,7 @@ Setup:
 export SSHM_HOME="$(mktemp -d)"
 go run . init
 go run . add web01 root@127.0.0.1:2222 --tags prod
-go run . deploy init
+go run . deploy init --overwrite
 ```
 
 Steps:
@@ -1228,7 +1232,7 @@ Setup:
 export SSHM_HOME="$(mktemp -d)"
 go run . init
 go run . add web01 root@127.0.0.1:2222 --tags prod
-go run . deploy init
+go run . deploy init --overwrite
 ```
 
 Steps:

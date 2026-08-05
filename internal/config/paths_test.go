@@ -71,10 +71,28 @@ func TestInitializeCreatesChineseV2ConfigAndForceBackup(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(data)
-	for _, want := range []string{"# sshm 配置文件", "# 主机密钥策略:", "version: 2", "retention: 30d", "vault: null"} {
+	for _, want := range []string{"# sshm 配置文件", "# 快速开始：", "# 主机密钥策略：", "version: 2", "retention: 30d", "vault: null"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("default config missing %q:\n%s", want, text)
 		}
+	}
+	deployData, err := os.ReadFile(paths.Deploy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"# sshm Deploy v2 编排配置",
+		"# 快速开始：",
+		"profiles: []",
+		"handlers: []",
+		"# 完整示例（全部为注释，不会被执行）：",
+	} {
+		if !strings.Contains(string(deployData), want) {
+			t.Fatalf("default deploy config missing %q:\n%s", want, deployData)
+		}
+	}
+	if info, err := os.Stat(paths.Deploy); err != nil || (runtime.GOOS != "windows" && info.Mode().Perm() != 0600) {
+		t.Fatalf("deploy config stat = %v, %v", info, err)
 	}
 	for _, path := range []string{paths.Home, paths.DeployDir, paths.Logs, paths.Backups, paths.Temp} {
 		info, err := os.Stat(path)
@@ -88,6 +106,10 @@ func TestInitializeCreatesChineseV2ConfigAndForceBackup(t *testing.T) {
 	if _, _, err := Initialize(false); err == nil {
 		t.Fatal("second init should refuse overwrite")
 	}
+	const customDeploy = "version: 2\nprofiles: []\n# 用户自己的 Deploy 配置\n"
+	if err := os.WriteFile(paths.Deploy, []byte(customDeploy), 0600); err != nil {
+		t.Fatal(err)
+	}
 	time.Sleep(time.Second)
 	_, backup, err = Initialize(true)
 	if err != nil {
@@ -98,6 +120,13 @@ func TestInitializeCreatesChineseV2ConfigAndForceBackup(t *testing.T) {
 	}
 	if info, err := os.Stat(backup); err != nil || (runtime.GOOS != "windows" && info.Mode().Perm() != 0600) {
 		t.Fatalf("backup stat = %v, %v", info, err)
+	}
+	preservedDeploy, err := os.ReadFile(paths.Deploy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(preservedDeploy) != customDeploy {
+		t.Fatalf("force init overwrote existing deploy config:\n%s", preservedDeploy)
 	}
 }
 

@@ -12,7 +12,7 @@ func newInitCommand(app *App) *cobra.Command {
 	var force bool
 	cmd := &cobra.Command{
 		Use:         "init",
-		Short:       commandShort("init", "初始化 ~/.sshm 工作目录和 v2 配置"),
+		Short:       commandShort("init", "初始化 ~/.sshm 工作目录和 v2 配置文件"),
 		GroupID:     commandGroupID("init"),
 		Args:        cobra.NoArgs,
 		Annotations: map[string]string{allowWithoutConfig: "true"},
@@ -74,6 +74,7 @@ func (app *App) cmdInit(force bool) error {
 	fmt.Println()
 	fmt.Println("下一步:")
 	fmt.Println("  sshm add web01 root@10.0.0.11")
+	fmt.Println("  sshm deploy validate")
 	fmt.Println("  sshm doctor")
 	return nil
 }

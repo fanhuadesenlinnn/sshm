@@ -37,6 +37,31 @@ func TestDiscoverUsesUserFilesAndNeverImplicitCWD(t *testing.T) {
 	}
 }
 
+func TestGlobalInitializeCreatesLoadableEmptyDeployStarter(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("SSHM_HOME", home)
+	if _, _, err := config.Initialize(false); err != nil {
+		t.Fatal(err)
+	}
+	paths, err := Discover(nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(paths) != 1 || paths[0] != filepath.Join(home, "deploy.yaml") {
+		t.Fatalf("discovered starter paths = %v", paths)
+	}
+	catalog, err := Load(paths)
+	if err != nil {
+		t.Fatalf("generated starter should strictly load: %v", err)
+	}
+	if err := ValidateCatalogAllowEmptyTargetMatches(catalog, nil); err != nil {
+		t.Fatalf("generated starter should validate before profiles are configured: %v", err)
+	}
+	if len(catalog.Profiles) != 0 || len(catalog.Handlers) != 0 {
+		t.Fatalf("generated starter must not contain active workflows: %+v", catalog)
+	}
+}
+
 func TestLoadStrictV2AndGlobalNames(t *testing.T) {
 	dir := t.TempDir()
 	one := filepath.Join(dir, "one.yaml")

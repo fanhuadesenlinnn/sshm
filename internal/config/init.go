@@ -43,7 +43,25 @@ func Initialize(force bool) (Paths, string, error) {
 	if err := safefile.Write(paths.Config, encoded, 0600); err != nil {
 		return Paths{}, "", fmt.Errorf("写入默认配置失败: %w", err)
 	}
+	if err := writeDeployConfigIfMissing(paths.Deploy); err != nil {
+		return Paths{}, "", err
+	}
 	return paths, backupPath, nil
+}
+
+// writeDeployConfigIfMissing creates the safe, commented starter manifest.
+// An existing Deploy file is user-authored input and is never overwritten by
+// the global initializer, including when `sshm init --force` is used.
+func writeDeployConfigIfMissing(path string) error {
+	if _, err := os.Stat(path); err == nil {
+		return nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("检查 Deploy 配置失败: %w", err)
+	}
+	if err := safefile.Write(path, []byte(defaultDeployConfig), 0600); err != nil {
+		return fmt.Errorf("写入默认 Deploy 配置失败: %w", err)
+	}
+	return nil
 }
 
 // LegacyConfigExists reports whether the v5 configuration path exists. The

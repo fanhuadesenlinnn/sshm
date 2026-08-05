@@ -1,27 +1,27 @@
-# sshm v6.0.9
+# sshm v6.0.10
 
 sshm 是一个本地优先、面向个人使用的 SSH 主机管理与轻量运维工具。它使用 Go 原生 SSH 能力管理主机、标签、凭据、批量命令、安全文件传输和 Deploy v2 编排。
 
-> 版本说明：产品发布版本是 `v6.0.9`，Go module 是 `github.com/fanhuadesenlinnn/sshm/v6`，主配置与 Deploy 配置的 schema 都是 `version: 2`。
+> 版本说明：产品发布版本是 `v6.0.10`，Go module 是 `github.com/fanhuadesenlinnn/sshm/v6`，主配置与 Deploy 配置的 schema 都是 `version: 2`。
 
 ## 安装
 
 需要 Go 1.25 或直接下载 GitHub Release 中对应平台的二进制。
 
 ```bash
-go install github.com/fanhuadesenlinnn/sshm/v6@v6.0.9
+go install github.com/fanhuadesenlinnn/sshm/v6@v6.0.10
 ```
 
 如果 `proxy.golang.org` 访问较慢，可临时指定国内代理：
 
 ```bash
-GOPROXY=https://goproxy.cn,direct go install github.com/fanhuadesenlinnn/sshm/v6@v6.0.9
+GOPROXY=https://goproxy.cn,direct go install github.com/fanhuadesenlinnn/sshm/v6@v6.0.10
 ```
 
 PowerShell：
 
 ```powershell
-$env:GOPROXY = "https://goproxy.cn,direct"; go install github.com/fanhuadesenlinnn/sshm/v6@v6.0.9
+$env:GOPROXY = "https://goproxy.cn,direct"; go install github.com/fanhuadesenlinnn/sshm/v6@v6.0.10
 ```
 
 ## v6 破坏性变更
@@ -49,11 +49,14 @@ sshm doctor
 ```text
 ~/.sshm/
 ├── sshm.yaml
+├── deploy.yaml
 ├── deploy.d/
 ├── logs/
 ├── backups/
 └── tmp/
 ```
+
+`sshm.yaml` 会包含快速开始、字段用途、主机示例和安全边界说明。`deploy.yaml` 默认不启用任何工作流，提供一份完全注释掉的 Deploy v2 示例；可以安全地先运行 `sshm deploy validate`，再按注释创建 profile。已有 `deploy.yaml` 不会被 `sshm init --force` 覆盖。
 
 主配置、日志、deploy 文件和备份都以同一个 `SSHM_HOME` 为根目录。发现旧配置时，`init` 与 `doctor` 只输出警告。
 
@@ -177,10 +180,13 @@ sshm pull-tag all /etc/hosts ./backup --flat --yes
 
 默认加载存在的 `~/.sshm/deploy.yaml` 与按文件名排序的 `~/.sshm/deploy.d/*.yaml`。显式 `--file` 时只加载指定文件。
 
+首次运行 `sshm init` 会生成带中文说明的安全空模板；`profiles: []` 是合法状态，适合先校验文件结构再逐步添加工作流。需要一份可修改的完整示例时，也可以执行 `sshm deploy init -f ./deploy.yaml`。
+
 ```bash
-sshm deploy init
 sshm deploy validate
 sshm deploy list
+# 需要查看可运行示例时：
+sshm deploy init --stdout
 sshm deploy plan update-app
 sshm deploy run update-app --check --diff --yes
 sshm deploy run update-app --serial 2 --parallel 2 --yes
@@ -229,6 +235,7 @@ Deploy v2 支持：
 ## 配置与安全
 
 - 默认主机信任策略是 `strict`。
+- 初始化生成的主配置包含字段级中文说明；sshm 保存配置时会恢复官方注释，自定义说明应写入主机或标签的 `note` 字段。
 - 可以通过菜单/命令或手工编辑 `sshm.yaml` 添加主机；手工新增的 `hosts` 条目可省略内部 `id`，sshm 会自动生成并写回。已有主机的 `id` 用于关联凭据，不应修改。
 - `--yes` 只跳过当前操作确认，不跳过主密码或 host trust。
 - `--all` 不能与具体主机或 `--tag` 混用，避免意外扩大操作范围。

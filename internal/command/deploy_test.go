@@ -66,7 +66,13 @@ func TestDeployInitRefusesOverwriteUnlessExplicitAndWritesV2(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(data[:10]) != "# sshm dep" || !containsText(string(data), "version: 2", "更新应用并重启服务") {
+	if !strings.HasPrefix(string(data), "# sshm Deploy v2") || !containsText(
+		string(data),
+		"version: 2",
+		"更新应用并重启服务",
+		"targets 可以使用 hosts、tags 或 all",
+		"请勿在本文件中保存密码、私钥",
+	) {
 		t.Fatalf("sample = %s", data)
 	}
 	if err := app.cmdDeployInit([]string{"-f", path}); err == nil {
