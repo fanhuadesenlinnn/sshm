@@ -1,27 +1,27 @@
-# sshm v6.0.7
+# sshm v6.0.8
 
 sshm 是一个本地优先、面向个人使用的 SSH 主机管理与轻量运维工具。它使用 Go 原生 SSH 能力管理主机、标签、凭据、批量命令、安全文件传输和 Deploy v2 编排。
 
-> 版本说明：产品发布版本是 `v6.0.7`，Go module 是 `github.com/fanhuadesenlinnn/sshm/v6`，主配置与 Deploy 配置的 schema 都是 `version: 2`。
+> 版本说明：产品发布版本是 `v6.0.8`，Go module 是 `github.com/fanhuadesenlinnn/sshm/v6`，主配置与 Deploy 配置的 schema 都是 `version: 2`。
 
 ## 安装
 
 需要 Go 1.25 或直接下载 GitHub Release 中对应平台的二进制。
 
 ```bash
-go install github.com/fanhuadesenlinnn/sshm/v6@v6.0.7
+go install github.com/fanhuadesenlinnn/sshm/v6@v6.0.8
 ```
 
 如果 `proxy.golang.org` 访问较慢，可临时指定国内代理：
 
 ```bash
-GOPROXY=https://goproxy.cn,direct go install github.com/fanhuadesenlinnn/sshm/v6@v6.0.7
+GOPROXY=https://goproxy.cn,direct go install github.com/fanhuadesenlinnn/sshm/v6@v6.0.8
 ```
 
 PowerShell：
 
 ```powershell
-$env:GOPROXY = "https://goproxy.cn,direct"; go install github.com/fanhuadesenlinnn/sshm/v6@v6.0.7
+$env:GOPROXY = "https://goproxy.cn,direct"; go install github.com/fanhuadesenlinnn/sshm/v6@v6.0.8
 ```
 
 ## v6 破坏性变更
@@ -67,6 +67,8 @@ sshm add web01 root@10.0.0.11
 sshm edit web01
 sshm tag
 sshm ping web01
+sshm passwd web01 web02
+sshm passwd --tag prod
 sshm exec web01 "uptime"
 sshm exec-tag prod "uptime"
 sshm exec-tag all "uptime"
@@ -217,8 +219,10 @@ Deploy v2 支持：
 ## 配置与安全
 
 - 默认主机信任策略是 `strict`。
+- 可以通过菜单/命令或手工编辑 `sshm.yaml` 添加主机；手工新增的 `hosts` 条目可省略内部 `id`，sshm 会自动生成并写回。已有主机的 `id` 用于关联凭据，不应修改。
 - `--yes` 只跳过当前操作确认，不跳过主密码或 host trust。
 - `--all` 不能与具体主机或 `--tag` 混用，避免意外扩大操作范围。
+- `passwd` 和 `forget-pass` 支持多个主机、`--tag` 与 `--all`；批量 `passwd` 会把同一个 SSH 密码保存到全部目标主机。
 - 删除保存密码、删除托管密钥、清理日志和设置 `host-key-policy insecure` 默认需要确认；非交互环境必须显式使用 `--yes`。
 - 密码与托管私钥保存在 `sshm.yaml` 的加密 vault 中。
 - 主密码只在当前进程内按需解锁，`lock` 或进程退出后失效。

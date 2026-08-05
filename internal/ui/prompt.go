@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"strings"
@@ -19,6 +20,8 @@ const (
 	newlineKey   = 10
 )
 
+var bracketedPasteEnd = []byte{escapeChar, '[', '2', '0', '1', '~'}
+
 // lineEditor holds the state for a single interactive readline session.
 type lineEditor struct {
 	history   []string
@@ -28,6 +31,9 @@ type lineEditor struct {
 	line   []rune
 	cursor int // cursor position in runes
 	prompt string
+
+	pasting    bool
+	pasteBytes []byte
 }
 
 // global history shared across all ReadLine calls.
@@ -99,6 +105,8 @@ func (ed *lineEditor) run() string {
 		return readLineFallback(ed.prompt)
 	}
 	defer term.Restore(fd, oldState)
+	fmt.Fprint(os.Stderr, "\033[?2004h")
+	defer fmt.Fprint(os.Stderr, "\033[?2004l")
 
 	// Write initial prompt and line content
 	ed.redraw()
@@ -116,6 +124,12 @@ func (ed *lineEditor) run() string {
 		}
 
 		b := buf[0]
+		if ed.pasting {
+			if ed.consumePastedByte(b) {
+				ed.redraw()
+			}
+			continue
+		}
 
 		// If we're in the middle of an escape sequence
 		if escLen > 0 {
@@ -205,6 +219,8 @@ const (
 	escCmdHome       = 5
 	escCmdEnd        = 6
 	escCmdDelete     = 7
+	escCmdPasteStart = 8
+	escCmdPasteEnd   = 9
 )
 
 // parseEscape tries to parse an ANSI escape sequence.
@@ -246,23 +262,29 @@ func (ed *lineEditor) parseEscape(seq []byte) int {
 			if len(seq) == 3 {
 				return escCmdIncomplete
 			}
-			if len(seq) >= 4 {
-				// Look for ~ terminator
-				for i := 3; i < len(seq); i++ {
-					if seq[i] == '~' {
-						// Check the numeric parameter
-						switch seq[2] {
-						case '1', '7':
-							return escCmdHome
-						case '4', '8':
-							return escCmdEnd
-						case '3':
-							return escCmdDelete
-						}
+			for i := 2; i < len(seq); i++ {
+				if seq[i] == '~' {
+					if i != len(seq)-1 {
+						return escCmdUnknown
+					}
+					switch string(seq[2:i]) {
+					case "1", "7":
+						return escCmdHome
+					case "4", "8":
+						return escCmdEnd
+					case "3":
+						return escCmdDelete
+					case "200":
+						return escCmdPasteStart
+					case "201":
+						return escCmdPasteEnd
+					default:
 						return escCmdUnknown
 					}
 				}
-				return escCmdIncomplete
+				if seq[i] < '0' || seq[i] > '9' {
+					return escCmdUnknown
+				}
 			}
 			return escCmdIncomplete
 		default:
@@ -322,7 +344,49 @@ func (ed *lineEditor) handleEscapeCmd(cmd int, _ []byte) {
 	case escCmdDelete:
 		ed.deleteForward()
 		ed.redraw()
+	case escCmdPasteStart:
+		ed.pasting = true
+		ed.pasteBytes = ed.pasteBytes[:0]
 	}
+}
+
+// consumePastedByte buffers bracketed paste input until the terminal's end
+// marker arrives. The caller redraws once after this method returns true.
+func (ed *lineEditor) consumePastedByte(b byte) bool {
+	ed.pasteBytes = append(ed.pasteBytes, b)
+	if !bytes.HasSuffix(ed.pasteBytes, bracketedPasteEnd) {
+		return false
+	}
+	payload := ed.pasteBytes[:len(ed.pasteBytes)-len(bracketedPasteEnd)]
+	ed.insertRunes(normalizePastedText(payload))
+	ed.pasteBytes = ed.pasteBytes[:0]
+	ed.pasting = false
+	return true
+}
+
+func normalizePastedText(data []byte) []rune {
+	text := strings.ToValidUTF8(string(data), "")
+	result := make([]rune, 0, len(text))
+	pendingSpace := false
+	for _, r := range text {
+		switch r {
+		case '\r', '\n', '\t':
+			pendingSpace = true
+			continue
+		}
+		if r < 32 || r == 127 {
+			continue
+		}
+		if pendingSpace && len(result) > 0 && result[len(result)-1] != ' ' {
+			result = append(result, ' ')
+		}
+		pendingSpace = false
+		result = append(result, r)
+	}
+	if pendingSpace && len(result) > 0 && result[len(result)-1] != ' ' {
+		result = append(result, ' ')
+	}
+	return result
 }
 
 // insert inserts a rune at the current cursor position.
@@ -335,6 +399,18 @@ func (ed *lineEditor) insert(r rune) {
 		ed.line = append(line[:ed.cursor], append([]rune{r}, line[ed.cursor:]...)...)
 	}
 	ed.cursor++
+}
+
+func (ed *lineEditor) insertRunes(value []rune) {
+	if len(value) == 0 {
+		return
+	}
+	line := make([]rune, 0, len(ed.line)+len(value))
+	line = append(line, ed.line[:ed.cursor]...)
+	line = append(line, value...)
+	line = append(line, ed.line[ed.cursor:]...)
+	ed.line = line
+	ed.cursor += len(value)
 }
 
 // backspace deletes the character before the cursor.
@@ -399,13 +475,58 @@ func (ed *lineEditor) historyDown() {
 
 // redraw clears the current line and redraws it.
 func (ed *lineEditor) redraw() {
-	// Clear current line: \r moves to column 0, \033[K clears to end
-	fmt.Fprintf(os.Stderr, "\r\033[K%s%s", ed.prompt, string(ed.line))
-	// Position cursor
-	if ed.cursor < len(ed.line) {
-		visualLen := visualLength(string(ed.line[ed.cursor:]))
-		fmt.Fprintf(os.Stderr, "\033[%dD", visualLen)
+	width := promptTerminalWidth()
+	available := width - visualLength(ed.prompt) - 1
+	if available < 1 {
+		available = 1
 	}
+	visible, cursorColumn := lineViewport(ed.line, ed.cursor, available)
+	fmt.Fprintf(os.Stderr, "\r\033[2K%s%s", ed.prompt, visible)
+	if tailWidth := visualLength(visible) - cursorColumn; tailWidth > 0 {
+		fmt.Fprintf(os.Stderr, "\033[%dD", tailWidth)
+	}
+}
+
+// lineViewport returns a single-row window containing the cursor. Keeping the
+// rendered input narrower than the terminal prevents automatic wrapping from
+// leaving stale copies of long pasted commands on screen.
+func lineViewport(line []rune, cursor, maxWidth int) (string, int) {
+	if maxWidth < 1 {
+		return "", 0
+	}
+	cursor = max(0, min(cursor, len(line)))
+	start := 0
+	cursorColumn := runesDisplayWidth(line[:cursor])
+	for start < cursor && cursorColumn > maxWidth {
+		cursorColumn -= runeDisplayWidth(line[start])
+		start++
+	}
+	end := start
+	width := 0
+	for end < len(line) {
+		runeWidth := runeDisplayWidth(line[end])
+		if width+runeWidth > maxWidth {
+			break
+		}
+		width += runeWidth
+		end++
+	}
+	return string(line[start:end]), cursorColumn
+}
+
+func runesDisplayWidth(value []rune) int {
+	width := 0
+	for _, r := range value {
+		width += runeDisplayWidth(r)
+	}
+	return width
+}
+
+func promptTerminalWidth() int {
+	if width, _, err := term.GetSize(int(os.Stdin.Fd())); err == nil && width > 0 {
+		return width
+	}
+	return 80
 }
 
 // finishLine prints a newline to finalize the input.

@@ -92,7 +92,7 @@ func TestRepositoryMutationFailureLeavesDocumentUnchanged(t *testing.T) {
 	}
 }
 
-func TestRepositoryRejectsMissingIDWithoutRewritingConfig(t *testing.T) {
+func TestRepositoryGeneratesAndPersistsMissingHostID(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sshm.yaml")
 	data := []byte(`version: 2
 defaults:
@@ -110,15 +110,64 @@ host_trust:
 		t.Fatal(err)
 	}
 	repo := NewRepositoryWithPath(path)
-	if _, err := repo.Load(); err == nil {
-		t.Fatal("missing stable ID should be rejected")
+	doc, err := repo.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(doc.Hosts) != 1 || doc.Hosts[0].ID == "" {
+		t.Fatalf("missing stable ID was not generated: %+v", doc.Hosts)
+	}
+	persisted, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(persisted), "id: "+doc.Hosts[0].ID) {
+		t.Fatalf("generated stable ID was not persisted:\n%s", persisted)
+	}
+	reloaded, err := repo.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reloaded.Hosts[0].ID != doc.Hosts[0].ID {
+		t.Fatalf("generated ID changed after reload: %q -> %q", doc.Hosts[0].ID, reloaded.Hosts[0].ID)
+	}
+}
+
+func TestValidateDocumentDataGeneratesMissingHostID(t *testing.T) {
+	doc, err := ValidateDocumentData([]byte(`version: 2
+hosts:
+  - alias: manual
+    user: root
+    host: example.com
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(doc.Hosts) != 1 || doc.Hosts[0].ID == "" {
+		t.Fatalf("missing stable ID was not generated: %+v", doc.Hosts)
+	}
+}
+
+func TestRepositoryDoesNotRewriteInvalidHostWhenIDIsMissing(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sshm.yaml")
+	data := []byte(`version: 2
+hosts:
+  - alias: ../invalid
+    user: root
+    host: example.com
+`)
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewRepositoryWithPath(path).Load(); err == nil {
+		t.Fatal("invalid hand-edited host should be rejected")
 	}
 	persisted, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if string(persisted) != string(data) {
-		t.Fatalf("load rewrote hand-edited config:\n%s", persisted)
+		t.Fatalf("invalid hand-edited config was rewritten:\n%s", persisted)
 	}
 }
 

@@ -33,6 +33,15 @@ func TestParseArgs(t *testing.T) {
 	}
 }
 
+func TestParseArgsPreservesLongQuotedRemoteCommand(t *testing.T) {
+	command := `for h in /sys/class/fc_host/host*; do printf "%s WWPN=%s WWNN=%s State=%s Speed=%s\n" "$(basename "$h")" "$(cat "$h/port_name")" "$(cat "$h/node_name")" "$(cat "$h/port_state")" "$(cat "$h/speed")"; done`
+	parts := parseArgs("xt temk '" + command + "'")
+	want := []string{"xt", "temk", command}
+	if !reflect.DeepEqual(parts, want) {
+		t.Fatalf("parts = %#v, want %#v", parts, want)
+	}
+}
+
 func TestMatchHost(t *testing.T) {
 	h := config.Host{
 		Alias: "webserver",

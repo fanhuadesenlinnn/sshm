@@ -317,18 +317,21 @@ sshm tag add prod web01 web02
 sshm exec-tag prod "uptime" --yes`),
 	},
 	"passwd": {
-		use:  "passwd <别名|ID>",
-		long: "为主机保存 SSH 密码。密码会写入 sshm.yaml 内的加密 vault，需要主密码解锁。",
+		use:  "passwd <目标...|--tag 标签|--all> [--yes]",
+		long: "为一台或多台主机保存同一个 SSH 密码。密码会写入 sshm.yaml 内的加密 vault，需要主密码解锁。",
 		example: strings.TrimSpace(`
 sshm passwd web01
+sshm passwd web01 web02
+sshm passwd --tag prod
 sshm ping web01`),
 	},
 	"forget-pass": {
-		use:  "forget-pass <别名|ID> [--yes]",
-		long: "删除主机保存的 SSH 密码。删除前默认需要确认；脚本或 CI 中请显式传入 --yes。",
+		use:  "forget-pass <目标...|--tag 标签|--all> [--yes]",
+		long: "删除一台或多台主机保存的 SSH 密码。删除前默认需要确认；脚本或 CI 中请显式传入 --yes。",
 		example: strings.TrimSpace(`
 sshm forget-pass web01
-sshm forget-pass web01 --yes`),
+sshm forget-pass --tag prod
+sshm forget-pass --all --yes`),
 	},
 	"logs": {
 		use:  "logs [clean --yes]",

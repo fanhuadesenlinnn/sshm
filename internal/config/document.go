@@ -217,8 +217,18 @@ func (r *Repository) loadUnlocked() (*Document, error) {
 	if err := decoder.Decode(&doc); err != nil {
 		return nil, fmt.Errorf("解析配置文件失败，原文件未修改: %w", err)
 	}
+	idsAdded := ensureDocumentHostIDs(&doc)
 	if err := normalizeAndValidateDocument(&doc); err != nil {
 		return nil, err
+	}
+	if idsAdded {
+		data, err := encodeDocument(&doc)
+		if err != nil {
+			return nil, fmt.Errorf("序列化自动补全后的配置失败: %w", err)
+		}
+		if err := safefile.Write(r.path, data, 0600); err != nil {
+			return nil, fmt.Errorf("保存自动生成的主机 ID 失败: %w", err)
+		}
 	}
 	return &doc, nil
 }
@@ -282,6 +292,7 @@ func normalizeAndValidateDocument(doc *Document) error {
 	}
 	doc.ManagedKeys.normalize()
 	doc.Tags.normalize()
+	ensureDocumentHostIDs(doc)
 
 	tagNames := map[string]bool{}
 	for _, tag := range doc.Tags.Items {
@@ -299,9 +310,6 @@ func normalizeAndValidateDocument(doc *Document) error {
 	ids := map[string]bool{}
 	for i := range doc.Hosts {
 		host := &doc.Hosts[i]
-		if host.ID == "" {
-			return fmt.Errorf("主机 %s 缺少稳定 ID", host.Alias)
-		}
 		host.EnsureDefaults()
 		for _, tag := range host.Tags {
 			if err := ValidateTagName(tag); err != nil {
@@ -373,6 +381,32 @@ func normalizeAndValidateDocument(doc *Document) error {
 	return nil
 }
 
+// ensureDocumentHostIDs assigns stable IDs to hosts added by hand while
+// preserving every existing ID. Generated IDs are checked against explicit
+// IDs in the same document before they are assigned.
+func ensureDocumentHostIDs(doc *Document) bool {
+	used := make(map[string]bool, len(doc.Hosts))
+	for _, host := range doc.Hosts {
+		if host.ID != "" {
+			used[host.ID] = true
+		}
+	}
+	changed := false
+	for i := range doc.Hosts {
+		if doc.Hosts[i].ID != "" {
+			continue
+		}
+		id := NewID()
+		for used[id] {
+			id = NewID()
+		}
+		doc.Hosts[i].ID = id
+		used[id] = true
+		changed = true
+	}
+	return changed
+}
+
 func encodeDocument(doc *Document) ([]byte, error) {
 	body, err := yaml.Marshal(doc)
 	if err != nil {
@@ -389,6 +423,8 @@ func encodeDocument(doc *Document) ([]byte, error) {
 #   accept-new  新主机自动信任，主机密钥变化会被拒绝
 #   insecure    跳过主机密钥校验，不推荐
 #
+# 手工新增 hosts 条目时可以省略 id，sshm 校验后会自动生成并写回
+# 已有主机的 id 用于关联凭据，请勿修改
 # host_trust 与 vault 由 sshm 管理，请勿手动编辑
 `
 	return append([]byte(header), body...), nil

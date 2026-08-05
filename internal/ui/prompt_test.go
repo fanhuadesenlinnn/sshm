@@ -176,3 +176,56 @@ func TestArrowCommandsNavigateHistory(t *testing.T) {
 		t.Fatalf("down arrow line = %q, want show prod", got)
 	}
 }
+
+func TestLineViewportKeepsLongInputWithinOneRow(t *testing.T) {
+	line := []rune("0123456789abcdefghijklmnopqrstuvwxyz")
+	visible, cursorColumn := lineViewport(line, len(line), 12)
+	if got := visualLength(visible); got > 12 {
+		t.Fatalf("visible width = %d, want <= 12: %q", got, visible)
+	}
+	if visible != "opqrstuvwxyz" {
+		t.Fatalf("visible = %q, want tail of long input", visible)
+	}
+	if cursorColumn != 12 {
+		t.Fatalf("cursor column = %d, want 12", cursorColumn)
+	}
+}
+
+func TestLineViewportHandlesWideRunesAndMiddleCursor(t *testing.T) {
+	line := []rune("ab你好cd")
+	visible, cursorColumn := lineViewport(line, 4, 5)
+	if visualLength(visible) > 5 {
+		t.Fatalf("visible input wrapped: %q", visible)
+	}
+	if cursorColumn < 0 || cursorColumn > visualLength(visible) {
+		t.Fatalf("cursor column %d is outside %q", cursorColumn, visible)
+	}
+}
+
+func TestBracketedPasteBuffersAndNormalizesMultilineCommand(t *testing.T) {
+	ed := &lineEditor{line: []rune("xt prod "), cursor: len([]rune("xt prod ")), histPos: -1}
+	if done := ed.consumeEscapeSequence([]byte{escapeChar, '[', '2', '0', '0', '~'}); !done {
+		t.Fatal("bracketed paste start should be consumed")
+	}
+	if !ed.pasting {
+		t.Fatal("editor did not enter bracketed paste mode")
+	}
+	data := append([]byte("echo one\r\necho two\n"), bracketedPasteEnd...)
+	completed := false
+	for _, b := range data {
+		completed = ed.consumePastedByte(b) || completed
+	}
+	if !completed || ed.pasting {
+		t.Fatal("bracketed paste did not complete")
+	}
+	if got, want := ed.string(), "xt prod echo one echo two "; got != want {
+		t.Fatalf("pasted line = %q, want %q", got, want)
+	}
+}
+
+func TestNormalizePastedTextPreservesLongShellCommand(t *testing.T) {
+	command := `for h in /sys/class/fc_host/host*; do printf "%s WWPN=%s\n" "$(basename "$h")" "$(cat "$h/port_name")"; done`
+	if got := string(normalizePastedText([]byte(command))); got != command {
+		t.Fatalf("normalized command = %q, want %q", got, command)
+	}
+}
