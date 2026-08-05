@@ -18,6 +18,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Check Unix installer
+        run: |
+          sh -n scripts/install.sh
+          shellcheck scripts/install.sh
+
+      - name: Test Unix installer
+        run: |
+          scripts/install.sh --version v6.0.10 --install-dir "$RUNNER_TEMP/sshm-bin"
+          "$RUNNER_TEMP/sshm-bin/sshm" --version | grep -Fx "sshm v6.0.10"
+
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
@@ -75,3 +85,20 @@ jobs:
         run: |
           docker run --rm -v "$PWD/sshm-linux-static:/sshm:ro" centos:7 /sshm --version
           docker run --rm -v "$PWD/sshm-linux-static:/sshm:ro" alpine:3.19 /sshm --version
+
+  windows-installer:
+    name: Windows installer
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Test PowerShell installer
+        shell: powershell
+        run: |
+          $InstallDir = Join-Path $env:RUNNER_TEMP 'sshm-bin'
+          & .\scripts\install.ps1 -Version v6.0.10 -InstallDir $InstallDir -NoPathUpdate
+          $Output = & (Join-Path $InstallDir 'sshm.exe') --version
+          if ($Output -ne 'sshm v6.0.10') {
+            throw "Unexpected version output: $Output"
+          }

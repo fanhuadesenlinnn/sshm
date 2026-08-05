@@ -17,6 +17,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Check Unix installer
+        run: |
+          sh -n scripts/install.sh
+          shellcheck scripts/install.sh
+
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
@@ -239,13 +244,15 @@ jobs:
 
           ```bash
           # macOS / Linux
-          OS=$(uname -s | tr '[:upper:]' '[:lower:]')
-          ARCH=$(uname -m)
-          [ "$ARCH" = "x86_64" ] && ARCH=amd64
-          [ "$ARCH" = "aarch64" ] && ARCH=arm64
-          tar -xzf "sshm_${OS}_${ARCH}.tar.gz"
-          sudo mv sshm /usr/local/bin/
+          curl -fsSL https://raw.githubusercontent.com/fanhuadesenlinnn/sshm/main/scripts/install.sh | sh
           ```
+
+          ```powershell
+          # Windows PowerShell
+          irm https://raw.githubusercontent.com/fanhuadesenlinnn/sshm/main/scripts/install.ps1 | iex
+          ```
+
+          安装脚本保存在代码仓库中，不作为 Release 附件；安装时会自动选择平台制品并使用本页的 `checksums.txt` 校验 SHA-256。
           EOF
 
       - name: Create Release

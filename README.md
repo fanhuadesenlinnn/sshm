@@ -6,7 +6,34 @@ sshm 是一个本地优先、面向个人使用的 SSH 主机管理与轻量运�
 
 ## 安装
 
-需要 Go 1.25 或直接下载 GitHub Release 中对应平台的二进制。
+### 一键安装
+
+macOS / Linux：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/fanhuadesenlinnn/sshm/main/scripts/install.sh | sh
+```
+
+Windows PowerShell：
+
+```powershell
+irm https://raw.githubusercontent.com/fanhuadesenlinnn/sshm/main/scripts/install.ps1 | iex
+```
+
+安装器会自动识别操作系统和 AMD64/ARM64 架构，从最新 GitHub Release 下载对应制品，使用 `checksums.txt` 验证 SHA-256，然后安装并执行 `sshm --version`。安装脚本只保存在代码仓库中，不会作为 Release 附件发布。
+
+macOS/Linux 默认安装到 `/usr/local/bin`，权限不足时会请求 `sudo`；也可以指定版本或安装目录：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/fanhuadesenlinnn/sshm/main/scripts/install.sh | \
+  sh -s -- --version v6.0.10 --install-dir "$HOME/.local/bin"
+```
+
+Windows 默认安装到 `%LOCALAPPDATA%\Programs\sshm` 并加入用户 PATH。
+
+### 使用 Go 安装
+
+已经安装 Go 1.25 或更高版本时，也可以使用：
 
 ```bash
 go install github.com/fanhuadesenlinnn/sshm/v6@v6.0.10
@@ -23,6 +50,8 @@ PowerShell：
 ```powershell
 $env:GOPROXY = "https://goproxy.cn,direct"; go install github.com/fanhuadesenlinnn/sshm/v6@v6.0.10
 ```
+
+也可以前往 [GitHub Releases](https://github.com/fanhuadesenlinnn/sshm/releases/latest) 手工下载对应平台的压缩包和校验文件。
 
 ## v6 破坏性变更
 
