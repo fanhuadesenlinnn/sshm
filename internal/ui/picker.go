@@ -41,6 +41,14 @@ func PickHost(hosts []config.Host) (string, bool) {
 		if _, err := os.Stdin.Read(input[:]); err != nil {
 			return "", false
 		}
+		if isBackspaceKey(input[0]) {
+			runes := []rune(query)
+			if len(runes) > 0 {
+				query = string(runes[:len(runes)-1])
+				selected = 0
+			}
+			continue
+		}
 		switch input[0] {
 		case ctrlC, ctrlD:
 			clearPicker()
@@ -51,12 +59,6 @@ func PickHost(hosts []config.Host) (string, bool) {
 			}
 			clearPicker()
 			return matches[selected].Alias, true
-		case backspaceKey, 8:
-			runes := []rune(query)
-			if len(runes) > 0 {
-				query = string(runes[:len(runes)-1])
-				selected = 0
-			}
 		case escapeChar:
 			var sequence [2]byte
 			if _, err := io.ReadFull(os.Stdin, sequence[:]); err != nil || sequence[0] != '[' {

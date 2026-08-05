@@ -53,7 +53,11 @@ func (app *App) cmdTag(args []string) error {
 func (app *App) tagCenter() error {
 	app.printTagHelp()
 	for {
-		parts := parseArgs(ui.ReadLine(ui.CyanText("tag> ")))
+		parts, parseErr := parseArgs(ui.ReadLine(ui.CyanText("tag> ")))
+		if parseErr != nil {
+			fmt.Fprintln(os.Stderr, ui.ErrorMsg("%v", parseErr))
+			continue
+		}
 		if len(parts) == 0 {
 			continue
 		}

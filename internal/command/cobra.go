@@ -238,16 +238,16 @@ sshm web01
 sshm connect web01`),
 	},
 	"exec": {
-		use:  "exec [--yes] [--quiet] [--no-log] <别名|ID> <命令>",
-		long: "在单台主机上执行远程命令。默认会在交互终端确认并写入操作日志；脚本或 CI 中请显式传入 --yes。",
+		use:  "exec [--yes] [--quiet] [--no-log] <别名|ID> [--] <命令>",
+		long: "在单台主机上执行远程命令。复杂命令建议使用 -- 标记命令起点。默认会在交互终端确认并写入操作日志；脚本或 CI 中请显式传入 --yes。",
 		example: strings.TrimSpace(`
 sshm exec web01 "uptime"
 sshm exec --yes web01 "systemctl status app"
 sshm exec --yes --quiet --no-log web01 "hostname"`),
 	},
 	"exec-tag": {
-		use:  "exec-tag [批量选项] <标签|all> <命令>",
-		long: "按标签批量执行远程命令。使用虚拟标签 all 可选择全部主机；批量操作默认需要确认。",
+		use:  "exec-tag [批量选项] <标签|all> [--] <命令>",
+		long: "按标签批量执行远程命令。复杂命令建议使用 -- 标记命令起点。使用虚拟标签 all 可选择全部主机；批量操作默认需要确认。",
 		example: strings.TrimSpace(`
 sshm exec-tag prod "uptime" --yes
 sshm exec-tag all "hostname" --parallel 8 --connect-timeout 5s --yes

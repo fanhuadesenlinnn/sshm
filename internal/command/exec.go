@@ -61,7 +61,7 @@ func (app *App) cmdExecTag(args []string) error {
 		return err
 	}
 	if len(positionals) < 2 {
-		return fmt.Errorf("用法: sshm exec-tag <标签> <命令>")
+		return fmt.Errorf("用法: sshm exec-tag [批量选项] <标签> [--] <命令>")
 	}
 
 	tagName := positionals[0]
@@ -189,14 +189,14 @@ func parseOperationFlags(args []string) (yes, quiet, noLog bool, rest []string) 
 func parseExecArgs(args []string) (yes, quiet, noLog bool, aliasOrID, command string, err error) {
 	yes, quiet, noLog, args = parseOperationFlags(args)
 	if len(args) < 2 {
-		return false, false, false, "", "", fmt.Errorf("用法: sshm exec [--yes] [--quiet] [--no-log] <别名|ID> <命令>")
+		return false, false, false, "", "", fmt.Errorf("用法: sshm exec [--yes] [--quiet] [--no-log] <别名|ID> [--] <命令>")
 	}
 	aliasOrID = args[0]
 	commandArgs := append([]string(nil), args[1:]...)
 	if len(commandArgs) > 0 && commandArgs[0] == "--" {
 		commandArgs = commandArgs[1:]
 		if len(commandArgs) == 0 {
-			return false, false, false, "", "", fmt.Errorf("用法: sshm exec [--yes] [--quiet] [--no-log] <别名|ID> <命令>")
+			return false, false, false, "", "", fmt.Errorf("用法: sshm exec [--yes] [--quiet] [--no-log] <别名|ID> [--] <命令>")
 		}
 		return yes, quiet, noLog, aliasOrID, strings.Join(commandArgs, " "), nil
 	}
@@ -214,7 +214,7 @@ func parseExecArgs(args []string) (yes, quiet, noLog bool, aliasOrID, command st
 		}
 		commandArgs = commandArgs[:len(commandArgs)-1]
 	}
-	return false, false, false, "", "", fmt.Errorf("用法: sshm exec [--yes] [--quiet] [--no-log] <别名|ID> <命令>")
+	return false, false, false, "", "", fmt.Errorf("用法: sshm exec [--yes] [--quiet] [--no-log] <别名|ID> [--] <命令>")
 }
 
 // tryGetSecretStore attempts to create a secret store, prompting for master password.

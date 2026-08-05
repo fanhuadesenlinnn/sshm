@@ -156,6 +156,36 @@ func TestConsumeEscapeSequenceWaitsForFinalByte(t *testing.T) {
 	}
 }
 
+func TestBackspaceKeyEncodingsDeletePreviousRune(t *testing.T) {
+	tests := []struct {
+		name string
+		key  byte
+	}{
+		{name: "DEL", key: backspaceKey},
+		{name: "BS Ctrl-H", key: ctrlH},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if !isBackspaceKey(tt.key) {
+				t.Fatalf("key 0x%02x was not recognized as Backspace", tt.key)
+			}
+			ed := &lineEditor{line: []rune("a中b"), cursor: 2, histPos: -1}
+			ed.backspace()
+			if got := ed.string(); got != "ab" {
+				t.Fatalf("line after Backspace = %q, want ab", got)
+			}
+			if ed.cursor != 1 {
+				t.Fatalf("cursor after Backspace = %d, want 1", ed.cursor)
+			}
+		})
+	}
+
+	if isBackspaceKey('x') {
+		t.Fatal("ordinary input was recognized as Backspace")
+	}
+}
+
 func TestArrowCommandsNavigateHistory(t *testing.T) {
 	ed := &lineEditor{
 		history: []string{"list", "show prod"},

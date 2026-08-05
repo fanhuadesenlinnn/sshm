@@ -1,6 +1,6 @@
-# sshm v6.0.7 产品设计
+# sshm v6.0.9 产品设计
 
-状态：v6.0.7 当前设计
+状态：v6.0.9 当前设计
 
 ## 产品定位
 
@@ -15,10 +15,11 @@ sshm 是供个人开发者和个人运维使用者管理约 5 到 100 台 SSH �
 
 ## 当前产品事实
 
-- 产品版本为 `v6.0.7`，Go module 为 `/v6`。
+- 产品版本为 `v6.0.9`，Go module 为 `/v6`。
 - 主配置与 Deploy 配置均为严格 YAML schema `version: 2`。
 - 默认数据目录只使用 `~/.sshm`，仅支持 `SSHM_HOME` 整体覆盖。
 - Cobra 提供 CLI 命令树，同时保留无参数工作台和 alias/ID 直连。
+- 交互工作台的 `x/exec` 与 `xt/exec-tag` 只解析本地目标和选项；`--` 后的远程命令作为不透明文本传递。
 - Go 原生 SSH 负责连接、认证、host trust、执行、SFTP 和端口转发。
 - rsync 是可选加速路径，必须保持与 SFTP 相同的安全和结果语义。
 - Linux、macOS、Windows 提供相同正式能力目标。

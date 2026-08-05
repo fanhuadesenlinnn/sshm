@@ -100,8 +100,8 @@ func TestCoreCommandHelpIncludesRunnableExamples(t *testing.T) {
 		wantUse     string
 		wantExample string
 	}{
-		{[]string{"exec"}, "exec [--yes] [--quiet] [--no-log] <别名|ID> <命令>", "sshm exec --yes web01"},
-		{[]string{"exec-tag"}, "exec-tag [批量选项] <标签|all> <命令>", "sshm exec-tag all"},
+		{[]string{"exec"}, "exec [--yes] [--quiet] [--no-log] <别名|ID> [--] <命令>", "sshm exec --yes web01"},
+		{[]string{"exec-tag"}, "exec-tag [批量选项] <标签|all> [--] <命令>", "sshm exec-tag all"},
 		{[]string{"push"}, "push [选项] <别名|ID> <本地路径> <远程路径>", "sshm push web01"},
 		{[]string{"key"}, "key <命令> [参数]", "sshm key setup personal web01 --yes"},
 		{[]string{"tag"}, "tag <命令> [参数]", "sshm tag add prod"},

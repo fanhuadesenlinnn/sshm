@@ -161,7 +161,11 @@ func removePasswordsForHosts(fs *secret.FileStore, hosts []config.Host) error {
 func (app *App) resolveCredentialTargets(args []string) ([]config.Host, error) {
 	if len(args) == 0 {
 		input := ui.ReadLine("请输入主机别名或ID（多个目标用空格分隔，也支持 --tag/--all）: ")
-		args = parseArgs(input)
+		var err error
+		args, err = parseArgs(input)
+		if err != nil {
+			return nil, err
+		}
 	}
 	return app.selectHosts(args)
 }

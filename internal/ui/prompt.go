@@ -14,6 +14,7 @@ const (
 	maxHistory   = 100
 	escapeChar   = 27
 	backspaceKey = 127
+	ctrlH        = 8
 	ctrlC        = 3
 	ctrlD        = 4
 	enterKey     = 13
@@ -146,6 +147,12 @@ func (ed *lineEditor) run() string {
 			continue
 		}
 
+		if isBackspaceKey(b) {
+			ed.backspace()
+			ed.redraw()
+			continue
+		}
+
 		switch b {
 		case escapeChar:
 			escSeq[0] = b
@@ -171,10 +178,6 @@ func (ed *lineEditor) run() string {
 			}
 			return result
 
-		case backspaceKey:
-			ed.backspace()
-			ed.redraw()
-
 		default:
 			if b >= 32 && b < 127 {
 				runeBytes = runeBytes[:0]
@@ -193,6 +196,12 @@ func (ed *lineEditor) run() string {
 			}
 		}
 	}
+}
+
+// isBackspaceKey accepts both terminal encodings commonly produced by the
+// Backspace key: DEL (0x7f) and BS/Ctrl-H (0x08).
+func isBackspaceKey(b byte) bool {
+	return b == backspaceKey || b == ctrlH
 }
 
 // consumeEscapeSequence handles a complete escape sequence and reports whether

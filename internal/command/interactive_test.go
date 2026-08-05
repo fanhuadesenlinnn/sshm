@@ -3,6 +3,7 @@ package command
 import (
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
@@ -20,13 +21,21 @@ func TestParseArgs(t *testing.T) {
 		{"cmd arg1 arg2", []string{"cmd", "arg1", "arg2"}},
 		{`cmd "arg with spaces"`, []string{"cmd", "arg with spaces"}},
 		{`cmd 'single quoted'`, []string{"cmd", "single quoted"}},
+		{`cmd ""`, []string{"cmd", ""}},
+		{`cmd escaped\ space`, []string{"cmd", "escaped space"}},
+		{`cmd "C:\Program Files\Editor\editor.exe"`, []string{"cmd", `C:\Program Files\Editor\editor.exe`}},
+		{`cmd "\\server\share path"`, []string{"cmd", `\\server\share path`}},
 		{"  leading space", []string{"leading", "space"}},
 		{"trailing space  ", []string{"trailing", "space"}},
 		{"multiple   spaces", []string{"multiple", "spaces"}},
 	}
 
 	for _, tt := range tests {
-		got := parseArgs(tt.input)
+		got, err := parseArgs(tt.input)
+		if err != nil {
+			t.Errorf("parseArgs(%q) error = %v", tt.input, err)
+			continue
+		}
 		if !reflect.DeepEqual(got, tt.want) {
 			t.Errorf("parseArgs(%q) = %v, want %v", tt.input, got, tt.want)
 		}
@@ -35,10 +44,135 @@ func TestParseArgs(t *testing.T) {
 
 func TestParseArgsPreservesLongQuotedRemoteCommand(t *testing.T) {
 	command := `for h in /sys/class/fc_host/host*; do printf "%s WWPN=%s WWNN=%s State=%s Speed=%s\n" "$(basename "$h")" "$(cat "$h/port_name")" "$(cat "$h/node_name")" "$(cat "$h/port_state")" "$(cat "$h/speed")"; done`
-	parts := parseArgs("xt temk '" + command + "'")
-	want := []string{"xt", "temk", command}
+	parts, err := parseInteractiveInput("xt temk '" + command + "'")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"xt", "temk", "--", command}
 	if !reflect.DeepEqual(parts, want) {
 		t.Fatalf("parts = %#v, want %#v", parts, want)
+	}
+}
+
+func TestParseArgsRejectsUnclosedQuotes(t *testing.T) {
+	for _, input := range []string{`cmd "unfinished`, `cmd 'unfinished`} {
+		if _, err := parseArgs(input); err == nil {
+			t.Fatalf("parseArgs(%q) should reject unclosed quotes", input)
+		}
+	}
+}
+
+func TestParseInteractiveExecPreservesRemoteCommand(t *testing.T) {
+	tests := []struct {
+		input string
+		want  []string
+	}{
+		{
+			input: `x web01 awk '{print $1}' /tmp/data`,
+			want:  []string{"x", "web01", "--", `awk '{print $1}' /tmp/data`},
+		},
+		{
+			input: `x web01 --quiet pwd`,
+			want:  []string{"x", "--quiet", "web01", "--", "pwd"},
+		},
+		{
+			input: `x --quiet web01 pwd --quiet`,
+			want:  []string{"x", "--quiet", "web01", "--", "pwd --quiet"},
+		},
+		{
+			input: `x web01 -- echo "--quiet"`,
+			want:  []string{"x", "web01", "--", `echo "--quiet"`},
+		},
+		{
+			input: `x web01 printf '%s\n' "a b"`,
+			want:  []string{"x", "web01", "--", `printf '%s\n' "a b"`},
+		},
+		{
+			input: `x web01 -- --quiet pwd`,
+			want:  []string{"x", "web01", "--", "--quiet pwd"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got, err := parseInteractiveInput(tt.input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Fatalf("parts = %#v, want %#v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestParseInteractiveExecTagAcceptsOptionsAroundTarget(t *testing.T) {
+	tests := []struct {
+		input string
+		want  []string
+	}{
+		{
+			input: `xt prod --parallel 4 --yes uptime`,
+			want:  []string{"xt", "--parallel", "4", "--yes", "prod", "--", "uptime"},
+		},
+		{
+			input: `xt --parallel 4 prod -- systemctl restart app`,
+			want:  []string{"xt", "--parallel", "4", "prod", "--", "systemctl restart app"},
+		},
+	}
+	for _, tt := range tests {
+		got, err := parseInteractiveInput(tt.input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(got, tt.want) {
+			t.Fatalf("parseInteractiveInput(%q) = %#v, want %#v", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestParseInteractiveExecExplainsUnknownOptionBoundary(t *testing.T) {
+	_, err := parseInteractiveInput(`x web01 --quie pwd`)
+	if err == nil || !strings.Contains(err.Error(), "前面加 --") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestInteractiveExecParsingReachesCommandHandlersUnchanged(t *testing.T) {
+	parts, err := parseInteractiveInput(`x web01 --quiet -- awk '{print $1}' /tmp/data`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	yes, quiet, noLog, host, command, err := parseExecArgs(parts[1:])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if yes || !quiet || noLog || host != "web01" || command != `awk '{print $1}' /tmp/data` {
+		t.Fatalf("unexpected exec parse: yes=%t quiet=%t noLog=%t host=%q command=%q", yes, quiet, noLog, host, command)
+	}
+
+	parts, err = parseInteractiveInput(`xt prod --parallel 4 --yes -- printf '%s\n' "a b"`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	options, positionals, err := parseBatchCLIOptions(parts[1:])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if options.Parallel != 4 || !options.Yes {
+		t.Fatalf("unexpected batch options: %+v", options)
+	}
+	wantPositionals := []string{"prod", `printf '%s\n' "a b"`}
+	if !reflect.DeepEqual(positionals, wantPositionals) {
+		t.Fatalf("positionals = %#v, want %#v", positionals, wantPositionals)
+	}
+}
+
+func TestInteractiveExecDelimiterRequiresCommand(t *testing.T) {
+	for _, input := range []string{`x web01 --`, `xt prod --`} {
+		if _, err := parseInteractiveInput(input); err == nil || !strings.Contains(err.Error(), "缺少远程命令") {
+			t.Fatalf("parseInteractiveInput(%q) error = %v", input, err)
+		}
 	}
 }
 

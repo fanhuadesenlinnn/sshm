@@ -50,7 +50,11 @@ func (app *App) cmdHost(args []string) error {
 func (app *App) hostCenter() error {
 	app.printHostHelp()
 	for {
-		parts := parseArgs(ui.ReadLine(ui.CyanText("host> ")))
+		parts, parseErr := parseArgs(ui.ReadLine(ui.CyanText("host> ")))
+		if parseErr != nil {
+			fmt.Fprintln(os.Stderr, ui.ErrorMsg("%v", parseErr))
+			continue
+		}
 		if len(parts) == 0 {
 			continue
 		}
@@ -177,7 +181,10 @@ func (app *App) cmdConfigEdit(_ []string) error {
 			editor = "vi"
 		}
 	}
-	parts := splitEditorCommand(editor)
+	parts, err := splitEditorCommand(editor)
+	if err != nil {
+		return fmt.Errorf("解析编辑器命令失败: %w", err)
+	}
 	if len(parts) == 0 {
 		return fmt.Errorf("编辑器命令为空")
 	}
@@ -202,6 +209,6 @@ func (app *App) cmdConfigEdit(_ []string) error {
 	return nil
 }
 
-func splitEditorCommand(editor string) []string {
+func splitEditorCommand(editor string) ([]string, error) {
 	return parseArgs(editor)
 }

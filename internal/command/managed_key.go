@@ -66,7 +66,11 @@ func (app *App) cmdKey(args []string) error {
 func (app *App) keyCenter() error {
 	app.printKeyHelp()
 	for {
-		parts := parseArgs(ui.ReadLine(ui.CyanText("key> ")))
+		parts, parseErr := parseArgs(ui.ReadLine(ui.CyanText("key> ")))
+		if parseErr != nil {
+			fmt.Fprintln(os.Stderr, ui.ErrorMsg("%v", parseErr))
+			continue
+		}
 		if len(parts) == 0 {
 			continue
 		}

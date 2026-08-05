@@ -48,7 +48,7 @@ var commandCatalog = []commandCatalogEntry{
 	{Name: "unpin", Group: commandGroupHost, Short: "取消收藏主机", HelpUsage: "unpin <别名|ID>", HelpSummary: "取消收藏主机"},
 	{Name: "ping", Group: commandGroupOps, Short: "测试 SSH 连接", HelpUsage: "ping [--yes] [--quiet] [目标]", HelpSummary: "测试连接", LegacyOptions: []string{"--ping", "-p"}},
 	{Name: "exec", Group: commandGroupOps, Short: "在单台主机执行命令", HelpUsage: "exec [--yes] [--quiet] [--no-log] ...", HelpSummary: "执行命令", LegacyOptions: []string{"--exec", "-x"}},
-	{Name: "exec-tag", Group: commandGroupOps, Short: "按标签批量执行命令", HelpUsage: "exec-tag [批量选项] <标签|all> <命令>", HelpSummary: "按标签执行命令", LegacyOptions: []string{"--exec-tag", "--xt"}},
+	{Name: "exec-tag", Group: commandGroupOps, Short: "按标签批量执行命令", HelpUsage: "exec-tag [批量选项] <标签|all> [--] <命令>", HelpSummary: "按标签执行命令", LegacyOptions: []string{"--exec-tag", "--xt"}},
 	{Name: "push", Group: commandGroupOps, Short: "向单台主机推送文件或目录", HelpUsage: "push <主机> <本地> <远程> [选项]", HelpSummary: "推送文件或目录"},
 	{Name: "pull", Group: commandGroupOps, Short: "从单台主机拉取文件或目录", HelpUsage: "pull <主机> <远程> <本地> [选项]", HelpSummary: "拉取文件或目录"},
 	{Name: "push-tag", Group: commandGroupOps, Short: "按标签批量推送文件或目录", HelpUsage: "push-tag <标签|all> <本地> <远程> [选项]", HelpSummary: "按标签推送文件或目录"},

@@ -34,7 +34,11 @@ func (app *App) interactiveMode() error {
 			continue
 		}
 
-		parts := parseArgs(input)
+		parts, parseErr := parseInteractiveInput(input)
+		if parseErr != nil {
+			fmt.Fprintln(os.Stderr, ui.ErrorMsg("%v", parseErr))
+			continue
+		}
 		if len(parts) == 0 {
 			continue
 		}
@@ -254,19 +258,42 @@ func connectionFailure(h config.Host, err error) error {
 }
 
 func (app *App) cmdInteractiveExec(args []string) error {
-	if len(args) < 2 {
-		alias := ui.ReadLine("目标主机 (别名/ID): ")
+	_, _, _, rest := parseOperationFlags(args)
+	if len(rest) < 2 {
+		alias := ""
+		if len(rest) == 1 {
+			alias = rest[0]
+		} else {
+			alias = ui.ReadLine("目标主机 (别名/ID): ")
+		}
 		cmd := ui.ReadLine("命令: ")
-		return app.cmdExec([]string{alias, cmd})
+		if alias == "" || cmd == "" {
+			return fmt.Errorf("需要指定目标主机和远程命令")
+		}
+		prefix := append([]string(nil), args[:len(args)-len(rest)]...)
+		return app.cmdExec(append(prefix, alias, "--", cmd))
 	}
 	return app.cmdExec(args)
 }
 
 func (app *App) cmdInteractiveExecTag(args []string) error {
-	if len(args) < 2 {
-		tag := ui.ReadLine("标签名: ")
+	_, positionals, err := parseBatchCLIOptions(args)
+	if err != nil {
+		return err
+	}
+	if len(positionals) < 2 {
+		if len(positionals) == 0 {
+			tag := ui.ReadLine("标签名: ")
+			if tag == "" {
+				return fmt.Errorf("需要指定标签")
+			}
+			args = append(args, tag)
+		}
 		cmd := ui.ReadLine("命令: ")
-		return app.cmdExecTag([]string{tag, cmd})
+		if cmd == "" {
+			return fmt.Errorf("需要指定远程命令")
+		}
+		return app.cmdExecTag(append(args, "--", cmd))
 	}
 	return app.cmdExecTag(args)
 }
@@ -294,39 +321,4 @@ func (app *App) cmdInteractiveSSHConfig(args []string) error {
 	default:
 		return nil
 	}
-}
-
-func parseArgs(input string) []string {
-	var args []string
-	current := ""
-	inQuote := false
-	quoteChar := byte(0)
-
-	for i := 0; i < len(input); i++ {
-		ch := input[i]
-		if inQuote {
-			if ch == quoteChar {
-				inQuote = false
-			} else {
-				current += string(ch)
-			}
-		} else {
-			switch ch {
-			case '"', '\'':
-				inQuote = true
-				quoteChar = ch
-			case ' ', '\t':
-				if current != "" {
-					args = append(args, current)
-					current = ""
-				}
-			default:
-				current += string(ch)
-			}
-		}
-	}
-	if current != "" {
-		args = append(args, current)
-	}
-	return args
 }

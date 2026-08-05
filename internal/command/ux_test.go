@@ -200,7 +200,10 @@ func TestConfigInsecurePolicyRequiresConfirmationUnlessYes(t *testing.T) {
 }
 
 func TestSplitEditorCommandKeepsQuotedWindowsPath(t *testing.T) {
-	parts := splitEditorCommand(`"C:\Program Files\Editor\editor.exe" --wait`)
+	parts, err := splitEditorCommand(`"C:\Program Files\Editor\editor.exe" --wait`)
+	if err != nil {
+		t.Fatal(err)
+	}
 	want := []string{`C:\Program Files\Editor\editor.exe`, "--wait"}
 	if !reflect.DeepEqual(parts, want) {
 		t.Fatalf("parts = %#v, want %#v", parts, want)

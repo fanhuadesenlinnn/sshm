@@ -1,27 +1,27 @@
-# sshm v6.0.8
+# sshm v6.0.9
 
 sshm 是一个本地优先、面向个人使用的 SSH 主机管理与轻量运维工具。它使用 Go 原生 SSH 能力管理主机、标签、凭据、批量命令、安全文件传输和 Deploy v2 编排。
 
-> 版本说明：产品发布版本是 `v6.0.8`，Go module 是 `github.com/fanhuadesenlinnn/sshm/v6`，主配置与 Deploy 配置的 schema 都是 `version: 2`。
+> 版本说明：产品发布版本是 `v6.0.9`，Go module 是 `github.com/fanhuadesenlinnn/sshm/v6`，主配置与 Deploy 配置的 schema 都是 `version: 2`。
 
 ## 安装
 
 需要 Go 1.25 或直接下载 GitHub Release 中对应平台的二进制。
 
 ```bash
-go install github.com/fanhuadesenlinnn/sshm/v6@v6.0.8
+go install github.com/fanhuadesenlinnn/sshm/v6@v6.0.9
 ```
 
 如果 `proxy.golang.org` 访问较慢，可临时指定国内代理：
 
 ```bash
-GOPROXY=https://goproxy.cn,direct go install github.com/fanhuadesenlinnn/sshm/v6@v6.0.8
+GOPROXY=https://goproxy.cn,direct go install github.com/fanhuadesenlinnn/sshm/v6@v6.0.9
 ```
 
 PowerShell：
 
 ```powershell
-$env:GOPROXY = "https://goproxy.cn,direct"; go install github.com/fanhuadesenlinnn/sshm/v6@v6.0.8
+$env:GOPROXY = "https://goproxy.cn,direct"; go install github.com/fanhuadesenlinnn/sshm/v6@v6.0.9
 ```
 
 ## v6 破坏性变更
@@ -84,6 +84,16 @@ sshm tag --help
 sshm deploy --help
 sshm deploy run --help
 ```
+
+在交互工作台中，复杂远程命令建议用 `--` 明确标记起点；`--` 后的文本不再由 sshm 拆分或重组：
+
+```text
+sshm> x web01 --quiet -- pwd
+sshm> x web01 -- awk '{print $1}' /tmp/data
+sshm> xt prod --parallel 4 --yes -- systemctl restart app
+```
+
+不写 `--` 时仍兼容 `x web01 pwd` 和 `x web01 --quiet pwd`。只有远程命令开始前的已知 sshm 选项会被解析；一旦识别到命令起点，后续引号、变量、反斜杠和命令参数都原样传给远程 Shell。
 
 ## 批量执行
 
