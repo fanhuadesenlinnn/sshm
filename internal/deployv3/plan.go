@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
@@ -415,10 +414,4 @@ func resolveRelative(baseDir, path string) string {
 		return path
 	}
 	return filepath.Join(baseDir, path)
-}
-
-func sortedSources(catalog *Catalog) []string {
-	paths := append([]string(nil), catalog.Sources...)
-	sort.Strings(paths)
-	return paths
 }
