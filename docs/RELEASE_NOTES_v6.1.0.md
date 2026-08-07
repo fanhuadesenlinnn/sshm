@@ -48,6 +48,12 @@ v6.1.0 移除 Deploy v2，只保留 Deploy v3 单一执行引擎。主配置 sch
 - ndjson 事件流在 linear/free 策略下统一为按任务×主机发 `task_host_done`（含 Task/TaskIndex）。
 - `passwd`、`forget-pass`、`key` 批量命令支持 `--exclude`/`--exclude-tag`。
 - `doctor` 增加 Deploy 配置加载与校验检查。
+- `deploy run --check` 不再因 check 跳过的任务返回失败退出码，check 跳过原因单独标注（"check 模式跳过，可设 check_safe: true 执行"），失败提示区分是否已在 check 模式。
+- `exec-tag` 每台主机完成即打印其输出，全部结束后仍显示完整汇总；`--quiet` 行为不变。
+- `logs` 支持 `--host <别名>` 与 `--action <动作>` 筛选。
+- `forward` 支持同一条连接内的多条本地端口转发（`<本地> <远程> [<本地> <远程> ...]`）。
+- 文本 diff 改为真正的行级 unified diff（LCS + 上下文 hunk），超大文件自动回退全量替换展示。
+- README 与初始化模板补充 `check_safe: true` 说明。
 - 新增测试：会话复用与 ReusableSession 防护、wait_for 目标机检测、service unmask、debug register、command 元字符拒绝、scrypt 重加密、ssh_config 解析导出、搜索匹配、行编辑器状态机与表格渲染；`internal/ui` 覆盖率提升。
 
 ## 质量

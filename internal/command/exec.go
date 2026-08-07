@@ -122,10 +122,31 @@ func (app *App) executeBatch(hosts []config.Host, command string, options batchC
 	defer executor.CloseSessions()
 	ctx, cancel := signalContext()
 	defer cancel()
+	logResults := make([]operation.Result, 0, len(hosts))
 	runner := batch.Runner{
 		Options: batchOptions,
-		Progress: func(done, total int, _ batch.Result) {
-			ui.RefreshLine("  [%d/%d] 执行中...", done, total)
+		Progress: func(done, total int, item batch.Result) {
+			// 每台主机完成即打印其输出，避免整批结束后才看到内容。
+			ui.EndProgress()
+			if !options.Quiet {
+				fmt.Println()
+				ui.PrintHeader(fmt.Sprintf("=== %s (%s@%s) ===", item.Host.Alias, item.Host.User, item.Host.Host))
+			}
+			if item.Status == batch.StatusSkipped {
+				ui.PrintWarn("%s: skipped (%s)", item.Host.Alias, item.SkippedReason)
+				logResults = append(logResults, skippedOperationResult(item.Host, item.SkippedReason))
+				return
+			}
+			opResult := item.Value.(ops.Result)
+			if !options.Quiet {
+				fmt.Print(opResult.Output)
+			}
+			logResult := newOperationResult(item.Host, opResult.Output, opResult.Err, operation.StageExecute,
+				fmt.Sprintf("sshm exec --yes %s %s", shellquote.Single(item.Host.Alias), shellquote.Single(command)), opResult.Duration)
+			logResults = append(logResults, logResult)
+			if opResult.Err != nil {
+				printOperationFailure(logResult)
+			}
 		},
 	}
 	runResult, err := runner.Run(ctx, hosts, func(ctx context.Context, host config.Host) batch.Result {
@@ -139,28 +160,6 @@ func (app *App) executeBatch(hosts []config.Host, command string, options batchC
 		return &ExitError{Code: 3, Err: err}
 	}
 
-	logResults := make([]operation.Result, 0, len(runResult.Results))
-	for _, result := range runResult.Results {
-		if !options.Quiet {
-			fmt.Println()
-			ui.PrintHeader(fmt.Sprintf("=== %s (%s@%s) ===", result.Host.Alias, result.Host.User, result.Host.Host))
-		}
-		if result.Status == batch.StatusSkipped {
-			ui.PrintWarn("%s: skipped (%s)", result.Host.Alias, result.SkippedReason)
-			logResults = append(logResults, skippedOperationResult(result.Host, result.SkippedReason))
-			continue
-		}
-		opResult := result.Value.(ops.Result)
-		if !options.Quiet {
-			fmt.Print(opResult.Output)
-		}
-		logResult := newOperationResult(result.Host, opResult.Output, opResult.Err, operation.StageExecute,
-			fmt.Sprintf("sshm exec --yes %s %s", shellquote.Single(result.Host.Alias), shellquote.Single(command)), opResult.Duration)
-		logResults = append(logResults, logResult)
-		if opResult.Err != nil {
-			printOperationFailure(logResult)
-		}
-	}
 	fmt.Println()
 	printBatchSummary(runResult.Summary)
 	if logDefaults.Enabled && !options.NoLog {

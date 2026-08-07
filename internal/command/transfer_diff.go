@@ -7,7 +7,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"strings"
 	"unicode/utf8"
 
 	"github.com/pkg/sftp"
@@ -74,12 +73,7 @@ func writeFileDiff(writer io.Writer, client *sftp.Client, localFile, remoteFile 
 		return nil
 	}
 	fmt.Fprintf(writer, "--- %s\n+++ %s\n", remoteFile, localFile)
-	for _, line := range splitDiffLines(oldData) {
-		fmt.Fprintf(writer, "-%s\n", line)
-	}
-	for _, line := range splitDiffLines(newData) {
-		fmt.Fprintf(writer, "+%s\n", line)
-	}
+	fmt.Fprint(writer, unifiedDiff(string(oldData), string(newData)))
 	return nil
 }
 
@@ -109,12 +103,4 @@ func classifyDiffData(data []byte) ([]byte, bool, error) {
 		return data[:maxDiffFileSize], false, nil
 	}
 	return data, utf8.Valid(data) && !bytes.ContainsRune(data, '\x00'), nil
-}
-
-func splitDiffLines(data []byte) []string {
-	value := strings.TrimSuffix(string(data), "\n")
-	if value == "" {
-		return nil
-	}
-	return strings.Split(value, "\n")
 }

@@ -559,6 +559,38 @@ func TestGatherFactsRunsThroughEngine(t *testing.T) {
 	}
 }
 
+func TestCheckModeSkippedDoesNotFailExitCode(t *testing.T) {
+	if code := (RunResult{Check: true, Summary: batch.Summary{Skipped: 2}}).ExitCode(); code != 0 {
+		t.Fatalf("check 模式下 skipped 不应失败，退出码 = %d", code)
+	}
+	if code := (RunResult{Check: false, Summary: batch.Summary{Skipped: 2}}).ExitCode(); code != 1 {
+		t.Fatalf("非 check 模式 skipped 应失败，退出码 = %d", code)
+	}
+	if code := (RunResult{Check: true, Summary: batch.Summary{Failed: 1}}).ExitCode(); code != 1 {
+		t.Fatalf("check 模式 failed 仍应失败，退出码 = %d", code)
+	}
+}
+
+func TestCheckModeCommandRunsExitZero(t *testing.T) {
+	executor := &fakeExecutor{}
+	plan := planFor(t, []Task{commandTask("probe", "hostname")}, testHosts())
+	plan.Check = true
+	result := (Runner{Executor: executor}).Run(context.Background(), plan)
+	if result.Summary.Skipped != 2 {
+		t.Fatalf("check 模式 command 应跳过: %+v", result.Summary)
+	}
+	if code := result.ExitCode(); code != 0 {
+		t.Fatalf("check 模式退出码 = %d, want 0", code)
+	}
+	for _, host := range result.Hosts {
+		for _, taskResult := range host.Tasks {
+			if !strings.Contains(taskResult.Reason, "check 模式跳过") {
+				t.Fatalf("check 跳过原因应明确: %+v", taskResult)
+			}
+		}
+	}
+}
+
 func TestConfirmGatesEachSerialBatch(t *testing.T) {
 	executor := &fakeExecutor{}
 	task := commandTask("restart", "echo restart")

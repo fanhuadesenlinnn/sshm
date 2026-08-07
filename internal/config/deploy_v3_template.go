@@ -108,6 +108,7 @@ plays: []
 #       chdir: /opt/app        # 先切换目录
 #       creates: /opt/app/installed   # 路径存在则跳过（幂等钩子）
 #       removes: /opt/app/legacy      # 路径不存在则跳过
+#     check_safe: true        # 只读命令（如 nginx -t）可在 --check 下执行；默认跳过
 #   unarchive：上传并解压压缩包（.tar.gz/.tgz/.zip，内置路径穿越校验）
 #     unarchive:
 #       src: ./dist/bundle.tar.gz

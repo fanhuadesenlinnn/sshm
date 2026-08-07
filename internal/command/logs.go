@@ -41,8 +41,25 @@ func (app *App) cmdLogs(args []string) error {
 		ui.PrintSuccess("操作日志已清理")
 		return nil
 	}
-	if len(args) > 0 {
-		return fmt.Errorf("未知 logs 命令 %q；使用 sshm logs help 查看帮助", args[0])
+	hostFilter := ""
+	actionFilter := ""
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--host":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--host 缺少别名")
+			}
+			i++
+			hostFilter = args[i]
+		case "--action":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--action 缺少动作")
+			}
+			i++
+			actionFilter = args[i]
+		default:
+			return fmt.Errorf("未知 logs 命令 %q；使用 sshm logs help 查看帮助", args[i])
+		}
 	}
 	retention := 30 * 24 * time.Hour
 	if doc, err := app.Store.Repository().Load(); err == nil {
@@ -61,11 +78,44 @@ func (app *App) cmdLogs(args []string) error {
 	}
 	ui.PrintWarn("操作日志可能包含敏感远程输出，请按本地敏感数据保护")
 	for _, entry := range entries {
-		if entry.IsDir() {
-			fmt.Println(filepath.Join(config.LogsDir(), entry.Name()))
+		if !entry.IsDir() {
+			continue
 		}
+		name := entry.Name()
+		if actionFilter != "" && !strings.HasSuffix(name, "-"+actionFilter) {
+			continue
+		}
+		dir := filepath.Join(config.LogsDir(), name)
+		if hostFilter != "" {
+			for _, match := range hostLogFiles(dir, hostFilter) {
+				fmt.Println(match)
+			}
+			continue
+		}
+		fmt.Println(dir)
 	}
 	return nil
+}
+
+// hostLogFiles returns the per-host log files of a run directory matching the
+// alias. Host aliases are restricted to [A-Za-z0-9._-], so the alias itself
+// is a safe filename prefix.
+func hostLogFiles(dir, alias string) []string {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	prefix := alias + "-"
+	var matches []string
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".log") {
+			continue
+		}
+		if strings.HasPrefix(entry.Name(), prefix) {
+			matches = append(matches, filepath.Join(dir, entry.Name()))
+		}
+	}
+	return matches
 }
 
 func safeLogsDirForClean() (string, error) {
@@ -92,6 +142,8 @@ func printLogsHelp() {
 	ui.PrintHeader("操作日志")
 	fmt.Println()
 	fmt.Println("  logs                  列出日志目录")
+	fmt.Println("  logs --host <别名>    只看某台主机的日志")
+	fmt.Println("  logs --action <动作>  只看某个动作（exec/exec-batch/deploy/key-*）")
 	fmt.Println("  logs clean [--yes]    清理本地操作日志")
 	fmt.Println()
 	fmt.Println("  日志可能包含敏感远程输出，默认保存在 ~/.sshm/logs。")

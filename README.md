@@ -248,6 +248,7 @@ sshm deploy run update-app --check --diff --yes
 
 - `command` 不经过远程 shell：`cmd` 不能包含管道、重定向、`$`、`;`、`&`、反引号等 shell 元字符，参数按字面传递。
 - 需要管道/重定向/变量展开时使用 `shell` 模块。
+- `--check` 模式默认跳过 command/shell（只读检查不执行命令）；确需在 check 下执行的只读命令（如 `nginx -t`、`systemctl status`）给任务加 `check_safe: true`。
 
 ### 变量插值
 

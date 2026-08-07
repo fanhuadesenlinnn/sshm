@@ -218,7 +218,11 @@ func deployFailureHint(result deploy.RunResult) string {
 	if len(hosts) > 0 {
 		hint += "；失败主机: " + strings.Join(hosts, ", ")
 	}
-	hint += "；可在 --check 下复跑定位（加 --diff 查看差异）"
+	if result.Check {
+		hint += "；check 模式下失败说明目标不满足条件，请结合失败主机与任务信息修复"
+	} else {
+		hint += "；可在 --check 下复跑定位（加 --diff 查看差异）"
+	}
 	return hint
 }
 

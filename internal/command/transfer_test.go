@@ -96,7 +96,7 @@ func TestClassifyDiffDataDistinguishesTextAndBinary(t *testing.T) {
 		t.Fatalf("binary text=%t err=%v", text, err)
 	}
 	var output bytes.Buffer
-	for _, line := range splitDiffLines([]byte("one\ntwo\n")) {
+	for _, line := range splitDiffLines("one\ntwo\n") {
 		output.WriteString("+" + line + "\n")
 	}
 	if !strings.Contains(output.String(), "+one\n+two\n") {

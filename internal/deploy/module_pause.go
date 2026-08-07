@@ -30,6 +30,9 @@ func (m *pauseModule) DecodeArgs(node *yaml.Node) (any, error) {
 
 func (m *pauseModule) Run(tc TaskContext, raw any) ModuleResult {
 	args := raw.(*pauseArgs)
+	if tc.Check {
+		return ModuleResult{Status: batch.StatusSkipped, Output: "check 模式跳过（pause）\n"}
+	}
 	message := strings.TrimSpace(args.Message)
 	if message == "" {
 		message = "确认继续?"

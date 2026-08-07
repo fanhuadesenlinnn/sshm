@@ -98,6 +98,99 @@ func TestRunLocalForwardCarriesTraffic(t *testing.T) {
 	}
 }
 
+func TestRunLocalForwardsTwoPairs(t *testing.T) {
+	echoListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer echoListener.Close()
+	go func() {
+		for {
+			conn, err := echoListener.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				defer conn.Close()
+				_, _ = io.Copy(conn, conn)
+			}()
+		}
+	}()
+
+	sshAddr, closeSSH := startCommandTestForwardServer(t, "secret")
+	defer closeSSH()
+	hostName, port := splitCommandTestAddress(t, sshAddr)
+	configPath := filepath.Join(t.TempDir(), "sshm.yaml")
+	store := config.NewStoreWithPath(configPath)
+	initCommandTestStore(t, store)
+	host := config.DefaultHost()
+	host.Alias, host.User, host.Host, host.Port = "forwarder", "test", hostName, port
+	host.PasswordRef, host.HostKeyPolicy = host.ID, config.HostKeyPolicyAcceptNew
+	if err := store.Add(host); err != nil {
+		t.Fatal(err)
+	}
+	vault := secret.NewFileStore(configPath, "master")
+	if err := vault.SetPassword(host.ID, "secret"); err != nil {
+		t.Fatal(err)
+	}
+	loaded, _, _, err := store.FindHost(host.Alias)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, _, err := sshx.DialContext(context.Background(), *loaded, vault)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+
+	first, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	pairs := []forwardPair{
+		{local: first.Addr().String(), remote: echoListener.Addr().String()},
+		{local: second.Addr().String(), remote: echoListener.Addr().String()},
+	}
+	go func() {
+		done <- runLocalForwards(ctx, client, pairs, []net.Listener{first, second})
+	}()
+
+	for _, listener := range []net.Listener{first, second} {
+		conn, err := net.DialTimeout("tcp", listener.Addr().String(), time.Second)
+		if err != nil {
+			t.Fatal(err)
+		}
+		payload := []byte("multi-forward")
+		if _, err := conn.Write(payload); err != nil {
+			t.Fatal(err)
+		}
+		reply := make([]byte, len(payload))
+		if _, err := io.ReadFull(conn, reply); err != nil {
+			t.Fatal(err)
+		}
+		_ = conn.Close()
+		if string(reply) != string(payload) {
+			t.Fatalf("reply = %q", reply)
+		}
+	}
+
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("forwards did not stop after cancellation")
+	}
+}
+
 func startCommandTestForwardServer(t *testing.T, password string) (string, func()) {
 	t.Helper()
 	_, privateKey, err := ed25519.GenerateKey(rand.Reader)

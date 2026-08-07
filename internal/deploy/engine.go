@@ -29,6 +29,7 @@ type RunResult struct {
 	Targets    int           `json:"targets"`
 	Summary    batch.Summary `json:"summary"`
 	Cancelled  bool          `json:"cancelled"`
+	Check      bool          `json:"check"`
 	StopReason string        `json:"stop_reason,omitempty"`
 	StartedAt  time.Time     `json:"started_at"`
 	EndedAt    time.Time     `json:"ended_at"`
@@ -67,7 +68,7 @@ func (r RunResult) ExitCode() int {
 	switch {
 	case r.Cancelled:
 		return 130
-	case r.Summary.Failed > 0 || r.Summary.Skipped > 0:
+	case r.Summary.Failed > 0 || (r.Summary.Skipped > 0 && !r.Check):
 		return 1
 	case r.Summary.Unreachable > 0:
 		return 2
@@ -102,7 +103,7 @@ func (r Runner) Run(ctx context.Context, plan *Plan) RunResult {
 	emitPlayStart(r, plan)
 	result := RunResult{
 		Play: plan.Name, Config: plan.Config, Targets: len(plan.Hosts),
-		StartedAt: time.Now(), Hosts: make([]HostResult, len(plan.Hosts)),
+		Check: plan.Check, StartedAt: time.Now(), Hosts: make([]HostResult, len(plan.Hosts)),
 	}
 	states := make(map[string]*hostState, len(plan.Hosts))
 	for _, host := range plan.Hosts {
@@ -695,6 +696,9 @@ func hostResultError(state *hostState) error {
 func resultReason(result ModuleResult) string {
 	switch result.Status {
 	case batch.StatusSkipped:
+		if strings.Contains(result.Output, "check 模式跳过") {
+			return "check 模式跳过（可设置 check_safe: true 执行）"
+		}
 		return "when 条件不满足"
 	case batch.StatusFailed, batch.StatusUnreachable:
 		if result.Err != nil {
