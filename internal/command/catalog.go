@@ -33,7 +33,7 @@ type commandCatalogEntry struct {
 
 var commandCatalog = []commandCatalogEntry{
 	{Name: "list", Aliases: []string{"ls"}, Group: commandGroupDaily, Short: "列出主机", HelpUsage: "list [--compact|--wide]", HelpSummary: "列出所有主机", LegacyOptions: []string{"--list", "-l"}},
-	{Name: "pick", Group: commandGroupDaily, Short: "打开主机选择器", HelpUsage: "pick", HelpSummary: "打开可搜索主机选择器"},
+	{Name: "find-con", Aliases: []string{"f", "pick"}, Group: commandGroupDaily, Short: "查找并连接主机", HelpUsage: "find-con", HelpSummary: "打开可搜索主机选择器"},
 	{Name: "recent", Group: commandGroupDaily, Short: "显示收藏和最近连接", HelpUsage: "recent [数量]", HelpSummary: "显示收藏和最近连接"},
 	{Name: "connect", Aliases: []string{"conn"}, Group: commandGroupDaily, Short: "连接主机", HelpUsage: "connect <别名|ID>", HelpSummary: "显式连接主机"},
 	{Name: "host", Group: commandGroupHost, Short: "管理主机", HelpUsage: "host", HelpSummary: "进入主机管理中心"},
@@ -46,7 +46,7 @@ var commandCatalog = []commandCatalogEntry{
 	{Name: "tag", Aliases: []string{"tags"}, Group: commandGroupHost, Short: "管理标签", HelpUsage: "tag", HelpSummary: "进入标签管理中心", LegacyOptions: []string{"--tag"}},
 	{Name: "pin", Group: commandGroupHost, Short: "收藏主机", HelpUsage: "pin <别名|ID>", HelpSummary: "收藏主机"},
 	{Name: "unpin", Group: commandGroupHost, Short: "取消收藏主机", HelpUsage: "unpin <别名|ID>", HelpSummary: "取消收藏主机"},
-	{Name: "ping", Group: commandGroupOps, Short: "测试 SSH 连接", HelpUsage: "ping [--yes] [--quiet] [目标]", HelpSummary: "测试连接", LegacyOptions: []string{"--ping", "-p"}},
+	{Name: "ping", Aliases: []string{"p"}, Group: commandGroupOps, Short: "测试 SSH 连接", HelpUsage: "ping [--yes] [--quiet] [目标]", HelpSummary: "测试连接", LegacyOptions: []string{"--ping", "-p"}},
 	{Name: "exec", Group: commandGroupOps, Short: "在单台主机执行命令", HelpUsage: "exec [--yes] [--quiet] [--no-log] ...", HelpSummary: "执行命令", LegacyOptions: []string{"--exec", "-x"}},
 	{Name: "exec-tag", Group: commandGroupOps, Short: "按标签批量执行命令", HelpUsage: "exec-tag [批量选项] <标签|all> [--] <命令>", HelpSummary: "按标签执行命令", LegacyOptions: []string{"--exec-tag", "--xt"}},
 	{Name: "push", Group: commandGroupOps, Short: "向单台主机推送文件或目录", HelpUsage: "push <主机> <本地> <远程> [选项]", HelpSummary: "推送文件或目录"},

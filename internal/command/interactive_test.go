@@ -2,6 +2,7 @@ package command
 
 import (
 	"errors"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -58,6 +59,49 @@ func TestParseArgsRejectsUnclosedQuotes(t *testing.T) {
 	for _, input := range []string{`cmd "unfinished`, `cmd 'unfinished`} {
 		if _, err := parseArgs(input); err == nil {
 			t.Fatalf("parseArgs(%q) should reject unclosed quotes", input)
+		}
+	}
+}
+
+func TestInteractiveAliasRouting(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sshm.yaml")
+	store := config.NewStoreWithPath(path)
+	if err := store.Repository().Replace(config.DefaultDocument()); err != nil {
+		t.Fatal(err)
+	}
+	app := &App{Store: store, ConfigPath: path}
+	for _, name := range []string{"f", "find-con", "pick"} {
+		exit, err := app.dispatchInteractive([]string{name})
+		if exit {
+			t.Fatalf("%s 不应退出工作台", name)
+		}
+		if err == nil || !strings.Contains(err.Error(), "暂无主机") {
+			t.Fatalf("%s 应路由到 find-con（打开选择器）: err=%v", name, err)
+		}
+	}
+	for _, name := range []string{"p", "ping"} {
+		exit, err := app.dispatchInteractive([]string{name})
+		if exit || err != nil {
+			t.Fatalf("%s 应路由到 ping: exit=%v err=%v", name, exit, err)
+		}
+	}
+	if exit, _ := app.dispatchInteractive([]string{"q"}); !exit {
+		t.Fatal("q 应退出工作台")
+	}
+}
+
+func TestCommandNamesForCompletionIncludesRenamedAliases(t *testing.T) {
+	names := commandNamesForCompletion()
+	for _, want := range []string{"find-con", "f", "pick", "ping", "p"} {
+		found := false
+		for _, name := range names {
+			if name == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("补全候选缺少 %q: %v", want, names)
 		}
 	}
 }

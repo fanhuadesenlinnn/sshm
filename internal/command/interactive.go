@@ -43,95 +43,104 @@ func (app *App) interactiveMode() error {
 			continue
 		}
 
-		cmd := strings.ToLower(parts[0])
-		args := parts[1:]
-
-		var err error
-		switch cmd {
-		case "host":
-			err = app.cmdHost(args)
-		case "key", "k":
-			err = app.cmdKey(args)
-		case "list", "ls", "l":
-			err = app.cmdList(args)
-		case "add", "a":
-			err = app.cmdAdd(args)
-		case "add-batch", "ab":
-			err = app.cmdAddBatch(args)
-		case "edit", "e":
-			err = app.cmdEdit(args)
-		case "del", "delete", "rm", "d":
-			err = app.cmdDelete(args)
-		case "conn", "connect", "c":
-			err = app.cmdConnect(args)
-		case "show", "info":
-			err = app.cmdShow(args)
-		case "search", "find", "s":
-			err = app.cmdSearch(args)
-		case "tag", "tags":
-			err = app.cmdTag(args)
-		case "deploy":
-			err = app.cmdDeploy(args)
-		case "recent", "r":
-			err = app.cmdRecent(args)
-		case "pin":
-			err = app.cmdPin(args, true)
-		case "unpin":
-			err = app.cmdPin(args, false)
-		case "pick", "p":
-			err = app.cmdPick(args)
-		case "doctor":
-			err = app.cmdDoctor(args)
-		case "ping":
-			err = app.cmdPing(args)
-		case "exec", "x":
-			err = app.cmdInteractiveExec(args)
-		case "exec-tag", "xt":
-			err = app.cmdInteractiveExecTag(args)
-		case "push":
-			err = app.cmdPush(args)
-		case "pull":
-			err = app.cmdPull(args)
-		case "forward":
-			err = app.cmdForward(args)
-		case "logs":
-			err = app.cmdLogs(args)
-		case "config":
-			err = app.cmdConfig(args)
-		case "config-edit":
-			err = app.cmdConfigEdit(args)
-		case "ssh-config", "sc":
-			err = app.cmdInteractiveSSHConfig(args)
-		case "passwd":
-			err = app.cmdPasswd(args)
-		case "forget-pass":
-			err = app.cmdForgetPass(args)
-		case "show-pubkey":
-			err = app.cmdShowPubkey(args)
-		case "auth":
-			err = app.cmdAuth(args)
-		case "lock":
-			app.lockSecretStore()
-			ui.PrintSuccess("当前会话密码库已锁定")
-		case "help", "h":
-			app.printInteractiveHelp()
-		case "exit", "quit", "q":
+		exit, err := app.dispatchInteractive(parts)
+		if exit {
 			fmt.Println("bye.")
 			return nil
-		default:
-			err = app.cmdConnect(parts)
 		}
-
 		if err != nil {
 			fmt.Fprintln(os.Stderr, ui.ErrorMsg("%v", err))
 		}
 	}
 }
 
+// dispatchInteractive routes one parsed interactive command line. It returns
+// exit=true when the user asked to leave the workspace.
+func (app *App) dispatchInteractive(parts []string) (bool, error) {
+	cmd := strings.ToLower(parts[0])
+	args := parts[1:]
+	var err error
+	switch cmd {
+	case "host":
+		err = app.cmdHost(args)
+	case "key", "k":
+		err = app.cmdKey(args)
+	case "list", "ls", "l":
+		err = app.cmdList(args)
+	case "add", "a":
+		err = app.cmdAdd(args)
+	case "add-batch", "ab":
+		err = app.cmdAddBatch(args)
+	case "edit", "e":
+		err = app.cmdEdit(args)
+	case "del", "delete", "rm", "d":
+		err = app.cmdDelete(args)
+	case "conn", "connect", "c":
+		err = app.cmdConnect(args)
+	case "show", "info":
+		err = app.cmdShow(args)
+	case "search", "find", "s":
+		err = app.cmdSearch(args)
+	case "tag", "tags":
+		err = app.cmdTag(args)
+	case "deploy":
+		err = app.cmdDeploy(args)
+	case "recent", "r":
+		err = app.cmdRecent(args)
+	case "pin":
+		err = app.cmdPin(args, true)
+	case "unpin":
+		err = app.cmdPin(args, false)
+	case "find-con", "pick", "f":
+		err = app.cmdPick(args)
+	case "doctor":
+		err = app.cmdDoctor(args)
+	case "ping", "p":
+		err = app.cmdPing(args)
+	case "exec", "x":
+		err = app.cmdInteractiveExec(args)
+	case "exec-tag", "xt":
+		err = app.cmdInteractiveExecTag(args)
+	case "push":
+		err = app.cmdPush(args)
+	case "pull":
+		err = app.cmdPull(args)
+	case "forward":
+		err = app.cmdForward(args)
+	case "logs":
+		err = app.cmdLogs(args)
+	case "config":
+		err = app.cmdConfig(args)
+	case "config-edit":
+		err = app.cmdConfigEdit(args)
+	case "ssh-config", "sc":
+		err = app.cmdInteractiveSSHConfig(args)
+	case "passwd":
+		err = app.cmdPasswd(args)
+	case "forget-pass":
+		err = app.cmdForgetPass(args)
+	case "show-pubkey":
+		err = app.cmdShowPubkey(args)
+	case "auth":
+		err = app.cmdAuth(args)
+	case "lock":
+		app.lockSecretStore()
+		ui.PrintSuccess("当前会话密码库已锁定")
+	case "help", "h":
+		app.printInteractiveHelp()
+	case "exit", "quit", "q":
+		return true, nil
+	default:
+		err = app.cmdConnect(parts)
+	}
+	return false, err
+}
+
 func (app *App) printWorkbench() {
 	ui.PrintHeader("sshm 工作台")
 	fmt.Println()
-	fmt.Println("  p/pick        查找并连接主机")
+	fmt.Println("  p/ping        测试连接")
+	fmt.Println("  f/find-con    查找并连接主机")
 	fmt.Println("  r/recent      收藏与最近使用")
 	fmt.Println("  a/add         添加主机")
 	fmt.Println("  host/key/tag  主机、密钥与标签管理")

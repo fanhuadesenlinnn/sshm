@@ -96,7 +96,7 @@ func newRootCommand(app *App) *cobra.Command {
 	root.AddCommand(legacyCommand("recent", "", app.cmdRecent))
 	root.AddCommand(legacyCommand("pin", "", func(args []string) error { return app.cmdPin(args, true) }))
 	root.AddCommand(legacyCommand("unpin", "", func(args []string) error { return app.cmdPin(args, false) }))
-	root.AddCommand(legacyCommand("pick", "", app.cmdPick))
+	root.AddCommand(legacyCommand("find-con", "", app.cmdPick))
 	root.AddCommand(legacyCommand("passwd", "", app.cmdPasswd))
 	root.AddCommand(legacyCommand("forget-pass", "", app.cmdForgetPass))
 	root.AddCommand(legacyCommand("show-pubkey", "", app.cmdShowPubkey))
