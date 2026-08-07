@@ -36,7 +36,14 @@ func (app *App) cmdPing(args []string) error {
 			ui.PrintSuccess("%s (%s@%s:%d) 连接成功", h.Alias, h.User, h.Host, h.Port)
 		} else {
 			printOperationFailure(result)
-			return fmt.Errorf("主机 %s 连接失败: %w", h.Alias, pingErr)
+			if logErr := writeOperationLog("ping", "连接测试", []operation.Result{result}); logErr != nil {
+				return logErr
+			}
+			code := 1
+			if operation.IsConnectionFailure(result.Stage) {
+				code = 2
+			}
+			return &ExitError{Code: code, Err: fmt.Errorf("主机 %s 连接失败: %w", h.Alias, pingErr)}
 		}
 	} else {
 		// Ping all hosts

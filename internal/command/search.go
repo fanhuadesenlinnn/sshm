@@ -1,6 +1,7 @@
 package command
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
@@ -11,6 +12,8 @@ func (app *App) cmdSearch(args []string) error {
 	query := ""
 	if len(args) > 0 {
 		query = strings.Join(args, " ")
+	} else if !ui.IsTerminal() {
+		return fmt.Errorf("用法: sshm search <关键词>")
 	} else {
 		query = ui.ReadLine("请输入搜索关键词: ")
 	}

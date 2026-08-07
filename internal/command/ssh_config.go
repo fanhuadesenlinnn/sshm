@@ -34,7 +34,12 @@ func (app *App) cmdExportSSHConfig(args []string) error {
 		if h.Identity != "" {
 			if _, managed := config.ManagedKeyName(h.Identity); managed {
 				lines = append(lines, "    # Managed key is available only through sshm")
+			} else {
+				lines = append(lines, fmt.Sprintf("    IdentityFile %s", h.Identity))
 			}
+		}
+		if h.JumpHost != "" {
+			lines = append(lines, fmt.Sprintf("    ProxyJump %s", h.JumpHost))
 		}
 		lines = append(lines, "")
 	}

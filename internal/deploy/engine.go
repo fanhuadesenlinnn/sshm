@@ -457,7 +457,11 @@ func (r Runner) executeOnce(tc TaskContext, task Task, module Module, loopItem a
 	if err != nil {
 		return failedModule(err, operation.StageConfig)
 	}
-	execCtx, cancel := context.WithTimeout(tc.Ctx, tc.Timeout)
+	execCtx := tc.Ctx
+	cancel := func() {}
+	if !moduleOwnsTimeout(task.Module) {
+		execCtx, cancel = context.WithTimeout(tc.Ctx, tc.Timeout)
+	}
 	defer cancel()
 	runCtx := tc
 	runCtx.Ctx = execCtx
@@ -473,6 +477,17 @@ func (r Runner) executeOnce(tc TaskContext, task Task, module Module, loopItem a
 		runCtx.Env = task.Env
 	}
 	return module.Run(runCtx, decoded)
+}
+
+// moduleOwnsTimeout reports whether a module bounds its own duration (sleep,
+// wait_for) and must not be truncated by the generic task-level timeout.
+func moduleOwnsTimeout(name string) bool {
+	switch name {
+	case "sleep", "wait_for":
+		return true
+	default:
+		return false
+	}
 }
 
 func (r Runner) executeLoop(tc TaskContext, task Task, module Module) ModuleResult {

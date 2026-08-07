@@ -482,6 +482,20 @@ func TestSleepWaitsAndIsSkippedInCheck(t *testing.T) {
 	}
 }
 
+func TestSleepIgnoresShortTaskTimeout(t *testing.T) {
+	executor := &fakeExecutor{}
+	task := Task{
+		Name: "wait-a-bit", Module: "sleep",
+		Args: argsNode(map[string]any{"duration": "1500ms"}),
+	}
+	plan := planFor(t, []Task{task}, testHosts())
+	plan.Timeout = config.Duration{Duration: time.Second}
+	result := (Runner{Executor: executor}).Run(context.Background(), plan)
+	if result.Summary.OK != 2 {
+		t.Fatalf("sleep 不应被短任务超时截断: %+v", result.Summary)
+	}
+}
+
 func TestSleepRejectsInvalidArgs(t *testing.T) {
 	module := &sleepModule{}
 	for _, args := range []map[string]any{

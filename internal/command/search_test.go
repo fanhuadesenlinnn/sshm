@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/ui"
 )
 
 func TestSearchMatchHost(t *testing.T) {
@@ -20,6 +21,16 @@ func TestSearchMatchHost(t *testing.T) {
 		if matchHost(host, keyword) {
 			t.Fatalf("matchHost(%q) 应为 false", keyword)
 		}
+	}
+}
+
+func TestSearchWithoutArgsRequiresTerminal(t *testing.T) {
+	if ui.IsTerminal() {
+		t.Skip("需要在非终端环境验证")
+	}
+	app := &App{}
+	if err := app.cmdSearch(nil); err == nil || !strings.Contains(err.Error(), "sshm search") {
+		t.Fatalf("非交互无关键词应报用法: %v", err)
 	}
 }
 

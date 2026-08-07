@@ -88,3 +88,33 @@ func TestExportSSHConfigWritesSafeFile(t *testing.T) {
 		}
 	}
 }
+
+func TestExportSSHConfigIncludesJumpAndIdentity(t *testing.T) {
+	dir := t.TempDir()
+	store := config.NewStoreWithPath(filepath.Join(dir, "sshm.yaml"))
+	initCommandTestStore(t, store)
+	bastion := config.DefaultHost()
+	bastion.Alias, bastion.User, bastion.Host = "bastion", "root", "10.0.0.1"
+	if err := store.Add(bastion); err != nil {
+		t.Fatal(err)
+	}
+	host := config.DefaultHost()
+	host.Alias, host.User, host.Host, host.Port = "inner", "deploy", "10.0.0.11", 2222
+	host.JumpHost = "bastion"
+	if err := store.Add(host); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(dir, "ssh-config")
+	app := &App{Store: store, ConfigPath: store.Path()}
+	if err := app.cmdExportSSHConfig([]string{out}); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	if !containsText(text, "ProxyJump bastion") {
+		t.Fatalf("导出缺少 ProxyJump: %s", text)
+	}
+}
