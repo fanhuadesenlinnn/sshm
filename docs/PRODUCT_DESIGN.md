@@ -1,6 +1,6 @@
-# sshm v6.0.10 产品设计
+# sshm v6.0.11 产品设计
 
-状态：v6.0.10 当前设计
+状态：v6.0.11 当前设计
 
 ## 产品定位
 
@@ -15,12 +15,13 @@ sshm 是供个人开发者和个人运维使用者管理约 5 到 100 台 SSH �
 
 ## 当前产品事实
 
-- 产品版本为 `v6.0.10`，Go module 为 `/v6`。
+- 产品版本为 `v6.0.11`，Go module 为 `/v6`。
 - 主配置与 Deploy 配置均为严格 YAML schema `version: 2`。
 - 默认数据目录只使用 `~/.sshm`，仅支持 `SSHM_HOME` 整体覆盖。
 - Cobra 提供 CLI 命令树，同时保留无参数工作台和 alias/ID 直连。
 - 交互工作台的 `x/exec` 与 `xt/exec-tag` 只解析本地目标和选项；`--` 后的远程命令作为不透明文本传递。
 - Go 原生 SSH 负责连接、认证、host trust、执行、SFTP 和端口转发。
+- Deploy 同时支持 schema v2 与 v3：v2 保留 profile/steps/handlers，v3 采用模块化 playbook（plays/tasks/modules）。
 - rsync 是可选加速路径，必须保持与 SFTP 相同的安全和结果语义。
 - Linux、macOS、Windows 提供相同正式能力目标。
 - README 与 Release 页面提供 macOS/Linux 和 Windows 一键安装命令；安装脚本保存在仓库中，Release 附件只包含平台制品与校验和。
@@ -77,6 +78,20 @@ Deploy v2 是轻量 Ansible 风格执行模型，不是通用工作流语言。
 - 支持 exec、push、pull、mkdir、wait、confirm。`confirm` 是 serial 批次门禁，会在当前批次开始前确认。
 - 支持 plan、check、diff、changed、notify/handlers、ignore_error、简单 rc conditions 和 become。
 - serial、parallel 和失败策略复用共享 BatchRunner。
+
+### Deploy v3
+
+Deploy v3 把 v2 的命令式步骤升级为声明式模块模型，借鉴 Ansible 的执行语义但不引入它的生态：
+
+- 一个 playbook 由多个 plays 组成；每个 play 包含 hosts、strategy（linear/free）、批量策略、vars 与 tasks。
+- task 调用一个模块（command/shell、file、copy、template、service、wait_for、unarchive、fetch、pause、fail、debug），模块内置幂等与 check/diff 语义。
+- register + when 取代 handlers 表达条件执行；v3 明确移除 notify/handlers。
+- block/rescue/always 提供同主机失败回滚结构。
+- 变量支持文件级、play 级、vars_files 与 CLI `--extra-var` 覆盖；`{{ }}` 插值用于参数与模板。
+- include 支持任务片段与 vars_files 的静态展开，带循环检测。
+- 输出支持 text、json 与 ndjson 事件流；`deploy migrate` 把 v2 profile 机械转换为 v3 play。
+
+产品边界不变：不提供 roles、完整 Jinja2、facts 全家桶、插件生态、后台调度或期望状态收敛。
 
 ## 安全原则
 

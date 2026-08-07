@@ -14,6 +14,8 @@ type Paths struct {
 	Logs      string
 	Deploy    string
 	DeployDir string
+	Templates string
+	Readme    string
 	Backups   string
 	Temp      string
 }
@@ -45,6 +47,8 @@ func ResolvePaths() (Paths, error) {
 		Logs:      filepath.Join(home, "logs"),
 		Deploy:    filepath.Join(home, "deploy.yaml"),
 		DeployDir: filepath.Join(home, "deploy.d"),
+		Templates: filepath.Join(home, "templates"),
+		Readme:    filepath.Join(home, "README.md"),
 		Backups:   filepath.Join(home, "backups"),
 		Temp:      filepath.Join(home, "tmp"),
 	}, nil
@@ -114,6 +118,7 @@ func EnsureDirs() error {
 	}{
 		{paths.Home, 0700},
 		{paths.DeployDir, 0700},
+		{paths.Templates, 0700},
 		{paths.Logs, 0700},
 		{paths.Backups, 0700},
 		{paths.Temp, 0700},

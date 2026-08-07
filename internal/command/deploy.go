@@ -9,6 +9,7 @@ import (
 
 	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
 	"github.com/fanhuadesenlinnn/sshm/v6/internal/deploy"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/deployv3"
 	"github.com/fanhuadesenlinnn/sshm/v6/internal/safefile"
 	"github.com/fanhuadesenlinnn/sshm/v6/internal/ui"
 	"github.com/spf13/cobra"
@@ -17,9 +18,9 @@ import (
 func newDeployCommand(app *App) *cobra.Command {
 	command := &cobra.Command{
 		Use:     "deploy",
-		Short:   commandShort("deploy", "运行 Deploy v2 轻量编排"),
+		Short:   commandShort("deploy", "运行 Deploy v2/v3 轻量编排"),
 		GroupID: commandGroupID("deploy"),
-		Long:    "运行 Deploy v2 轻量编排。deploy 从 ~/.sshm/deploy.yaml 和 ~/.sshm/deploy.d/*.yaml 读取 profile；显式 --file 时只读取指定文件。",
+		Long:    "运行 Deploy v2/v3 轻量编排。deploy 从 ~/.sshm/deploy.yaml 和 ~/.sshm/deploy.d/*.yaml 读取配置；显式 --file 时只读取指定文件。v2 使用 profile/steps，v3 使用 plays/tasks/modules。",
 		Example: strings.TrimSpace(`
 sshm deploy init
 sshm deploy list
@@ -89,6 +90,14 @@ sshm deploy run webapp --tag prod --serial 2 --max-fail 1 --yes
 sshm deploy run webapp -f base.yaml -f project.yaml --all --diff --yes`),
 			run: app.cmdDeployRun,
 		},
+		{
+			use: "migrate [-f 文件...] [--stdout]", short: "把 v2 profile 迁移为 v3 playbook",
+			long: "读取 v2 Deploy 配置并输出 v3 playbook。notify/handlers 已移除，迁移时会给出警告，需手工改写为 register + when。",
+			example: strings.TrimSpace(`
+sshm deploy migrate
+sshm deploy migrate -f ./deploy.yaml --stdout`),
+			run: app.cmdDeployMigrate,
+		},
 	}
 	for _, child := range children {
 		child := child
@@ -119,6 +128,8 @@ func (app *App) cmdDeploy(args []string) error {
 		return app.deployPlanCommand(args[1:], false)
 	case "run":
 		return app.cmdDeployRun(args[1:])
+	case "migrate":
+		return app.cmdDeployMigrate(args[1:])
 	case "help", "-h", "--help":
 		app.printDeployHelp()
 		return nil
@@ -130,35 +141,40 @@ func (app *App) cmdDeploy(args []string) error {
 func (app *App) printDeployHelp() {
 	ui.PrintHeader("Deploy v2 轻量编排")
 	fmt.Println()
-	fmt.Println("  deploy init [-f 文件] [--stdout] [--overwrite]")
+	fmt.Println("  deploy init [-f 文件] [--stdout] [--overwrite] [--version 2|3]")
 	fmt.Println("  deploy validate [-f 文件...] [--output text|json]")
 	fmt.Println("  deploy list [-f 文件...] [--output text|json]")
 	fmt.Println("  deploy show <profile> [-f 文件...] [目标覆盖]")
 	fmt.Println("  deploy plan <profile> [-f 文件...] [目标覆盖]")
 	fmt.Println("  deploy run <profile> [-f 文件...] [目标覆盖] [批量选项] [--check] [--diff] [--yes]")
+	fmt.Println("  deploy migrate [-f 文件...] [--stdout]")
 	fmt.Println()
 	fmt.Println("  目标覆盖: --host 主机[,主机] | --tag 标签[,标签] | --all")
 	fmt.Println("  批量选项: --serial N --parallel N --fail-fast --max-fail N --max-fail-percent N")
+	fmt.Println("  输出选项: --output text|json|ndjson（v3 run 支持 ndjson 事件流）")
+	fmt.Println("  变量覆盖: --extra-var key=value（v3）")
 	fmt.Println("  未使用 -f 时加载 ~/.sshm/deploy.yaml 与按文件名排序的 ~/.sshm/deploy.d/*.yaml")
 	fmt.Println("  当前目录的 sshm.deploy.yaml 不会被隐式加载")
 	fmt.Println()
 }
 
 type deployCLIOptions struct {
-	files       []string
-	positionals []string
-	output      string
-	selector    deploy.TargetSelector
-	hasSelector bool
-	batch       batchCLIOptions
-	stdout      bool
-	overwrite   bool
-	check       bool
-	diff        bool
+	files         []string
+	positionals   []string
+	output        string
+	selector      deploy.TargetSelector
+	hasSelector   bool
+	batch         batchCLIOptions
+	stdout        bool
+	overwrite     bool
+	check         bool
+	diff          bool
+	extraVars     deployv3.Vars
+	deployVersion int
 }
 
 func parseDeployCLIOptions(args []string) (deployCLIOptions, error) {
-	options := deployCLIOptions{output: "text"}
+	options := deployCLIOptions{output: "text", extraVars: deployv3.Vars{}}
 	value := func(index *int, flag string) (string, error) {
 		if *index+1 >= len(args) {
 			return "", fmt.Errorf("%s 缺少值", flag)
@@ -261,6 +277,28 @@ func parseDeployCLIOptions(args []string) (deployCLIOptions, error) {
 			options.check = true
 		case "--diff":
 			options.diff = true
+		case "--extra-var", "--var":
+			item, err := value(&i, args[i])
+			if err != nil {
+				return options, err
+			}
+			key, val, ok := strings.Cut(item, "=")
+			if !ok || strings.TrimSpace(key) == "" {
+				return options, fmt.Errorf("%s 需要 key=value 格式", args[i-1])
+			}
+			options.extraVars[key] = val
+		case "--version":
+			item, err := value(&i, args[i])
+			if err != nil {
+				return options, err
+			}
+			if item != "2" && item != "3" {
+				return options, fmt.Errorf("--version 必须是 2 或 3")
+			}
+			options.deployVersion, err = strconv.Atoi(item)
+			if err != nil {
+				return options, err
+			}
 		case "--stdout":
 			options.stdout = true
 		case "--overwrite":
@@ -272,8 +310,8 @@ func parseDeployCLIOptions(args []string) (deployCLIOptions, error) {
 			options.positionals = append(options.positionals, args[i])
 		}
 	}
-	if options.output != "text" && options.output != "json" {
-		return options, fmt.Errorf("--output 必须是 text 或 json")
+	if options.output != "text" && options.output != "json" && options.output != "ndjson" {
+		return options, fmt.Errorf("--output 必须是 text、json 或 ndjson")
 	}
 	if options.selector.All && (len(options.selector.Hosts) > 0 || len(options.selector.Tags) > 0) {
 		return options, fmt.Errorf("--all 不能与 --host 或 --tag 混用")
@@ -287,13 +325,21 @@ func (app *App) cmdDeployInit(args []string) error {
 		return err
 	}
 	if len(options.positionals) != 0 || options.output != "text" || options.hasSelector || hasDeployRunOptions(options) {
-		return fmt.Errorf("deploy init 仅支持 -f、--stdout 和 --overwrite")
+		return fmt.Errorf("deploy init 仅支持 -f、--stdout、--overwrite 和 --version 2|3")
 	}
 	if len(options.files) > 1 {
 		return fmt.Errorf("deploy init 只能指定一个 -f")
 	}
+	version := options.deployVersion
+	if version == 0 {
+		version = 3
+	}
+	sample := config.SampleDeployV3
+	if version == 2 {
+		sample = config.SampleDeployV2
+	}
 	if options.stdout {
-		fmt.Print(deploy.Sample)
+		fmt.Print(sample)
 		return nil
 	}
 	path := config.DeployFilePath()
@@ -308,7 +354,7 @@ func (app *App) cmdDeployInit(args []string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return err
 	}
-	if err := safefile.Write(path, []byte(deploy.Sample), 0600); err != nil {
+	if err := safefile.Write(path, []byte(sample), 0600); err != nil {
 		return err
 	}
 	fmt.Printf("已生成 deploy 配置: %s\n", path)
@@ -343,7 +389,7 @@ func hasDeployRunOptions(options deployCLIOptions) bool {
 	return options.batch.Parallel != 0 || options.batch.Serial != 0 || options.batch.Timeout != 0 ||
 		options.batch.ConnectTimeout != 0 || options.batch.FailFast || options.batch.MaxFail != 0 ||
 		options.batch.MaxFailPercent != 0 || options.batch.Yes || options.batch.NoLog || options.batch.Quiet ||
-		options.check || options.diff
+		options.check || options.diff || len(options.extraVars) > 0
 }
 
 func (app *App) loadDeploy(files []string) (*deploy.Catalog, []config.Host, error) {
@@ -370,6 +416,14 @@ func (app *App) cmdDeployValidate(args []string) error {
 	if len(options.positionals) != 0 || options.hasSelector || hasDeployRunOptions(options) || options.stdout || options.overwrite {
 		return fmt.Errorf("deploy validate 仅支持 -f 和 --output")
 	}
+	if options.deployVersion != 0 {
+		return fmt.Errorf("--version 仅适用于 deploy init")
+	}
+	if version, err := app.deployFileVersion(options.files); err != nil {
+		return err
+	} else if version == 3 {
+		return app.cmdDeployValidateV3(options)
+	}
 	catalog, hosts, err := app.loadDeploy(options.files)
 	if err != nil {
 		return err
@@ -391,6 +445,14 @@ func (app *App) cmdDeployList(args []string) error {
 	}
 	if len(options.positionals) != 0 || options.hasSelector || hasDeployRunOptions(options) || options.stdout || options.overwrite {
 		return fmt.Errorf("deploy list 仅支持 -f 和 --output")
+	}
+	if options.deployVersion != 0 {
+		return fmt.Errorf("--version 仅适用于 deploy init")
+	}
+	if version, err := app.deployFileVersion(options.files); err != nil {
+		return err
+	} else if version == 3 {
+		return app.cmdDeployListV3(options)
 	}
 	catalog, hosts, err := app.loadDeploy(options.files)
 	if err != nil {
@@ -425,6 +487,14 @@ func (app *App) deployPlanCommand(args []string, show bool) error {
 	if options.batch.Yes || options.batch.NoLog || options.batch.Quiet || options.stdout || options.overwrite {
 		return fmt.Errorf("deploy plan/show 不支持当前选项")
 	}
+	if options.deployVersion != 0 {
+		return fmt.Errorf("--version 仅适用于 deploy init")
+	}
+	if version, err := app.deployFileVersion(options.files); err != nil {
+		return err
+	} else if version == 3 {
+		return app.deployPlanCommandV3(options, show)
+	}
 	catalog, hosts, err := app.loadDeploy(options.files)
 	if err != nil {
 		return err
@@ -453,6 +523,14 @@ func (app *App) cmdDeployRun(args []string) error {
 	}
 	if options.stdout || options.overwrite {
 		return fmt.Errorf("deploy run 不支持 --stdout 或 --overwrite")
+	}
+	if options.deployVersion != 0 {
+		return fmt.Errorf("--version 仅适用于 deploy init")
+	}
+	if version, err := app.deployFileVersion(options.files); err != nil {
+		return err
+	} else if version == 3 {
+		return app.cmdDeployRunV3(options)
 	}
 	catalog, hosts, err := app.loadDeploy(options.files)
 	if err != nil {

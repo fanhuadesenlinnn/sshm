@@ -12,7 +12,7 @@ func newInitCommand(app *App) *cobra.Command {
 	var force bool
 	cmd := &cobra.Command{
 		Use:         "init",
-		Short:       commandShort("init", "初始化 ~/.sshm 工作目录和 v2 配置文件"),
+		Short:       commandShort("init", "初始化 ~/.sshm 工作目录和带注释的配置模板"),
 		GroupID:     commandGroupID("init"),
 		Args:        cobra.NoArgs,
 		Annotations: map[string]string{allowWithoutConfig: "true"},
@@ -76,6 +76,8 @@ func (app *App) cmdInit(force bool) error {
 	fmt.Println("  sshm add web01 root@10.0.0.11")
 	fmt.Println("  sshm deploy validate")
 	fmt.Println("  sshm doctor")
+	fmt.Println()
+	fmt.Println("先读 README.md（本目录）和 deploy.yaml 顶部的注释，按注释一步步来。")
 	return nil
 }
 
@@ -94,6 +96,8 @@ func printPaths(paths config.Paths) {
 	fmt.Printf("logs:     %s\n", paths.Logs)
 	fmt.Printf("deploy:   %s\n", paths.Deploy)
 	fmt.Printf("deploy.d: %s\n", paths.DeployDir)
+	fmt.Printf("templates: %s\n", paths.Templates)
+	fmt.Printf("readme:   %s\n", paths.Readme)
 	fmt.Printf("backups:  %s\n", paths.Backups)
 	fmt.Printf("tmp:      %s\n", paths.Temp)
 }

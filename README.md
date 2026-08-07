@@ -1,8 +1,8 @@
-# sshm v6.0.10
+# sshm v6.0.11
 
 sshm 是一个本地优先、面向个人使用的 SSH 主机管理与轻量运维工具。它使用 Go 原生 SSH 能力管理主机、标签、凭据、批量命令、安全文件传输和 Deploy v2 编排。
 
-> 版本说明：产品发布版本是 `v6.0.10`，Go module 是 `github.com/fanhuadesenlinnn/sshm/v6`，主配置与 Deploy 配置的 schema 都是 `version: 2`。
+> 版本说明：产品发布版本是 `v6.0.11`，Go module 是 `github.com/fanhuadesenlinnn/sshm/v6`，主配置 schema 为 `version: 2`，Deploy 配置支持 `version: 2` 与 `version: 3`。
 
 ## 安装
 
@@ -26,7 +26,7 @@ macOS/Linux 默认安装到 `/usr/local/bin`，权限不足时会请求 `sudo`�
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/fanhuadesenlinnn/sshm/main/scripts/install.sh | \
-  sh -s -- --version v6.0.10 --install-dir "$HOME/.local/bin"
+  sh -s -- --version v6.0.11 --install-dir "$HOME/.local/bin"
 ```
 
 Windows 默认安装到 `%LOCALAPPDATA%\Programs\sshm` 并加入用户 PATH。
@@ -36,19 +36,19 @@ Windows 默认安装到 `%LOCALAPPDATA%\Programs\sshm` 并加入用户 PATH。
 已经安装 Go 1.25 或更高版本时，也可以使用：
 
 ```bash
-go install github.com/fanhuadesenlinnn/sshm/v6@v6.0.10
+go install github.com/fanhuadesenlinnn/sshm/v6@v6.0.11
 ```
 
 如果 `proxy.golang.org` 访问较慢，可临时指定国内代理：
 
 ```bash
-GOPROXY=https://goproxy.cn,direct go install github.com/fanhuadesenlinnn/sshm/v6@v6.0.10
+GOPROXY=https://goproxy.cn,direct go install github.com/fanhuadesenlinnn/sshm/v6@v6.0.11
 ```
 
 PowerShell：
 
 ```powershell
-$env:GOPROXY = "https://goproxy.cn,direct"; go install github.com/fanhuadesenlinnn/sshm/v6@v6.0.10
+$env:GOPROXY = "https://goproxy.cn,direct"; go install github.com/fanhuadesenlinnn/sshm/v6@v6.0.11
 ```
 
 也可以前往 [GitHub Releases](https://github.com/fanhuadesenlinnn/sshm/releases/latest) 手工下载对应平台的压缩包和校验文件。
@@ -80,12 +80,14 @@ sshm doctor
 ├── sshm.yaml
 ├── deploy.yaml
 ├── deploy.d/
+├── templates/
+├── README.md
 ├── logs/
 ├── backups/
 └── tmp/
 ```
 
-`sshm.yaml` 会包含快速开始、字段用途、主机示例和安全边界说明。`deploy.yaml` 默认不启用任何工作流，提供一份完全注释掉的 Deploy v2 示例；可以安全地先运行 `sshm deploy validate`，再按注释创建 profile。已有 `deploy.yaml` 不会被 `sshm init --force` 覆盖。
+`sshm.yaml` 会包含快速开始、字段用途、主机示例和安全边界说明。`deploy.yaml` 默认不启用任何工作流，提供一份完全注释掉的 Deploy v3 示例（快速开始、全部模块、register/when、block/rescue、include）；可以安全地先运行 `sshm deploy validate`，再按注释创建 play。`templates/` 含一个可运行的模板示例，`README.md` 是一页速查。需要 v2 示例时使用 `sshm deploy init --version 2`。已有 `deploy.yaml` 不会被 `sshm init --force` 覆盖。
 
 主配置、日志、deploy 文件和备份都以同一个 `SSHM_HOME` 为根目录。发现旧配置时，`init` 与 `doctor` 只输出警告。
 

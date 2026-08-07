@@ -46,6 +46,11 @@ func (f *fakeExecutor) Pull(_ context.Context, host config.Host, options ops.Tra
 	return ops.Result{Host: host, OK: true, Changed: true, WouldChange: options.Check, Destination: options.Dest}
 }
 
+func (f *fakeExecutor) Stat(_ context.Context, host config.Host, path string, _ time.Duration) (ops.RemoteFileInfo, error) {
+	f.begin(host.Alias + ":stat:" + path)
+	return ops.RemoteFileInfo{}, nil
+}
+
 func (f *fakeExecutor) begin(call string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

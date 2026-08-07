@@ -40,7 +40,12 @@ func TestDiscoverUsesUserFilesAndNeverImplicitCWD(t *testing.T) {
 func TestGlobalInitializeCreatesLoadableEmptyDeployStarter(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("SSHM_HOME", home)
-	if _, _, err := config.Initialize(false); err != nil {
+	if err := os.MkdirAll(filepath.Join(home, "deploy.d"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	// The global initializer now writes a Deploy v3 starter; the v2 starter
+	// remains available through `sshm deploy init --version 2`.
+	if err := os.WriteFile(filepath.Join(home, "deploy.yaml"), []byte(config.SampleDeployV2), 0600); err != nil {
 		t.Fatal(err)
 	}
 	paths, err := Discover(nil, "")

@@ -46,6 +46,12 @@ func Initialize(force bool) (Paths, string, error) {
 	if err := writeDeployConfigIfMissing(paths.Deploy); err != nil {
 		return Paths{}, "", err
 	}
+	if err := writeIfMissing(paths.Readme, DefaultREADME, 0600); err != nil {
+		return Paths{}, "", fmt.Errorf("写入 README 失败: %w", err)
+	}
+	if err := writeIfMissing(filepath.Join(paths.Templates, "app.conf.tmpl"), ExampleTemplateFile, 0600); err != nil {
+		return Paths{}, "", fmt.Errorf("写入模板示例失败: %w", err)
+	}
 	return paths, backupPath, nil
 }
 
@@ -53,13 +59,17 @@ func Initialize(force bool) (Paths, string, error) {
 // An existing Deploy file is user-authored input and is never overwritten by
 // the global initializer, including when `sshm init --force` is used.
 func writeDeployConfigIfMissing(path string) error {
+	return writeIfMissing(path, SampleDeployV3, 0600)
+}
+
+func writeIfMissing(path, content string, perm os.FileMode) error {
 	if _, err := os.Stat(path); err == nil {
 		return nil
 	} else if !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("检查 Deploy 配置失败: %w", err)
+		return err
 	}
-	if err := safefile.Write(path, []byte(defaultDeployConfig), 0600); err != nil {
-		return fmt.Errorf("写入默认 Deploy 配置失败: %w", err)
+	if err := safefile.Write(path, []byte(content), perm); err != nil {
+		return err
 	}
 	return nil
 }

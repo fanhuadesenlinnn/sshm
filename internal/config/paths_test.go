@@ -81,15 +81,28 @@ func TestInitializeCreatesChineseV2ConfigAndForceBackup(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		"# sshm Deploy v2 编排配置",
+		"# sshm Deploy v3 编排配置",
 		"# 快速开始：",
-		"profiles: []",
-		"handlers: []",
-		"# 完整示例（全部为注释，不会被执行）：",
+		"version: 3",
+		"plays: []",
+		"register: upload",
+		"block:",
 	} {
 		if !strings.Contains(string(deployData), want) {
 			t.Fatalf("default deploy config missing %q:\n%s", want, deployData)
 		}
+	}
+	readmeData, err := os.ReadFile(paths.Readme)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"# sshm 快速上手", "sshm deploy validate", "安全边界"} {
+		if !strings.Contains(string(readmeData), want) {
+			t.Fatalf("README missing %q:\n%s", want, readmeData)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(paths.Templates, "app.conf.tmpl")); err != nil {
+		t.Fatalf("示例模板缺失: %v", err)
 	}
 	if info, err := os.Stat(paths.Deploy); err != nil || (runtime.GOOS != "windows" && info.Mode().Perm() != 0600) {
 		t.Fatalf("deploy config stat = %v, %v", info, err)

@@ -35,6 +35,24 @@ func TestParseTransferOptionsMapsVirtualAllTag(t *testing.T) {
 	}
 }
 
+func TestManifestsEqualIgnoresMode(t *testing.T) {
+	left := []manifestEntry{
+		{Path: ".", Type: "dir", Mode: 0755},
+		{Path: "README", Type: "file", Mode: 0644, SHA256: "abc"},
+	}
+	right := []manifestEntry{
+		{Path: ".", Type: "dir", Mode: 0700},
+		{Path: "README", Type: "file", Mode: 0666, SHA256: "abc"},
+	}
+	if !manifestsEqual(left, right) {
+		t.Fatal("内容相同的 manifest 不应因 mode 不同判定不等（Windows 本地临时文件 mode 语义）")
+	}
+	right[1].SHA256 = "def"
+	if manifestsEqual(left, right) {
+		t.Fatal("SHA256 不同必须判定不等")
+	}
+}
+
 func TestParseTransferOptionsRejectsConflictingOverwriteModes(t *testing.T) {
 	if _, err := parseTransferOptions([]string{"one", "local", "/remote", "--overwrite", "--backup"}, "push", false); err == nil {
 		t.Fatal("--overwrite and --backup should conflict")

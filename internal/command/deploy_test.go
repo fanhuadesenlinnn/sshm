@@ -49,7 +49,7 @@ func TestDeployPlanAllowsRuntimeTargetForTargetlessProfile(t *testing.T) {
 	}
 }
 
-func TestDeployInitRefusesOverwriteUnlessExplicitAndWritesV2(t *testing.T) {
+func TestDeployInitRefusesOverwriteUnlessExplicitAndWritesV3(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "deploy.yaml")
 	app := NewApp()
 	var err error
@@ -66,14 +66,29 @@ func TestDeployInitRefusesOverwriteUnlessExplicitAndWritesV2(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(string(data), "# sshm Deploy v2") || !containsText(
+	if !strings.HasPrefix(string(data), "# sshm Deploy v3") || !containsText(
 		string(data),
-		"version: 2",
+		"version: 3",
+		"plays: []",
 		"更新应用并重启服务",
-		"targets 可以使用 hosts、tags 或 all",
+		"hosts 列表 / tags 标签 / all",
 		"请勿在本文件中保存密码、私钥",
 	) {
 		t.Fatalf("sample = %s", data)
+	}
+	v2Path := filepath.Join(t.TempDir(), "deploy-v2.yaml")
+	if err := app.cmdDeployInit([]string{"-f", v2Path, "--version", "2"}); err != nil {
+		t.Fatal(err)
+	}
+	v2Data, err := os.ReadFile(v2Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(string(v2Data), "# sshm Deploy v2") || !strings.Contains(string(v2Data), "version: 2") {
+		t.Fatalf("--version 2 sample = %s", v2Data)
+	}
+	if err := app.cmdDeployInit([]string{"-f", v2Path, "--version", "4"}); err == nil {
+		t.Fatal("--version 4 应当报错")
 	}
 	if err := app.cmdDeployInit([]string{"-f", path}); err == nil {
 		t.Fatal("expected existing file error")
@@ -101,8 +116,8 @@ func TestDeployValidateAllowsInitializedSampleBeforeHosts(t *testing.T) {
 		t.Fatalf("sample should list before hosts are added: %v", err)
 	}
 	err := app.deployPlanCommand([]string{"update-app", "-f", path}, false)
-	if err == nil || !strings.Contains(err.Error(), "还没有主机") {
-		t.Fatalf("plan without hosts should give next-step guidance: %v", err)
+	if err == nil || !strings.Contains(err.Error(), "未找到 deploy play") {
+		t.Fatalf("plan of commented sample should report missing play: %v", err)
 	}
 }
 

@@ -170,7 +170,7 @@ func manifestsEqual(left, right []manifestEntry) bool {
 		return false
 	}
 	for i := range left {
-		if left[i] != right[i] {
+		if left[i].Path != right[i].Path || left[i].Type != right[i].Type || left[i].SHA256 != right[i].SHA256 {
 			return false
 		}
 	}
