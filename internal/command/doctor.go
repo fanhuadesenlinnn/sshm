@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/deploy"
 	"github.com/fanhuadesenlinnn/sshm/v6/internal/ui"
 )
 
@@ -28,6 +29,7 @@ func (app *App) cmdDoctor(_ []string) error {
 	if err != nil {
 		return fmt.Errorf("读取完整配置失败: %w", err)
 	}
+	app.checkDeployConfig()
 
 	ui.PrintHeader("sshm 环境检查")
 	fmt.Println()
@@ -90,4 +92,21 @@ func (app *App) cmdDoctor(_ []string) error {
 		ui.PrintWarn("环境检查完成：%d 个密钥引用、%d 个凭据问题需要处理", missingKeys, credentialIssues)
 	}
 	return nil
+}
+
+// checkDeployConfig reports deploy playbook problems without failing the
+// doctor run; missing deploy files are normal on fresh installs.
+func (app *App) checkDeployConfig() {
+	paths, err := deploy.Discover(nil)
+	if err != nil {
+		return
+	}
+	catalog, err := deploy.Load(paths)
+	if err != nil {
+		ui.PrintWarn("Deploy 配置无法加载: %v", err)
+		return
+	}
+	if err := deploy.ValidateCatalog(catalog); err != nil {
+		ui.PrintWarn("Deploy 配置校验失败: %v", err)
+	}
 }

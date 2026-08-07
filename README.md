@@ -1,8 +1,8 @@
-# sshm v6.0.12
+# sshm v6.1.0
 
-sshm 是一个本地优先、面向个人使用的 SSH 主机管理与轻量运维工具。它使用 Go 原生 SSH 能力管理主机、标签、凭据、批量命令、安全文件传输和 Deploy v2 编排。
+sshm 是一个本地优先、面向个人使用的 SSH 主机管理与轻量运维工具。它使用 Go 原生 SSH 能力管理主机、标签、凭据、批量命令、安全文件传输和 Deploy v3 编排。
 
-> 版本说明：产品发布版本是 `v6.0.12`，Go module 是 `github.com/fanhuadesenlinnn/sshm/v6`，主配置 schema 为 `version: 2`，Deploy 配置支持 `version: 2` 与 `version: 3`。
+> 版本说明：产品发布版本是 `v6.1.0`，Go module 是 `github.com/fanhuadesenlinnn/sshm/v6`，主配置 schema 为 `version: 2`，Deploy 配置 schema 为 `version: 3`。
 
 ## 安装
 
@@ -26,7 +26,7 @@ macOS/Linux 默认安装到 `/usr/local/bin`，权限不足时会请求 `sudo`�
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/fanhuadesenlinnn/sshm/main/scripts/install.sh | \
-  sh -s -- --version v6.0.12 --install-dir "$HOME/.local/bin"
+  sh -s -- --version v6.1.0 --install-dir "$HOME/.local/bin"
 ```
 
 Windows 默认安装到 `%LOCALAPPDATA%\Programs\sshm` 并加入用户 PATH。
@@ -36,19 +36,19 @@ Windows 默认安装到 `%LOCALAPPDATA%\Programs\sshm` 并加入用户 PATH。
 已经安装 Go 1.25 或更高版本时，也可以使用：
 
 ```bash
-go install github.com/fanhuadesenlinnn/sshm/v6@v6.0.12
+go install github.com/fanhuadesenlinnn/sshm/v6@latest
 ```
 
 如果 `proxy.golang.org` 访问较慢，可临时指定国内代理：
 
 ```bash
-GOPROXY=https://goproxy.cn,direct go install github.com/fanhuadesenlinnn/sshm/v6@v6.0.12
+GOPROXY=https://goproxy.cn,direct go install github.com/fanhuadesenlinnn/sshm/v6@latest
 ```
 
 PowerShell：
 
 ```powershell
-$env:GOPROXY = "https://goproxy.cn,direct"; go install github.com/fanhuadesenlinnn/sshm/v6@v6.0.12
+$env:GOPROXY = "https://goproxy.cn,direct"; go install github.com/fanhuadesenlinnn/sshm/v6@latest
 ```
 
 也可以前往 [GitHub Releases](https://github.com/fanhuadesenlinnn/sshm/releases/latest) 手工下载对应平台的压缩包和校验文件。
@@ -58,7 +58,7 @@ $env:GOPROXY = "https://goproxy.cn,direct"; go install github.com/fanhuadesenlin
 - 默认数据目录只使用 `~/.sshm`，唯一可用的路径覆盖变量是 `SSHM_HOME`。
 - 不支持 `SSHM_CONFIG_FILE`，也不读取、迁移或删除旧 `~/.config/sshm/sshm.yaml`。
 - 主配置必须显式使用 `version: 2`，不兼容旧 schema。
-- Deploy 必须显式使用嵌套 action DSL `version: 2`，不兼容 Deploy v1。
+- Deploy v2（`version: 2` 的 profile/steps/handlers）在 v6.1.0 移除，`deploy migrate` 一并移除；旧文件不会被加载，请改写为 v3 playbook。
 - `exec-all`、`push-all`、`pull-all` 已移除，统一使用虚拟标签 `all`。
 - 当前目录的 `sshm.deploy.yaml` 不再隐式加载，项目文件必须通过 `--file` 指定。
 
@@ -87,7 +87,7 @@ sshm doctor
 └── tmp/
 ```
 
-`sshm.yaml` 会包含快速开始、字段用途、主机示例和安全边界说明。`deploy.yaml` 默认不启用任何工作流，提供一份完全注释掉的 Deploy v3 示例（快速开始、全部模块、register/when、block/rescue、include）；可以安全地先运行 `sshm deploy validate`，再按注释创建 play。`templates/` 含一个可运行的模板示例，`README.md` 是一页速查。需要 v2 示例时使用 `sshm deploy init --version 2`。已有 `deploy.yaml` 不会被 `sshm init --force` 覆盖。
+`sshm.yaml` 会包含快速开始、字段用途、主机示例和安全边界说明。`deploy.yaml` 默认不启用任何工作流，提供一份完全注释掉的 Deploy v3 示例（快速开始、全部模块、register/when、block/rescue、include、sleep/confirm）；可以安全地先运行 `sshm deploy validate`，再按注释创建 play。`templates/` 含一个可运行的模板示例，`README.md` 是一页速查。已有 `deploy.yaml` 不会被 `sshm init --force` 覆盖。
 
 主配置、日志、deploy 文件和备份都以同一个 `SSHM_HOME` 为根目录。发现旧配置时，`init` 与 `doctor` 只输出警告。
 
@@ -153,10 +153,14 @@ sshm exec-tag prod "systemctl status app" \
 --fail-fast
 --max-fail N
 --max-fail-percent N
+--exclude 主机[,主机]
+--exclude-tag 标签[,标签]
 --yes
 --no-log
 --quiet
 ```
+
+`--exclude`/`--exclude-tag` 在目标解析后应用，可用于 `exec-tag`、`push-tag`、`pull-tag` 与 `deploy run`/`plan`（如 `exec-tag all --exclude-tag legacy`）。被排除的主机或标签必须存在于主机清单，拼写错误会直接报错而不是静默漏排除。
 
 结果状态为 `ok`、`changed`、`would-change`、`failed`、`unreachable`、`skipped`。`Ctrl+C` 会取消运行中的 context，未开始目标标记为 `skipped`。
 
@@ -207,61 +211,53 @@ sshm pull-tag all /etc/hosts ./backup --flat --yes
 
 跳过 checksum 后，已有目标无法判断是否相同，仍需 `--overwrite` 或 `--backup`。
 
-## Deploy v2
+## Deploy
 
-默认加载存在的 `~/.sshm/deploy.yaml` 与按文件名排序的 `~/.sshm/deploy.d/*.yaml`。显式 `--file` 时只加载指定文件。
-
-首次运行 `sshm init` 会生成带中文说明的安全空模板；`profiles: []` 是合法状态，适合先校验文件结构再逐步添加工作流。需要一份可修改的完整示例时，也可以执行 `sshm deploy init -f ./deploy.yaml`。
+Deploy 使用模块化 playbook：文档 `version: 3`，由 plays（工作流）、tasks（任务）和 modules（模块）组成。文件结构沿用 `deploy.yaml` + `deploy.d/*.yaml`；v6.1.0 起仅支持 v3，不再加载 Deploy v2 文件。
 
 ```bash
 sshm deploy validate
 sshm deploy list
-# 需要查看可运行示例时：
-sshm deploy init --stdout
 sshm deploy plan update-app
 sshm deploy run update-app --check --diff --yes
-sshm deploy run update-app --serial 2 --parallel 2 --yes
 ```
 
-示例：
+支持 13 个幂等模块：`command`/`shell`、`file`、`copy`、`template`、`service`、`wait_for`、`sleep`、`unarchive`、`fetch`、`pause`、`fail`、`debug`。每个模块内置 check/diff 与 changed 判定，另支持 `register`/`when`、`loop`、`run_once`、`ignore_errors`、`failed_when`/`changed_when`、`become`、`confirm`（linear 策略下每个 serial 批次开始前的人工门禁）、`block`/`rescue`/`always`、静态 `include`、`strategy: linear|free` 与 `gather_facts`。
 
-```yaml
-version: 2
+### when 条件语法
 
-profiles:
-  - name: update-nginx
-    targets:
-      tags: [web]
-    serial: 2
-    parallel: 2
-    steps:
-      - name: upload config
-        push:
-          src: ./nginx.conf
-          dest: /etc/nginx/nginx.conf
-          backup: true
-        notify: [reload nginx]
+`when` 使用小型的布尔表达式语言，支持：
 
-      - name: test config
-        exec: nginx -t
-        become: true
-
-handlers:
-  - name: reload nginx
-    exec: systemctl reload nginx
-    become: true
+```text
+比较：    ==  !=  <  <=  >  >=
+逻辑：    &&  ||  !  以及单词 and or not
+成员：    item in list / string    item not in list / string
+存在：    var is defined           var is not defined
+字面量：  数字、'字符串'、true、false、null
+路径：    upload.changed、item、facts.hostname
+括号：    (expr)
 ```
 
-一个 step 或 handler 必须且只能包含一个 action：`exec`、`push`、`pull`、`mkdir`、`wait`、`confirm`。`confirm` 是 serial 批次门禁，会在当前批次开始前确认；handler 不允许 `confirm` 或继续 `notify`。
+两点行为约定：
 
-Deploy v2 支持：
+- 引用未定义变量是错误，而不是静默跳过——任务不会因为拼写错误而悄悄不执行；可选变量请先写 `var is defined and ...`（`&&`/`||` 会短路，右侧不会误报）。
+- 列表/字典可以比较相等或不等，但不能排序比较（`<`/`>` 会报错）；空列表与空字典在条件中为假。
+- 普通任务 `when` 求值一次；loop 任务按每个 item 求值，可用 `when: item != 'x'` 跳过单项。loop 的 register 结果是列表，`when` 不支持 `results[n]` 索引。
 
-- 静态 `plan`，不会连接远端。
-- `--check` 区分 `would-change`、`ok` 与 `skipped`，不修改最终目标。
-- `--diff` 展示文本 push 差异；diff 默认不写入日志。
-- `notify` / handlers、`ignore_error`、`failed_when`、`changed_when`。
-- `become: true` 使用 `sudo -n -u <user> -- sh -c '<安全引用命令>'`。
-- `serial`、`parallel` 与失败策略复用共享 BatchRunner。
+### command 与 shell 模块
+
+- `command` 不经过远程 shell：`cmd` 不能包含管道、重定向、`$`、`;`、`&`、反引号等 shell 元字符，参数按字面传递。
+- 需要管道/重定向/变量展开时使用 `shell` 模块。
+
+### 变量插值
+
+`{{ }}` 插值支持 `vars`、play 级 `vars`、`vars_files` 与 CLI `--extra-var`，白名单函数：`default`、`join`、`upper`、`lower`、`trim`、`replace`、`shellquote`。缺失变量默认报错；`{{ missing | default "fallback" }}` 提供默认值。
+
+### 升级注意（v6.1.0）
+
+- Deploy v2（`version: 2` 的 profile/steps/handlers）与 `deploy migrate` 已移除；旧文件不会被加载，请改写为 v3 playbook。
+- v2 的 `wait`（定时延时）由 `sleep` 模块替代；v2 的 `confirm` 批次门禁由任务级 `confirm` 字段替代。
+- 主配置 schema 仍为 `version: 2`，不受影响。
 
 ## 配置与安全
 

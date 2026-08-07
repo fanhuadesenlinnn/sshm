@@ -17,7 +17,6 @@ const SampleDeployV3 = `# sshm Deploy v3 编排配置
 # 使用 -f/--file 时只读取显式指定的文件，当前目录文件不会被自动加载。
 #
 # v3 模型：plays（工作流）-> tasks（任务）-> modules（模块，幂等）。
-# v2 的 profile/steps 仍然受支持，可用 sshm deploy migrate 转换为 v3。
 #
 # 安全边界：
 #   - 本文件只描述"做什么"，请勿在本文件中保存密码、私钥、SSH 用户、端口或主机信任
@@ -81,6 +80,13 @@ plays: []
 #         wait_for:
 #           port: 8080
 #           timeout: 30s
+#       - name: 等待应用完全启动
+#         sleep:
+#           seconds: 5               # 纯延时；也支持 duration: 5s。check 模式自动跳过
+#       - name: 每批主机执行前人工确认
+#         command:
+#           cmd: /opt/app/bin/restart
+#         confirm: 确认重启这组主机?    # linear 策略下每个 serial 批次开始前确认
 #       - name: 发布失败自动回滚
 #         block:                      # 一组任务；失败时执行 rescue，无论成败执行 always
 #           - command:
@@ -96,7 +102,7 @@ plays: []
 #           message: 确认发布到生产?
 #
 # ==================== 其他模块简注 ====================
-#   command / shell：执行任意命令
+#   command：不经过 shell，cmd 不能含管道/重定向/$/;/&/反引号；shell：完整 shell 语法
 #     command:
 #       cmd: "ls -la {{ base }}"
 #       chdir: /opt/app        # 先切换目录
@@ -115,6 +121,10 @@ plays: []
 #     fail:
 #       msg: 环境校验未通过
 #     when: os_family == 'debian'      # when 支持 facts（需 gather_facts: true）
+# when 语法：== != < <= > >=、&& || !（及 and/or/not）、in/not in、
+#           is defined/is not defined、括号、数字/字符串/true/false/null 字面量。
+# 引用未定义变量会直接报错（而不是静默跳过）；可选变量请先写 x is defined and ... 再引用。
+# loop 任务中 when 按每个 item 求值，可用 when: item != 'x' 跳过单项。
 #
 # ==================== 任务片段复用（可选）====================
 # 公共任务可以放到单独文件，用 include 静态引入（带循环检测）：
@@ -127,7 +137,3 @@ plays: []
 #         path: /tmp/prep
 #         state: directory
 `
-
-// SampleDeployV2 keeps the legacy v2 starter available through
-// `sshm deploy init --version 2`.
-const SampleDeployV2 = defaultDeployConfig

@@ -13,11 +13,16 @@ import (
 )
 
 const (
-	defaultN      = 32768
+	defaultN      = 131072
 	defaultR      = 8
 	defaultP      = 1
 	defaultKeyLen = 32
 )
+
+// scryptCost is the scrypt N used for new and rekeyed vaults. It equals
+// defaultN in production; the secret package tests lower it so the suite and
+// the race detector stay fast.
+var scryptCost = defaultN
 
 var ErrIncorrectPassphrase = errors.New("主密码错误")
 
@@ -53,7 +58,7 @@ func deriveKey(passphrase string, salt []byte, cfg CryptoConfig) ([]byte, error)
 // Encrypt encrypts plaintext with AES-256-GCM.
 func Encrypt(plaintext string, passphrase string, salt []byte) (*EncryptedFile, error) {
 	cfg := CryptoConfig{
-		N:      defaultN,
+		N:      scryptCost,
 		R:      defaultR,
 		P:      defaultP,
 		KeyLen: defaultKeyLen,

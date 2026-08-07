@@ -74,6 +74,9 @@ func (fs *FileStore) readRaw() (map[string]string, *config.EncryptedVault, error
 		return nil, nil, err
 	}
 	entries, err := decodeEntries(doc.Vault, fs.passphrase)
+	if err != nil {
+		return nil, nil, err
+	}
 	return entries, doc.Vault, err
 }
 

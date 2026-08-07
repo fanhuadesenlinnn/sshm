@@ -42,6 +42,8 @@ type batchCLIOptions struct {
 	Yes            bool
 	NoLog          bool
 	Quiet          bool
+	Exclude        []string
+	ExcludeTags    []string
 }
 
 func parseBatchCLIOptions(args []string) (batchCLIOptions, []string, error) {
@@ -122,6 +124,18 @@ func parseBatchCLIOptions(args []string) (batchCLIOptions, []string, error) {
 			options.NoLog = true
 		case "--quiet":
 			options.Quiet = true
+		case "--exclude":
+			raw, err := value(&i, args[i])
+			if err != nil {
+				return options, nil, err
+			}
+			options.Exclude = append(options.Exclude, raw)
+		case "--exclude-tag":
+			raw, err := value(&i, args[i])
+			if err != nil {
+				return options, nil, err
+			}
+			options.ExcludeTags = append(options.ExcludeTags, raw)
 		default:
 			if len(args[i]) > 0 && args[i][0] == '-' {
 				return options, nil, fmt.Errorf("未知批量执行选项: %s", args[i])

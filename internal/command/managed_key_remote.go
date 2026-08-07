@@ -10,7 +10,9 @@ import (
 	"time"
 
 	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/deploy"
 	"github.com/fanhuadesenlinnn/sshm/v6/internal/operation"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/shellquote"
 	"github.com/fanhuadesenlinnn/sshm/v6/internal/sshx"
 	"github.com/fanhuadesenlinnn/sshm/v6/internal/ui"
 )
@@ -184,7 +186,7 @@ func (app *App) cmdKeyStatus(args []string) error {
 
 func (app *App) resolveKeyAndTargets(args []string) (*config.ManagedKey, []config.Host, error) {
 	if len(args) < 2 {
-		return nil, nil, fmt.Errorf("需要指定密钥和目标；目标支持别名...、--tag 标签、--all")
+		return nil, nil, fmt.Errorf("需要指定密钥和目标；目标支持别名...、--tag 标签、--all（可配合 --exclude/--exclude-tag 排除）")
 	}
 	key, err := app.keyStore().Find(args[0])
 	if err != nil {
@@ -207,9 +209,11 @@ func (app *App) selectHosts(args []string) ([]config.Host, error) {
 }
 
 type hostSelector struct {
-	aliases map[string]bool
-	tags    map[string]bool
-	all     bool
+	aliases     map[string]bool
+	tags        map[string]bool
+	all         bool
+	exclude     []string
+	excludeTags []string
 }
 
 func parseHostSelector(args []string) (hostSelector, error) {
@@ -218,7 +222,7 @@ func parseHostSelector(args []string) (hostSelector, error) {
 		tags:    map[string]bool{},
 	}
 	if len(args) == 0 {
-		return selector, fmt.Errorf("需要指定目标；目标支持别名...、--tag 标签、--all")
+		return selector, fmt.Errorf("需要指定目标；目标支持别名...、--tag 标签、--all（可配合 --exclude/--exclude-tag 排除）")
 	}
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -230,6 +234,18 @@ func parseHostSelector(args []string) (hostSelector, error) {
 			}
 			i++
 			selector.tags[args[i]] = true
+		case "--exclude":
+			if i+1 >= len(args) {
+				return selector, fmt.Errorf("--exclude 缺少主机")
+			}
+			i++
+			selector.exclude = append(selector.exclude, args[i])
+		case "--exclude-tag":
+			if i+1 >= len(args) {
+				return selector, fmt.Errorf("--exclude-tag 缺少标签")
+			}
+			i++
+			selector.excludeTags = append(selector.excludeTags, args[i])
 		default:
 			selector.aliases[args[i]] = true
 		}
@@ -241,6 +257,14 @@ func parseHostSelector(args []string) (hostSelector, error) {
 }
 
 func selectHostsFrom(hosts []config.Host, selector hostSelector) ([]config.Host, error) {
+	selected, err := selectHostsFromRaw(hosts, selector)
+	if err != nil {
+		return nil, err
+	}
+	return deploy.ApplyExcludes(selected, hosts, selector.exclude, selector.excludeTags)
+}
+
+func selectHostsFromRaw(hosts []config.Host, selector hostSelector) ([]config.Host, error) {
 	aliases := make(map[string]bool, len(selector.aliases))
 	for alias := range selector.aliases {
 		aliases[alias] = true
@@ -331,20 +355,16 @@ func (app *App) runKeyRemoteBatch(action string, hosts []config.Host, command, r
 }
 
 func installPublicKeyCommand(publicKey string) string {
-	key := shellSingleQuote(strings.TrimSpace(publicKey))
+	key := shellquote.Single(strings.TrimSpace(publicKey))
 	return "umask 077; mkdir -p ~/.ssh; touch ~/.ssh/authorized_keys; chmod 700 ~/.ssh; chmod 600 ~/.ssh/authorized_keys; " +
 		"grep -qxF -- " + key + " ~/.ssh/authorized_keys || printf '%s\\n' " + key + " >> ~/.ssh/authorized_keys"
 }
 
 func revokePublicKeyCommand(publicKey string) string {
-	key := shellSingleQuote(strings.TrimSpace(publicKey))
+	key := shellquote.Single(strings.TrimSpace(publicKey))
 	return "if [ -f ~/.ssh/authorized_keys ]; then umask 077; tmp=$(mktemp ~/.ssh/authorized_keys.sshm.XXXXXX) || exit 1; " +
 		"if grep -Fvx -- " + key + " ~/.ssh/authorized_keys > \"$tmp\"; then chmod 600 \"$tmp\" && mv \"$tmp\" ~/.ssh/authorized_keys; " +
 		"else rc=$?; if [ \"$rc\" -eq 1 ]; then chmod 600 \"$tmp\" && mv \"$tmp\" ~/.ssh/authorized_keys; else rm -f \"$tmp\"; exit \"$rc\"; fi; fi; fi"
-}
-
-func shellSingleQuote(value string) string {
-	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }
 
 func hostAliases(hosts []config.Host) []string {

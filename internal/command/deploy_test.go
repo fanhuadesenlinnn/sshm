@@ -6,20 +6,25 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/batch"
 	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/deploy"
 )
 
-func TestParseDeployCLIOptionsSupportsV2RunFlags(t *testing.T) {
+func TestParseDeployCLIOptionsSupportsRunFlags(t *testing.T) {
 	options, err := parseDeployCLIOptions([]string{
 		"install", "-f", "base.yaml", "--file", "project.yaml",
 		"--host", "one,two", "--tag", "prod,web", "--serial", "2", "--parallel", "3",
-		"--fail-fast", "--max-fail", "2", "--check", "--diff", "--yes", "--output", "json",
+		"--exclude", "legacy01", "--exclude-tag", "legacy", "--fail-fast", "--max-fail", "2",
+		"--check", "--diff", "--yes", "--output", "json",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(options.files) != 2 || len(options.positionals) != 1 || !options.hasSelector ||
 		len(options.selector.Hosts) != 1 || len(options.selector.Tags) != 1 ||
+		len(options.selector.Exclude) != 1 || options.selector.Exclude[0] != "legacy01" ||
+		len(options.selector.ExcludeTags) != 1 || options.selector.ExcludeTags[0] != "legacy" ||
 		options.batch.Serial != 2 || options.batch.Parallel != 3 || !options.batch.FailFast ||
 		options.batch.MaxFail != 2 || !options.check || !options.diff || !options.batch.Yes || options.output != "json" {
 		t.Fatalf("options = %+v", options)
@@ -36,15 +41,15 @@ func TestDeployPlanAllowsRuntimeTargetForTargetlessProfile(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(dir, "deploy.yaml")
-	body := "version: 2\nprofiles:\n  - name: targetless\n    steps:\n      - exec: hostname\n"
+	body := "version: 3\nplays:\n  - name: targetless\n    hosts: {}\n    tasks:\n      - name: probe\n        command:\n          cmd: hostname\n"
 	if err := os.WriteFile(path, []byte(body), 0600); err != nil {
 		t.Fatal(err)
 	}
 	app := &App{Store: store, ConfigPath: store.Path()}
-	if err := app.deployPlanCommand([]string{"targetless", "-f", path, "--host", "one", "--output", "json"}, false); err != nil {
+	if err := app.deployPlan([]string{"targetless", "-f", path, "--host", "one", "--output", "json"}, false); err != nil {
 		t.Fatal(err)
 	}
-	if err := app.cmdDeployValidate([]string{"-f", path}); err == nil {
+	if err := app.deployValidate([]string{"-f", path}); err == nil {
 		t.Fatal("validate should reject a targetless profile without a runtime override")
 	}
 }
@@ -76,19 +81,8 @@ func TestDeployInitRefusesOverwriteUnlessExplicitAndWritesV3(t *testing.T) {
 	) {
 		t.Fatalf("sample = %s", data)
 	}
-	v2Path := filepath.Join(t.TempDir(), "deploy-v2.yaml")
-	if err := app.cmdDeployInit([]string{"-f", v2Path, "--version", "2"}); err != nil {
-		t.Fatal(err)
-	}
-	v2Data, err := os.ReadFile(v2Path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.HasPrefix(string(v2Data), "# sshm Deploy v2") || !strings.Contains(string(v2Data), "version: 2") {
-		t.Fatalf("--version 2 sample = %s", v2Data)
-	}
-	if err := app.cmdDeployInit([]string{"-f", v2Path, "--version", "4"}); err == nil {
-		t.Fatal("--version 4 应当报错")
+	if err := app.cmdDeployInit([]string{"-f", path, "--version", "3"}); err == nil {
+		t.Fatal("--version 已移除，应当报错")
 	}
 	if err := app.cmdDeployInit([]string{"-f", path}); err == nil {
 		t.Fatal("expected existing file error")
@@ -109,15 +103,34 @@ func TestDeployValidateAllowsInitializedSampleBeforeHosts(t *testing.T) {
 	if err := app.cmdDeployInit([]string{"-f", path}); err != nil {
 		t.Fatal(err)
 	}
-	if err := app.cmdDeployValidate([]string{"-f", path}); err != nil {
+	if err := app.deployValidate([]string{"-f", path}); err != nil {
 		t.Fatalf("sample should validate before hosts are added: %v", err)
 	}
-	if err := app.cmdDeployList([]string{"-f", path}); err != nil {
+	if err := app.deployList([]string{"-f", path}); err != nil {
 		t.Fatalf("sample should list before hosts are added: %v", err)
 	}
-	err := app.deployPlanCommand([]string{"update-app", "-f", path}, false)
+	err := app.deployPlan([]string{"update-app", "-f", path}, false)
 	if err == nil || !strings.Contains(err.Error(), "未找到 deploy play") {
 		t.Fatalf("plan of commented sample should report missing play: %v", err)
+	}
+}
+
+func TestDeployFailureHint(t *testing.T) {
+	result := deploy.RunResult{
+		Hosts: []deploy.HostResult{
+			{HostAlias: "h1", Status: batch.StatusFailed, FailedTask: "upload", Reason: "boom"},
+			{HostAlias: "h2", Status: batch.StatusUnreachable, FailedTask: "probe"},
+			{HostAlias: "h3", Status: batch.StatusOK},
+		},
+	}
+	hint := deployFailureHint(result)
+	for _, want := range []string{"h1(upload)", "h2(probe)", "--check"} {
+		if !strings.Contains(hint, want) {
+			t.Fatalf("hint 缺少 %q: %q", want, hint)
+		}
+	}
+	if strings.Contains(hint, "h3") {
+		t.Fatalf("hint 不应包含成功主机: %q", hint)
 	}
 }
 

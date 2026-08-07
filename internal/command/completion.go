@@ -85,10 +85,10 @@ func (app *App) completionCandidates() ([]string, error) {
 		for _, tag := range doc.Tags.Items {
 			add(tag.Name)
 		}
-		if paths, err := deploy.Discover(nil, ""); err == nil {
+		if paths, err := deploy.Discover(nil); err == nil {
 			if catalog, err := deploy.Load(paths); err == nil {
-				for _, profile := range catalog.Profiles {
-					add(profile.Name)
+				for _, play := range catalog.Plays {
+					add(play.Name)
 				}
 			}
 		}

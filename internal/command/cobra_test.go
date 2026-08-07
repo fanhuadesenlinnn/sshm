@@ -105,7 +105,7 @@ func TestCoreCommandHelpIncludesRunnableExamples(t *testing.T) {
 		{[]string{"push"}, "push [选项] <别名|ID> <本地路径> <远程路径>", "sshm push web01"},
 		{[]string{"key"}, "key <命令> [参数]", "sshm key setup personal web01 --yes"},
 		{[]string{"tag"}, "tag <命令> [参数]", "sshm tag add prod"},
-		{[]string{"deploy", "run"}, "run <profile>", "sshm deploy run webapp --tag prod"},
+		{[]string{"deploy", "run"}, "run <play>", "sshm deploy run webapp --tag prod"},
 	}
 	for _, tt := range cases {
 		cmd, _, err := root.Find(tt.path)

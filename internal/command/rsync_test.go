@@ -12,11 +12,12 @@ import (
 
 	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
 	"github.com/fanhuadesenlinnn/sshm/v6/internal/secret"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/shellquote"
 	"golang.org/x/crypto/ssh"
 )
 
 func TestShellCommandQuotesArguments(t *testing.T) {
-	got := shellCommand([]string{"/path with space/ssh", "-o", "UserKnownHostsFile=/tmp/it's-here"})
+	got := shellquote.Command([]string{"/path with space/ssh", "-o", "UserKnownHostsFile=/tmp/it's-here"})
 	for _, want := range []string{"'/path with space/ssh'", "'-o'", "'UserKnownHostsFile=/tmp/it'\"'\"'s-here'"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("shell command %q missing %q", got, want)

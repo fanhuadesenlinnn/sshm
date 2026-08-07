@@ -16,6 +16,7 @@ import (
 
 	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
 	"github.com/fanhuadesenlinnn/sshm/v6/internal/secret"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/shellquote"
 	"github.com/fanhuadesenlinnn/sshm/v6/internal/sshx"
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
@@ -139,7 +140,7 @@ func prepareRsyncTransportWithTimeout(host config.Host, store *secret.FileStore,
 			"-o", "UserKnownHostsFile="+nullDevice(),
 			"-o", "GlobalKnownHostsFile="+nullDevice(),
 		)
-		return shellCommand(args), cleanup, nil
+		return shellquote.Command(args), cleanup, nil
 	}
 
 	entry, err := trustedHostEntry(host)
@@ -163,7 +164,7 @@ func prepareRsyncTransportWithTimeout(host config.Host, store *secret.FileStore,
 		"-o", "UserKnownHostsFile="+knownHostsPath,
 		"-o", "GlobalKnownHostsFile="+nullDevice(),
 	)
-	return shellCommand(args), cleanup, nil
+	return shellquote.Command(args), cleanup, nil
 }
 
 func trustedHostEntry(host config.Host) (config.HostTrustEntry, error) {
@@ -338,14 +339,6 @@ func runRsync(ctx context.Context, rsyncPath, sshCommand, source, destination st
 
 func rsyncRemote(host config.Host, remotePath string) string {
 	return fmt.Sprintf("%s@%s:%s", host.User, host.Host, remotePath)
-}
-
-func shellCommand(args []string) string {
-	quoted := make([]string, len(args))
-	for i, arg := range args {
-		quoted[i] = "'" + strings.ReplaceAll(arg, "'", "'\"'\"'") + "'"
-	}
-	return strings.Join(quoted, " ")
 }
 
 func nullDevice() string {

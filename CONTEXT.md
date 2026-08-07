@@ -4,12 +4,12 @@ sshm 是一个本地优先、面向个人使用的 SSH 主机管理与轻量运�
 
 ## 版本边界
 
-- 产品发布版本：`v6.0.12`
+- 产品发布版本：`v6.1.0`
 - Go module：`github.com/fanhuadesenlinnn/sshm/v6`
 - 主配置 schema：`version: 2`
-- Deploy schema：`version: 2` 与 `version: 3`（v3 playbook）
+- Deploy schema：`version: 3`
 
-这些版本含义不同。主配置和 Deploy schema v2/v3 均不自动兼容或迁移旧版本；v3 提供 `deploy migrate` 把 v2 profile 机械转换为 v3 play。
+这些版本含义不同。主配置和 Deploy schema 互不兼容；Deploy v2 自 v6.1.0 起已移除。
 
 ## 核心语言
 
@@ -52,9 +52,6 @@ push/pull 使用 manifest、SHA-256、临时目标和 rename，拒绝符号链�
 **Deploy 文件**
 用户维护的只读 YAML 输入。默认位置是 `<SSHM_HOME>/deploy.yaml` 和 `<SSHM_HOME>/deploy.d/*.yaml`；项目文件必须通过 `--file` 显式指定。
 
-**Deploy Profile**
-一个命名的 Deploy v2 工作流，包含 targets、批量策略、steps 和可通知 handlers。
-
 **v3 Playbook**
 Deploy v3 声明文档，包含全局 vars 和多个 plays；文件结构沿用 `deploy.yaml` + `deploy.d/*.yaml`。
 
@@ -65,7 +62,7 @@ Deploy v3 声明文档，包含全局 vars 和多个 plays；文件结构沿用 
 一个模块调用或 block/rescue/always 结构，可携带 when、register、loop、become、ignore_errors。
 
 **v3 模块**
-带幂等语义的执行单元：command/shell、file、copy、template、service、wait_for、unarchive、fetch、pause、fail、debug。每个模块内置 check/diff 与 changed 判定。
+带幂等语义的执行单元：command/shell、file、copy、template、service、wait_for、sleep、unarchive、fetch、pause、fail、debug。每个模块内置 check/diff 与 changed 判定。
 
 **register/when**
 task 的结果（changed/rc/output）注册到主机状态，供后续 task 的 when 条件判断。
@@ -93,7 +90,7 @@ Deploy Profile 静态解析出的来源文件、目标主机、steps、handlers 
 
 1. sshm 不读取、迁移或删除旧 `~/.config/sshm/sshm.yaml`。
 2. 除 `init`、`config path` 和 `doctor` 外，缺少主配置时不得静默创建。
-3. 主配置与 Deploy v2 严格拒绝缺失版本和未知字段。
+3. 主配置与 Deploy v3 严格拒绝缺失版本和未知字段。
 4. `--yes` 不跳过主密码和 host trust。
 5. `--all` 不能与具体主机或标签选择器混用。
 6. 批量操作在调度任何主机前完成所需 vault 解锁。
@@ -102,9 +99,10 @@ Deploy Profile 静态解析出的来源文件、目标主机、steps、handlers 
 9. Deploy `plan` 不连接远端；`check` 不修改最终目标。
 10. diff 可能包含敏感内容，默认不写入操作日志。
 11. sshm 不提供后台任务、团队空间、完整 Ansible 兼容层或期望状态收敛。
-12. Deploy v2 与 v3 按文件版本并存加载；同一批文件版本混合时拒绝执行。
-13. v3 不提供 handlers；条件执行必须通过 register + when 表达。
-14. v3 include 在 plan 阶段静态展开，不提供运行时动态 include。
+12. Deploy v2 已移除；Deploy 文件必须使用 `version: 3`，旧 schema 不再加载。
+13. Deploy v3 的 `when` 引用未定义变量是错误而非静默跳过；可选变量必须显式使用 `is defined`。
+14. v3 不提供 handlers；条件执行必须通过 register + when 表达。
+15. v3 include 在 plan 阶段静态展开，不提供运行时动态 include。
 
 ## 接口
 

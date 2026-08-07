@@ -28,6 +28,7 @@ type lineEditor struct {
 	history   []string
 	histPos   int    // -1 = new line; 0..len(history)-1 = browsing
 	histDirty string // the in-progress line when user starts browsing history
+	noHistory bool   // suppress adding the committed line to global history
 
 	line   []rune
 	cursor int // cursor position in runes
@@ -76,9 +77,22 @@ func ReadLineDefault(prompt string, defaultVal string) string {
 
 // ReadYesNo reads a yes/no answer (default no).
 func ReadYesNo(prompt string) bool {
-	input := ReadLine(prompt)
+	input := readLineNoHistory(prompt)
 	input = strings.ToLower(strings.TrimSpace(input))
 	return input == "y" || input == "yes"
+}
+
+// readLineNoHistory reads a line without polluting the global history. It is
+// used by one-shot prompts such as yes/no confirmations.
+func readLineNoHistory(prompt string) string {
+	if !isTerminal() {
+		return readLineFallback(prompt)
+	}
+	ed := &lineEditor{
+		histPos: -1,
+		prompt:  prompt,
+	}
+	return ed.run()
 }
 
 // ReadPassword reads a password without echoing.
@@ -172,11 +186,7 @@ func (ed *lineEditor) run() string {
 
 		case enterKey, newlineKey:
 			ed.finishLine()
-			result := ed.string()
-			if result != "" {
-				addToHistory(result)
-			}
-			return result
+			return ed.commitLine()
 
 		default:
 			if b >= 32 && b < 127 {
@@ -196,6 +206,16 @@ func (ed *lineEditor) run() string {
 			}
 		}
 	}
+}
+
+// commitLine returns the current line and, unless suppressed, adds it to the
+// global history.
+func (ed *lineEditor) commitLine() string {
+	result := ed.string()
+	if result != "" && !ed.noHistory {
+		addToHistory(result)
+	}
+	return result
 }
 
 // isBackspaceKey accepts both terminal encodings commonly produced by the
@@ -391,9 +411,6 @@ func normalizePastedText(data []byte) []rune {
 		}
 		pendingSpace = false
 		result = append(result, r)
-	}
-	if pendingSpace && len(result) > 0 && result[len(result)-1] != ' ' {
-		result = append(result, ' ')
 	}
 	return result
 }

@@ -31,6 +31,8 @@ var interactiveBatchValueFlags = map[string]bool{
 	"--connect-timeout":  true,
 	"--max-fail":         true,
 	"--max-fail-percent": true,
+	"--exclude":          true,
+	"--exclude-tag":      true,
 }
 
 // parseInteractiveInput separates sshm's local routing prefix from an exec

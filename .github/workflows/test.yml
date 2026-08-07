@@ -25,8 +25,9 @@ jobs:
 
       - name: Test Unix installer
         run: |
-          scripts/install.sh --version v6.0.10 --install-dir "$RUNNER_TEMP/sshm-bin"
-          "$RUNNER_TEMP/sshm-bin/sshm" --version | grep -Fx "sshm v6.0.10"
+          VERSION="$(git describe --tags --abbrev=0 2>/dev/null || echo latest)"
+          scripts/install.sh --version "$VERSION" --install-dir "$RUNNER_TEMP/sshm-bin"
+          "$RUNNER_TEMP/sshm-bin/sshm" --version | grep -Fx "sshm $VERSION"
 
       - name: Setup Go
         uses: actions/setup-go@v6
@@ -86,6 +87,31 @@ jobs:
           docker run --rm -v "$PWD/sshm-linux-static:/sshm:ro" centos:7 /sshm --version
           docker run --rm -v "$PWD/sshm-linux-static:/sshm:ro" alpine:3.19 /sshm --version
 
+  cross-platform:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.25'
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./...
+
+      - name: Race
+        run: go test -race ./...
+
   windows-installer:
     name: Windows installer
     runs-on: windows-latest
@@ -96,9 +122,11 @@ jobs:
       - name: Test PowerShell installer
         shell: powershell
         run: |
+          $Version = git describe --tags --abbrev=0
+          if ($LASTEXITCODE -ne 0) { $Version = 'latest' }
           $InstallDir = Join-Path $env:RUNNER_TEMP 'sshm-bin'
-          & .\scripts\install.ps1 -Version v6.0.10 -InstallDir $InstallDir -NoPathUpdate
+          & .\scripts\install.ps1 -Version $Version -InstallDir $InstallDir -NoPathUpdate
           $Output = & (Join-Path $InstallDir 'sshm.exe') --version
-          if ($Output -ne 'sshm v6.0.10') {
+          if ($Output -ne "sshm $Version") {
             throw "Unexpected version output: $Output"
           }

@@ -119,7 +119,7 @@ func TestInitializeCreatesChineseV2ConfigAndForceBackup(t *testing.T) {
 	if _, _, err := Initialize(false); err == nil {
 		t.Fatal("second init should refuse overwrite")
 	}
-	const customDeploy = "version: 2\nprofiles: []\n# 用户自己的 Deploy 配置\n"
+	const customDeploy = "version: 3\nplays: []\n# 用户自己的 Deploy 配置\n"
 	if err := os.WriteFile(paths.Deploy, []byte(customDeploy), 0600); err != nil {
 		t.Fatal(err)
 	}

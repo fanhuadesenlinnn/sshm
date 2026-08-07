@@ -4,14 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
 	"github.com/fanhuadesenlinnn/sshm/v6/internal/batch"
 	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/deploy"
 	"github.com/fanhuadesenlinnn/sshm/v6/internal/operation"
 	"github.com/fanhuadesenlinnn/sshm/v6/internal/ops"
 	"github.com/fanhuadesenlinnn/sshm/v6/internal/secret"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/shellquote"
 	"github.com/fanhuadesenlinnn/sshm/v6/internal/ui"
 )
 
@@ -37,15 +40,19 @@ func (app *App) cmdExec(args []string) error {
 		}
 	}
 
-	opResult := app.operationExecutor().Exec(context.Background(), *h, ops.ExecOptions{Command: command})
+	executor := app.operationExecutor()
+	defer executor.CloseSessions()
+	var stdout, stderr io.Writer
+	if !quiet {
+		stdout = os.Stdout
+		stderr = os.Stderr
+	}
+	opResult := executor.Exec(context.Background(), *h, ops.ExecOptions{Command: command, Stdout: stdout, Stderr: stderr})
 	err = opResult.Err
 	result := newOperationResult(*h, opResult.Output, err, operation.StageExecute,
-		fmt.Sprintf("sshm exec --yes %s %s", shellSingleQuote(h.Alias), shellSingleQuote(command)), opResult.Duration)
+		fmt.Sprintf("sshm exec --yes %s %s", shellquote.Single(h.Alias), shellquote.Single(command)), opResult.Duration)
 	if err != nil {
 		printOperationFailure(result)
-	}
-	if !quiet {
-		fmt.Print(opResult.Output)
 	}
 	if !noLog {
 		if logErr := writeOperationLog("exec", command, []operation.Result{result}); logErr != nil {
@@ -78,6 +85,10 @@ func (app *App) cmdExecTag(args []string) error {
 			hosts = append(hosts, h)
 		}
 	}
+	hosts, err = deploy.ApplyExcludes(hosts, hf.Hosts, options.Exclude, options.ExcludeTags)
+	if err != nil {
+		return err
+	}
 	if len(hosts) == 0 {
 		return fmt.Errorf("没有匹配标签 %q 的主机；使用 sshm tag list 查看标签，或 sshm tag add %s <主机> 绑定主机", tagName, tagName)
 	}
@@ -108,6 +119,7 @@ func (app *App) executeBatch(hosts []config.Host, command string, options batchC
 		return &ExitError{Code: 3, Err: err}
 	}
 	executor := app.operationExecutor()
+	defer executor.CloseSessions()
 	ctx, cancel := signalContext()
 	defer cancel()
 	runner := batch.Runner{
@@ -143,7 +155,7 @@ func (app *App) executeBatch(hosts []config.Host, command string, options batchC
 			fmt.Print(opResult.Output)
 		}
 		logResult := newOperationResult(result.Host, opResult.Output, opResult.Err, operation.StageExecute,
-			fmt.Sprintf("sshm exec --yes %s %s", shellSingleQuote(result.Host.Alias), shellSingleQuote(command)), opResult.Duration)
+			fmt.Sprintf("sshm exec --yes %s %s", shellquote.Single(result.Host.Alias), shellquote.Single(command)), opResult.Duration)
 		logResults = append(logResults, logResult)
 		if opResult.Err != nil {
 			printOperationFailure(logResult)

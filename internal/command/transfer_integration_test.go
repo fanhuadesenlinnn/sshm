@@ -19,6 +19,7 @@ import (
 	"github.com/fanhuadesenlinnn/sshm/v6/internal/secret"
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
+	"gopkg.in/yaml.v3"
 )
 
 func TestTransferOnePushesAndPullsDirectoryOverSFTP(t *testing.T) {
@@ -184,24 +185,36 @@ func TestDeployRunnerExecutesCopyThenExecOverSharedExecutor(t *testing.T) {
 		t.Fatal(err)
 	}
 	app := &App{Store: store, ConfigPath: configPath, secretStore: vault}
-	plan := deploy.Plan{
-		Profile: "integration", Config: "<test>", Hosts: []config.Host{*loaded},
+	plan := &deploy.Plan{
+		Name: "integration", Config: "<test>", Hosts: []config.Host{*loaded},
 		Batch:          batch.Options{Parallel: 1},
-		ConnectTimeout: deploy.Duration{Duration: 5 * time.Second},
-		Timeout:        deploy.Duration{Duration: 5 * time.Second},
-		Steps: []deploy.Step{
-			{Name: "copy", Push: &deploy.PushAction{Src: source, Dest: "deployed/package.txt"}},
-			{Name: "exec", Exec: "verify package"},
+		ConnectTimeout: config.Duration{Duration: 5 * time.Second},
+		Timeout:        config.Duration{Duration: 5 * time.Second},
+		Tasks: []deploy.Task{
+			{Name: "copy", Module: "copy", Args: integrationArgsNode(map[string]any{"src": source, "dest": "deployed/package.txt"})},
+			{Name: "exec", Module: "command", Args: integrationArgsNode(map[string]any{"cmd": "verify package"})},
 		},
 	}
 	result := (deploy.Runner{Executor: app.operationExecutor()}).Run(context.Background(), plan)
-	if result.Summary.Changed != 1 || result.Summary.Failed != 0 || len(result.Results[0].Steps) != 2 {
+	if result.Summary.Changed != 1 || result.Summary.Failed != 0 || len(result.Hosts[0].Tasks) != 2 {
 		t.Fatalf("deploy result = %+v", result)
 	}
 	assertCommandTestFile(t, filepath.Join(remoteRoot, "deployed", "package.txt"), "payload")
-	if got := result.Results[0].Steps[1].Output; got != "executed: verify package\n" {
+	if got := result.Hosts[0].Tasks[1].Output; got != "executed: verify package\n" {
 		t.Fatalf("exec output = %q", got)
 	}
+}
+
+func integrationArgsNode(values map[string]any) *yaml.Node {
+	node := &yaml.Node{}
+	data, err := yaml.Marshal(values)
+	if err != nil {
+		panic(err)
+	}
+	if err := yaml.Unmarshal(data, node); err != nil {
+		panic(err)
+	}
+	return node
 }
 
 func startCommandTestSFTPServer(t *testing.T, password, workDir string) (string, func()) {

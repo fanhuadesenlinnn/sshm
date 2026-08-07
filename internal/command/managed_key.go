@@ -105,7 +105,7 @@ func printKeyCenterHelp() {
 	fmt.Println("  delete <名称...> [--yes]       删除本地托管密钥")
 	fmt.Println("  delete-unused [--yes]          删除未绑定且非默认的密钥")
 	fmt.Println()
-	fmt.Println("  目标支持：别名...、--tag 标签、--all")
+	fmt.Println("  目标支持：别名...、--tag 标签、--all（可配合 --exclude/--exclude-tag 排除）")
 	fmt.Println("  输入 back/q 返回主命令页")
 	fmt.Println()
 }

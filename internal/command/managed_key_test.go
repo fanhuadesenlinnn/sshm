@@ -92,6 +92,33 @@ func TestInstallAndRevokeCommandsQuotePublicKey(t *testing.T) {
 	}
 }
 
+func TestSelectHostsSupportsExcludes(t *testing.T) {
+	dir := t.TempDir()
+	store := config.NewStoreWithPath(filepath.Join(dir, "sshm.yaml"))
+	initCommandTestStore(t, store)
+	for _, host := range []config.Host{
+		{ID: config.NewID(), Alias: "web01", User: "root", Host: "web01", Port: 22, Auth: "auto", Tags: []string{"prod", "web"}},
+		{ID: config.NewID(), Alias: "web02", User: "root", Host: "web02", Port: 22, Auth: "auto", Tags: []string{"prod", "legacy"}},
+		{ID: config.NewID(), Alias: "db01", User: "root", Host: "db01", Port: 22, Auth: "auto", Tags: []string{"db"}},
+	} {
+		if err := store.Add(host); err != nil {
+			t.Fatal(err)
+		}
+	}
+	app := &App{Store: store}
+	hosts, err := app.selectHosts([]string{"--tag", "prod", "--exclude", "web02"})
+	if err != nil || len(hosts) != 1 || hosts[0].Alias != "web01" {
+		t.Fatalf("hosts = %+v, err = %v", hosts, err)
+	}
+	hosts, err = app.selectHosts([]string{"--all", "--exclude-tag", "legacy"})
+	if err != nil || len(hosts) != 2 {
+		t.Fatalf("all+exclude-tag hosts = %+v, err = %v", hosts, err)
+	}
+	if _, err := app.selectHosts([]string{"--tag", "prod", "--exclude", "nope"}); err == nil {
+		t.Fatal("排除不存在的主机应报错")
+	}
+}
+
 func TestManagedKeyCreateAndImportRejectUnknownTrailingArgs(t *testing.T) {
 	app := &App{}
 	if err := app.cmdKeyCreate([]string{"personal", "--defualt"}); err == nil || !strings.Contains(err.Error(), "未知选项") {

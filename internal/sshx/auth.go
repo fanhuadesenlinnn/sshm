@@ -252,6 +252,20 @@ func ExecCommandStreamWithConnectTimeoutContext(ctx context.Context, h config.Ho
 		return "", err
 	}
 	defer client.Close()
+	return ExecCommandOnClient(ctx, client, command, stdout, stderr)
+}
+
+// Client is the subset of *ssh.Client needed by sshm's reusable sessions.
+type Client interface {
+	NewSession() (*ssh.Session, error)
+	Dial(network, address string) (net.Conn, error)
+	Close() error
+	Wait() error
+}
+
+// ExecCommandOnClient runs a command over an already-established SSH client.
+// It never closes the client, so the caller may reuse the connection.
+func ExecCommandOnClient(ctx context.Context, client Client, command string, stdout, stderr io.Writer) (string, error) {
 	session, err := client.NewSession()
 	if err != nil {
 		return "", operation.Wrap(operation.StageSession, fmt.Errorf("创建会话失败: %w", err))
@@ -275,7 +289,7 @@ func ExecCommandStreamWithConnectTimeoutContext(ctx context.Context, h config.Ho
 	}()
 	select {
 	case <-ctx.Done():
-		_ = client.Close()
+		_ = session.Close()
 		return output.String(), operation.Wrap(operation.StageTimeout, fmt.Errorf("远程命令超时或取消: %w", ctx.Err()))
 	case result := <-done:
 		return output.String(), operation.Wrap(operation.StageExecute, result.err)

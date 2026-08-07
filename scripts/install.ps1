@@ -12,7 +12,7 @@ if ([string]::IsNullOrWhiteSpace($Version)) {
     $Version = 'latest'
 }
 if ($Version -ne 'latest' -and $Version -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$') {
-    throw 'Version must be latest or a tag such as v6.0.10.'
+    throw 'Version must be latest or a tag such as v1.2.3.'
 }
 if ($env:OS -ne 'Windows_NT') {
     throw 'This installer only supports Windows.'

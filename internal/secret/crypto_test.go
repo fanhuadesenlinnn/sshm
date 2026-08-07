@@ -7,6 +7,11 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+func init() {
+	// Keep KDF cost low in tests so the suite and the race detector stay fast.
+	scryptCost = 32768
+}
+
 func TestEncryptedFileYAMLRoundTrip(t *testing.T) {
 	encrypted, err := Encrypt("password:server:secret", "master-password", nil)
 	if err != nil {
@@ -22,7 +27,7 @@ func TestEncryptedFileYAMLRoundTrip(t *testing.T) {
 	if err := yaml.Unmarshal(data, &decoded); err != nil {
 		t.Fatalf("yaml.Unmarshal() error = %v", err)
 	}
-	if decoded.Scrypt.N != defaultN || decoded.Scrypt.R != defaultR ||
+	if decoded.Scrypt.N != scryptCost || decoded.Scrypt.R != defaultR ||
 		decoded.Scrypt.P != defaultP || decoded.Scrypt.KeyLen != defaultKeyLen {
 		t.Fatalf("decoded scrypt config = %+v, want defaults", decoded.Scrypt)
 	}
@@ -54,7 +59,7 @@ ciphertext: unused
 	if err := yaml.Unmarshal(data, &encrypted); err != nil {
 		t.Fatalf("yaml.Unmarshal() error = %v", err)
 	}
-	if encrypted.Scrypt.N != defaultN || encrypted.Scrypt.R != defaultR ||
+	if encrypted.Scrypt.N != scryptCost || encrypted.Scrypt.R != defaultR ||
 		encrypted.Scrypt.P != defaultP || encrypted.Scrypt.KeyLen != defaultKeyLen {
 		t.Fatalf("decoded scrypt config = %+v, want defaults", encrypted.Scrypt)
 	}

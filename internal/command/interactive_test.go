@@ -163,6 +163,10 @@ func TestParseInteractiveExecTagAcceptsOptionsAroundTarget(t *testing.T) {
 			input: `xt --parallel 4 prod -- systemctl restart app`,
 			want:  []string{"xt", "--parallel", "4", "prod", "--", "systemctl restart app"},
 		},
+		{
+			input: `xt all --exclude web02 --exclude-tag legacy -- systemctl status app`,
+			want:  []string{"xt", "--exclude", "web02", "--exclude-tag", "legacy", "all", "--", "systemctl status app"},
+		},
 	}
 	for _, tt := range tests {
 		got, err := parseInteractiveInput(tt.input)
@@ -172,6 +176,24 @@ func TestParseInteractiveExecTagAcceptsOptionsAroundTarget(t *testing.T) {
 		if !reflect.DeepEqual(got, tt.want) {
 			t.Fatalf("parseInteractiveInput(%q) = %#v, want %#v", tt.input, got, tt.want)
 		}
+	}
+}
+
+func TestInteractiveBatchExcludesReachCommandHandlers(t *testing.T) {
+	parts, err := parseInteractiveInput(`xt prod --exclude web02 --exclude-tag legacy -- uptime`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	options, positionals, err := parseBatchCLIOptions(parts[1:])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(options.Exclude) != 1 || options.Exclude[0] != "web02" ||
+		len(options.ExcludeTags) != 1 || options.ExcludeTags[0] != "legacy" {
+		t.Fatalf("options = %+v", options)
+	}
+	if !reflect.DeepEqual(positionals, []string{"prod", "uptime"}) {
+		t.Fatalf("positionals = %#v", positionals)
 	}
 }
 

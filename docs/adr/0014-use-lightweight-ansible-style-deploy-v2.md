@@ -1,6 +1,6 @@
 # Use a lightweight Ansible-style Deploy v2 model
 
-Status: accepted for v6.0.0
+Status: accepted for v6.0.0; superseded by ADR 0015 in v6.1.0 (Deploy v2 removed)
 
 Deploy v2 uses a nested action DSL. Each step or handler contains exactly one of `exec`, `push`, `pull`, `mkdir`, `wait`, or `confirm`.
 

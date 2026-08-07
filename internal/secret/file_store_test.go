@@ -1,6 +1,10 @@
 package secret
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
@@ -251,6 +255,78 @@ func TestCopiedSingleConfigRetainsHostsAndCredentials(t *testing.T) {
 	password, err := NewFileStore(destinationPath, "master-password").GetPassword(host.ID)
 	if err != nil || password != "secret" {
 		t.Fatalf("copied password = %q, err = %v", password, err)
+	}
+}
+
+func TestWriteUpgradesWeakVaultParams(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sshm.yaml")
+	repo := config.NewRepositoryWithPath(path)
+	doc := config.DefaultDocument()
+
+	salt := make([]byte, 32)
+	if _, err := rand.Read(salt); err != nil {
+		t.Fatal(err)
+	}
+	old := CryptoConfig{N: 16384, R: 8, P: 1, KeyLen: 32}
+	key, err := deriveKey("master", salt, old)
+	if err != nil {
+		t.Fatal(err)
+	}
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := rand.Read(nonce); err != nil {
+		t.Fatal(err)
+	}
+	plain := `{"password:target":"secret"}`
+	doc.Vault = &config.EncryptedVault{
+		Version: 1, KDF: "scrypt", Cipher: "aes-256-gcm",
+		Scrypt:        config.ScryptConfig{N: 16384, R: 8, P: 1, KeyLen: 32},
+		SaltB64:       base64.StdEncoding.EncodeToString(salt),
+		NonceB64:      base64.StdEncoding.EncodeToString(nonce),
+		CiphertextB64: base64.StdEncoding.EncodeToString(gcm.Seal(nil, nonce, []byte(plain), nil)),
+	}
+	if err := repo.Replace(doc); err != nil {
+		t.Fatal(err)
+	}
+
+	// 读取本身不应改写配置（doctor 等只读命令保持零写副作用）。
+	store := NewFileStore(path, "master")
+	if _, err := store.GetPassword("target"); err != nil {
+		t.Fatalf("读取旧参数 vault 失败: %v", err)
+	}
+	loaded, err := repo.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Vault.Scrypt.N == scryptCost {
+		t.Fatal("只读操作不应触发重加密")
+	}
+
+	// 下一次写入自然以当前参数重加密（保留旧 salt 与全部条目）。
+	store = NewFileStore(path, "master")
+	if err := store.SetPassword("other", "extra"); err != nil {
+		t.Fatalf("写入失败: %v", err)
+	}
+	loaded, err = repo.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Vault.Scrypt.N != scryptCost {
+		t.Fatalf("写入后 N = %d, want %d", loaded.Vault.Scrypt.N, scryptCost)
+	}
+	reopened := NewFileStore(path, "master")
+	if target, err := reopened.GetPassword("target"); err != nil || target != "secret" {
+		t.Fatalf("升级后旧条目读取失败: %q, %v", target, err)
+	}
+	if other, err := reopened.GetPassword("other"); err != nil || other != "extra" {
+		t.Fatalf("升级后新条目读取失败: %q, %v", other, err)
 	}
 }
 

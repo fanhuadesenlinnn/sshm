@@ -54,7 +54,7 @@ var commandCatalog = []commandCatalogEntry{
 	{Name: "push-tag", Group: commandGroupOps, Short: "按标签批量推送文件或目录", HelpUsage: "push-tag <标签|all> <本地> <远程> [选项]", HelpSummary: "按标签推送文件或目录"},
 	{Name: "pull-tag", Group: commandGroupOps, Short: "按标签批量拉取文件或目录", HelpUsage: "pull-tag <标签|all> <远程> <本地> [选项]", HelpSummary: "按标签拉取文件或目录"},
 	{Name: "forward", Group: commandGroupOps, Short: "建立本地端口转发", HelpUsage: "forward <主机> <本地> <远程>", HelpSummary: "建立本地端口转发"},
-	{Name: "deploy", Group: commandGroupOps, Short: "运行 Deploy v2 轻量编排", HelpUsage: "deploy", HelpSummary: "批量部署工作流"},
+	{Name: "deploy", Group: commandGroupOps, Short: "运行 Deploy v3 轻量编排", HelpUsage: "deploy", HelpSummary: "批量部署工作流"},
 	{Name: "key", Aliases: []string{"k"}, Group: commandGroupSecrets, Short: "管理托管密钥", HelpUsage: "key", HelpSummary: "进入托管密钥中心"},
 	{Name: "passwd", Group: commandGroupSecrets, Short: "设置 SSH 密码", HelpUsage: "passwd <目标...|--tag 标签|--all> [--yes]", HelpSummary: "设置 SSH 密码", LegacyOptions: []string{"--passwd"}},
 	{Name: "forget-pass", Group: commandGroupSecrets, Short: "删除 SSH 密码", HelpUsage: "forget-pass <目标...|--tag 标签|--all> [--yes]", HelpSummary: "删除 SSH 密码", LegacyOptions: []string{"--forget-pass"}},

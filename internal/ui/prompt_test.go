@@ -4,258 +4,250 @@ import (
 	"testing"
 )
 
-func TestVisualLength(t *testing.T) {
-	tests := []struct {
-		input string
-		want  int
-	}{
-		{"hello", 5},
-		{"", 0},
-		{"你好", 4},
-		{"a你好b", 6},
-		{"日本語", 6},
-		{"test123", 7},
-		{"a b", 3},
+func newEditor(line string) *lineEditor {
+	runes := []rune(line)
+	return &lineEditor{line: runes, cursor: len(runes), histPos: -1}
+}
+
+func TestLineEditorInsertAndDelete(t *testing.T) {
+	ed := newEditor("hel")
+	ed.insert('l')
+	ed.insert('o')
+	if got := ed.string(); got != "hello" {
+		t.Fatalf("insert = %q", got)
 	}
 
-	for _, tt := range tests {
-		got := visualLength(tt.input)
-		if got != tt.want {
-			t.Errorf("visualLength(%q) = %d, want %d", tt.input, got, tt.want)
-		}
+	ed = newEditor("hello")
+	ed.cursor = 2
+	ed.insert('X')
+	if got := ed.string(); got != "heXllo" {
+		t.Fatalf("middle insert = %q", got)
+	}
+
+	ed = newEditor("hello")
+	ed.cursor = 3
+	ed.backspace()
+	if got := ed.string(); got != "helo" || ed.cursor != 2 {
+		t.Fatalf("backspace = %q cursor=%d", got, ed.cursor)
+	}
+	ed.cursor = 0
+	ed.backspace() // 边界不应越界
+	if got := ed.string(); got != "helo" || ed.cursor != 0 {
+		t.Fatalf("backspace 边界 = %q cursor=%d", got, ed.cursor)
+	}
+
+	ed = newEditor("hello")
+	ed.cursor = 2
+	ed.deleteForward()
+	if got := ed.string(); got != "helo" {
+		t.Fatalf("deleteForward = %q", got)
+	}
+	ed.cursor = len(ed.line)
+	ed.deleteForward() // 边界不应越界
+	if got := ed.string(); got != "helo" {
+		t.Fatalf("deleteForward 边界 = %q", got)
 	}
 }
 
-func TestDisplayWidth(t *testing.T) {
-	tests := []struct {
-		input string
-		want  int
-	}{
-		{"hello", 5},
-		{"你好世界", 8},
-		{"abc你好", 7},
+func TestLineEditorUnicode(t *testing.T) {
+	ed := newEditor("你好")
+	ed.insert('世')
+	if got := ed.string(); got != "你好世" || ed.cursor != 3 {
+		t.Fatalf("unicode insert = %q cursor=%d", got, ed.cursor)
 	}
-
-	for _, tt := range tests {
-		got := displayWidth(tt.input)
-		if got != tt.want {
-			t.Errorf("displayWidth(%q) = %d, want %d", tt.input, got, tt.want)
-		}
+	ed.cursor = 1
+	ed.backspace()
+	if got := ed.string(); got != "好世" {
+		t.Fatalf("unicode backspace = %q", got)
 	}
 }
 
-func TestDisplayWidthWithANSI(t *testing.T) {
-	colored := CyanText("hello")
-	got := displayWidth(colored)
-	if got != 5 {
-		t.Errorf("displayWidth(cyan 'hello') = %d, want 5", got)
+func TestLineEditorCursorMovement(t *testing.T) {
+	ed := newEditor("abc")
+	ed.cursorLeft()
+	ed.cursorLeft()
+	if ed.cursor != 1 {
+		t.Fatalf("cursor = %d", ed.cursor)
+	}
+	ed.cursorLeft()
+	ed.cursorLeft() // 左边界
+	if ed.cursor != 0 {
+		t.Fatalf("cursor 左边界 = %d", ed.cursor)
+	}
+	ed.cursorRight()
+	ed.cursorRight()
+	ed.cursorRight()
+	ed.cursorRight() // 右边界
+	if ed.cursor != 3 {
+		t.Fatalf("cursor 右边界 = %d", ed.cursor)
 	}
 }
 
-func TestPadToWidth(t *testing.T) {
-	tests := []struct {
-		input string
-		width int
-		want  string
-	}{
-		{"hi", 5, "hi   "},
-		{"hello", 5, "hello"},
-		{"hello world", 5, "hell…"},
-		{"你好", 6, "你好  "},
+func TestLineEditorHistory(t *testing.T) {
+	ed := &lineEditor{history: []string{"first", "second"}, histPos: -1, line: []rune("dirty"), cursor: 5}
+	ed.historyUp()
+	if got := ed.string(); got != "second" || ed.histDirty != "dirty" {
+		t.Fatalf("historyUp = %q dirty=%q", got, ed.histDirty)
 	}
-
-	for _, tt := range tests {
-		got := padToWidth(tt.input, tt.width)
-		if got != tt.want {
-			t.Errorf("padToWidth(%q, %d) = %q, want %q", tt.input, tt.width, got, tt.want)
-		}
+	ed.historyUp()
+	if got := ed.string(); got != "first" {
+		t.Fatalf("historyUp2 = %q", got)
 	}
-}
-
-func TestTruncateToWidth(t *testing.T) {
-	tests := []struct {
-		input    string
-		maxWidth int
-		want     string
-	}{
-		{"hello", 3, "he…"},
-		{"hello", 10, "hello"},
-		{"你好世界", 3, "你…"},
-		{"你好世界", 5, "你好…"},
-		{"a", 1, "a"},
-		{"ab", 1, ""},
+	ed.historyDown()
+	if got := ed.string(); got != "second" {
+		t.Fatalf("historyDown = %q", got)
 	}
-
-	for _, tt := range tests {
-		got := truncateToWidth(tt.input, tt.maxWidth)
-		if got != tt.want {
-			t.Errorf("truncateToWidth(%q, %d) = %q, want %q", tt.input, tt.maxWidth, got, tt.want)
-		}
+	ed.historyDown()
+	if got := ed.string(); got != "dirty" || ed.histPos != -1 {
+		t.Fatalf("historyDown 恢复 = %q pos=%d", got, ed.histPos)
+	}
+	ed.historyDown() // 空历史/未进入浏览不应变化
+	if got := ed.string(); got != "dirty" {
+		t.Fatalf("historyDown 空状态 = %q", got)
 	}
 }
 
-func TestRuneDisplayWidth(t *testing.T) {
-	tests := []struct {
-		r    rune
+func TestParseEscapeSequences(t *testing.T) {
+	cases := []struct {
+		seq  string
 		want int
 	}{
-		{'a', 1},
-		{'1', 1},
-		{' ', 1},
-		{'中', 2},
-		{'あ', 2},
-		{'한', 2},
+		{"\x1b[A", escCmdUp},
+		{"\x1b[B", escCmdDown},
+		{"\x1b[C", escCmdRight},
+		{"\x1b[D", escCmdLeft},
+		{"\x1b[H", escCmdHome},
+		{"\x1b[F", escCmdEnd},
+		{"\x1b[1~", escCmdHome},
+		{"\x1b[7~", escCmdHome},
+		{"\x1b[4~", escCmdEnd},
+		{"\x1b[8~", escCmdEnd},
+		{"\x1b[3~", escCmdDelete},
+		{"\x1b[200~", escCmdPasteStart},
+		{"\x1b[201~", escCmdPasteEnd},
+		{"\x1bOA", escCmdUp},
+		{"\x1bOD", escCmdLeft},
+		{"\x1b", escCmdIncomplete},
+		{"\x1b[", escCmdIncomplete},
+		{"\x1b[1", escCmdIncomplete},
+		{"\x1b[Z", escCmdUnknown},
+		{"abc", escCmdUnknown},
 	}
-
-	for _, tt := range tests {
-		got := runeDisplayWidth(tt.r)
-		if got != tt.want {
-			t.Errorf("runeDisplayWidth(%q) = %d, want %d", tt.r, got, tt.want)
+	for _, tc := range cases {
+		if got := (&lineEditor{}).parseEscape([]byte(tc.seq)); got != tc.want {
+			t.Errorf("parseEscape(%q) = %d, want %d", tc.seq, got, tc.want)
 		}
 	}
 }
 
-func TestFormatFunctions(t *testing.T) {
-	if Success("test") == "" {
-		t.Fatal("Success() returned empty")
-	}
-	if Warn("test") == "" {
-		t.Fatal("Warn() returned empty")
-	}
-	if ErrorMsg("test") == "" {
-		t.Fatal("ErrorMsg() returned empty")
-	}
-	if Header("test") == "" {
-		t.Fatal("Header() returned empty")
-	}
-}
-
-func TestNoColor(t *testing.T) {
-	origNoColor := noColor
-	noColor = true
-	defer func() { noColor = origNoColor }()
-
-	if Success("test") != ">> test" {
-		t.Errorf("Success() in no-color mode = %q, want '>> test'", Success("test"))
-	}
-	if Warn("msg") != "!! msg" {
-		t.Errorf("Warn() in no-color mode = %q, want '!! msg'", Warn("msg"))
-	}
-}
-
-func TestConsumeEscapeSequenceWaitsForFinalByte(t *testing.T) {
-	ed := &lineEditor{line: []rune("abc"), cursor: 3, histPos: -1}
-	if done := ed.consumeEscapeSequence([]byte{escapeChar, '['}); done {
-		t.Fatal("incomplete escape sequence should keep collecting bytes")
-	}
-	if done := ed.consumeEscapeSequence([]byte{escapeChar, '[', 'D'}); !done {
-		t.Fatal("complete left-arrow sequence should be consumed")
+func TestConsumeEscapeSequenceAppliesCommand(t *testing.T) {
+	ed := newEditor("abc")
+	ed.cursor = 1
+	if !ed.consumeEscapeSequence([]byte("\x1b[C")) {
+		t.Fatal("完整序列应结束收集")
 	}
 	if ed.cursor != 2 {
-		t.Fatalf("cursor = %d, want 2", ed.cursor)
+		t.Fatalf("右移后 cursor = %d", ed.cursor)
+	}
+	ed.history = []string{"old"}
+	ed.line = []rune("new")
+	ed.cursor = 3
+	if !ed.consumeEscapeSequence([]byte("\x1b[A")) {
+		t.Fatal("完整序列应结束收集")
+	}
+	if got := ed.string(); got != "old" {
+		t.Fatalf("上箭头应进入历史: %q", got)
+	}
+	if ed.consumeEscapeSequence([]byte("\x1b")) {
+		t.Fatal("不完整序列应继续收集")
 	}
 }
 
-func TestBackspaceKeyEncodingsDeletePreviousRune(t *testing.T) {
-	tests := []struct {
-		name string
-		key  byte
-	}{
-		{name: "DEL", key: backspaceKey},
-		{name: "BS Ctrl-H", key: ctrlH},
+func TestNormalizePastedText(t *testing.T) {
+	got := string(normalizePastedText([]byte("line1\nline2\ttab\r\nend\x00\x01")))
+	if got != "line1 line2 tab end" {
+		t.Fatalf("normalizePastedText = %q", got)
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if !isBackspaceKey(tt.key) {
-				t.Fatalf("key 0x%02x was not recognized as Backspace", tt.key)
-			}
-			ed := &lineEditor{line: []rune("a中b"), cursor: 2, histPos: -1}
-			ed.backspace()
-			if got := ed.string(); got != "ab" {
-				t.Fatalf("line after Backspace = %q, want ab", got)
-			}
-			if ed.cursor != 1 {
-				t.Fatalf("cursor after Backspace = %d, want 1", ed.cursor)
-			}
-		})
-	}
-
-	if isBackspaceKey('x') {
-		t.Fatal("ordinary input was recognized as Backspace")
+	if trailing := string(normalizePastedText([]byte("a\n"))); trailing != "a" {
+		t.Fatalf("尾部换行不应补空格: %q", trailing)
 	}
 }
 
-func TestArrowCommandsNavigateHistory(t *testing.T) {
-	ed := &lineEditor{
-		history: []string{"list", "show prod"},
-		histPos: -1,
-		line:    []rune("draft"),
-		cursor:  5,
+func TestConsumePastedByte(t *testing.T) {
+	ed := newEditor("")
+	ed.pasting = true
+	payload := []byte("pasted text")
+	for _, b := range payload {
+		if ed.consumePastedByte(b) {
+			t.Fatal("结束标记前不应完成粘贴")
+		}
 	}
-	ed.consumeEscapeSequence([]byte{escapeChar, '[', 'A'})
-	if got := ed.string(); got != "show prod" {
-		t.Fatalf("up arrow line = %q, want show prod", got)
+	for _, b := range bracketedPasteEnd {
+		ed.consumePastedByte(b)
 	}
-	ed.consumeEscapeSequence([]byte{escapeChar, '[', 'A'})
-	if got := ed.string(); got != "list" {
-		t.Fatalf("second up arrow line = %q, want list", got)
-	}
-	ed.consumeEscapeSequence([]byte{escapeChar, '[', 'B'})
-	if got := ed.string(); got != "show prod" {
-		t.Fatalf("down arrow line = %q, want show prod", got)
+	if ed.pasting || ed.string() != "pasted text" {
+		t.Fatalf("粘贴结果 = %q pasting=%t", ed.string(), ed.pasting)
 	}
 }
 
-func TestLineViewportKeepsLongInputWithinOneRow(t *testing.T) {
-	line := []rune("0123456789abcdefghijklmnopqrstuvwxyz")
-	visible, cursorColumn := lineViewport(line, len(line), 12)
-	if got := visualLength(visible); got > 12 {
-		t.Fatalf("visible width = %d, want <= 12: %q", got, visible)
+func TestLineViewportKeepsCursorVisible(t *testing.T) {
+	line := []rune("abcdef")
+	visible, cursorColumn := lineViewport(line, 6, 3)
+	if visible != "def" || cursorColumn != 3 {
+		t.Fatalf("viewport = %q column=%d", visible, cursorColumn)
 	}
-	if visible != "opqrstuvwxyz" {
-		t.Fatalf("visible = %q, want tail of long input", visible)
-	}
-	if cursorColumn != 12 {
-		t.Fatalf("cursor column = %d, want 12", cursorColumn)
+	visible, cursorColumn = lineViewport(line, 2, 10)
+	if visible != "abcdef" || cursorColumn != 2 {
+		t.Fatalf("viewport 全宽 = %q column=%d", visible, cursorColumn)
 	}
 }
 
-func TestLineViewportHandlesWideRunesAndMiddleCursor(t *testing.T) {
-	line := []rune("ab你好cd")
-	visible, cursorColumn := lineViewport(line, 4, 5)
-	if visualLength(visible) > 5 {
-		t.Fatalf("visible input wrapped: %q", visible)
+func TestAddToHistory(t *testing.T) {
+	globalHistory = nil
+	addToHistory("  first  ")
+	addToHistory("second")
+	addToHistory("second") // 去重
+	addToHistory("")
+	if len(globalHistory) != 2 || globalHistory[0] != "first" || globalHistory[1] != "second" {
+		t.Fatalf("history = %v", globalHistory)
 	}
-	if cursorColumn < 0 || cursorColumn > visualLength(visible) {
-		t.Fatalf("cursor column %d is outside %q", cursorColumn, visible)
-	}
-}
-
-func TestBracketedPasteBuffersAndNormalizesMultilineCommand(t *testing.T) {
-	ed := &lineEditor{line: []rune("xt prod "), cursor: len([]rune("xt prod ")), histPos: -1}
-	if done := ed.consumeEscapeSequence([]byte{escapeChar, '[', '2', '0', '0', '~'}); !done {
-		t.Fatal("bracketed paste start should be consumed")
-	}
-	if !ed.pasting {
-		t.Fatal("editor did not enter bracketed paste mode")
-	}
-	data := append([]byte("echo one\r\necho two\n"), bracketedPasteEnd...)
-	completed := false
-	for _, b := range data {
-		completed = ed.consumePastedByte(b) || completed
-	}
-	if !completed || ed.pasting {
-		t.Fatal("bracketed paste did not complete")
-	}
-	if got, want := ed.string(), "xt prod echo one echo two "; got != want {
-		t.Fatalf("pasted line = %q, want %q", got, want)
+	globalHistory = make([]string, maxHistory)
+	addToHistory("overflow")
+	if len(globalHistory) != maxHistory || globalHistory[maxHistory-1] != "overflow" {
+		t.Fatalf("history 上限 = %d", len(globalHistory))
 	}
 }
 
-func TestNormalizePastedTextPreservesLongShellCommand(t *testing.T) {
-	command := `for h in /sys/class/fc_host/host*; do printf "%s WWPN=%s\n" "$(basename "$h")" "$(cat "$h/port_name")"; done`
-	if got := string(normalizePastedText([]byte(command))); got != command {
-		t.Fatalf("normalized command = %q, want %q", got, command)
+func TestCommitLineHistoryBehavior(t *testing.T) {
+	globalHistory = nil
+	ed := newEditor("hello")
+	if got := ed.commitLine(); got != "hello" {
+		t.Fatalf("commitLine = %q", got)
+	}
+	if len(globalHistory) != 1 || globalHistory[0] != "hello" {
+		t.Fatalf("普通输入应进历史: %v", globalHistory)
+	}
+	ed = newEditor("yes")
+	ed.noHistory = true
+	if got := ed.commitLine(); got != "yes" {
+		t.Fatalf("noHistory commitLine = %q", got)
+	}
+	if len(globalHistory) != 1 {
+		t.Fatalf("noHistory 不应污染历史: %v", globalHistory)
+	}
+}
+
+func TestIsBackspaceKey(t *testing.T) {
+	if !isBackspaceKey(backspaceKey) || !isBackspaceKey(ctrlH) || isBackspaceKey('x') {
+		t.Fatal("isBackspaceKey 判定错误")
+	}
+}
+
+func TestRunesDisplayWidth(t *testing.T) {
+	if got := runesDisplayWidth([]rune("a中")); got != 3 {
+		t.Fatalf("runesDisplayWidth = %d", got)
+	}
+	if got := displayWidth("\x1b[31mred\x1b[0m"); got != 3 {
+		t.Fatalf("displayWidth(ANSI) = %d", got)
 	}
 }

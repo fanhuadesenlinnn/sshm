@@ -12,7 +12,7 @@ usage() {
 Install sshm from GitHub Releases.
 
 Usage:
-  install.sh [--version v6.0.10] [--install-dir DIR]
+  install.sh [--version vX.Y.Z] [--install-dir DIR]
 
 Environment:
   SSHM_VERSION       Version to install; defaults to latest.
@@ -49,7 +49,7 @@ while [ "$#" -gt 0 ]; do
 done
 
 if [ "$version" != "latest" ] && ! printf '%s\n' "$version" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$'; then
-	fail "version must be latest or a tag such as v6.0.10"
+	fail "version must be latest or a tag such as v1.2.3"
 fi
 
 if [ -z "$install_dir" ]; then

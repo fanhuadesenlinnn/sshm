@@ -143,6 +143,12 @@ func (app *App) printWorkbench() {
 	fmt.Println("  f/find-con    查找并连接主机")
 	fmt.Println("  r/recent      收藏与最近使用")
 	fmt.Println("  a/add         添加主机")
+	fmt.Println("  x/exec        在主机执行命令；xt/exec-tag 批量执行")
+	fmt.Println("  push/pull     安全文件传输；push-tag/pull-tag 批量传输")
+	fmt.Println("  forward       本地端口转发")
+	fmt.Println("  sc            导入/导出 SSH 配置")
+	fmt.Println("  passwd        批量设置/保存密码")
+	fmt.Println("  logs          查看操作日志")
 	fmt.Println("  host/key/tag  主机、密钥与标签管理")
 	fmt.Println("  deploy        批量部署工作流")
 	fmt.Println("  h/help        完整帮助")
@@ -267,6 +273,9 @@ func connectionFailure(h config.Host, err error) error {
 }
 
 func (app *App) cmdInteractiveExec(args []string) error {
+	if !hasArg(args, "--yes") {
+		args = append([]string{"--yes"}, args...)
+	}
 	_, _, _, rest := parseOperationFlags(args)
 	if len(rest) < 2 {
 		alias := ""
@@ -286,6 +295,9 @@ func (app *App) cmdInteractiveExec(args []string) error {
 }
 
 func (app *App) cmdInteractiveExecTag(args []string) error {
+	if !hasArg(args, "--yes") {
+		args = append([]string{"--yes"}, args...)
+	}
 	_, positionals, err := parseBatchCLIOptions(args)
 	if err != nil {
 		return err
@@ -305,6 +317,15 @@ func (app *App) cmdInteractiveExecTag(args []string) error {
 		return app.cmdExecTag(append(args, "--", cmd))
 	}
 	return app.cmdExecTag(args)
+}
+
+func hasArg(args []string, flag string) bool {
+	for _, arg := range args {
+		if arg == flag {
+			return true
+		}
+	}
+	return false
 }
 
 func (app *App) cmdInteractiveSSHConfig(args []string) error {

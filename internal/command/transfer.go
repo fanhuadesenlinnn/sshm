@@ -13,12 +13,15 @@ import (
 
 	"github.com/fanhuadesenlinnn/sshm/v6/internal/batch"
 	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/deploy"
 	"github.com/fanhuadesenlinnn/sshm/v6/internal/operation"
 	"github.com/fanhuadesenlinnn/sshm/v6/internal/ops"
 	"github.com/fanhuadesenlinnn/sshm/v6/internal/secret"
+	"github.com/fanhuadesenlinnn/sshm/v6/internal/shellquote"
 	"github.com/fanhuadesenlinnn/sshm/v6/internal/sshx"
 	"github.com/fanhuadesenlinnn/sshm/v6/internal/ui"
 	"github.com/pkg/sftp"
+	"golang.org/x/crypto/ssh"
 )
 
 type transferOptions struct {
@@ -146,6 +149,16 @@ func (app *App) cmdTransfer(options transferOptions) error {
 	if err != nil {
 		return err
 	}
+	if len(options.batch.Exclude) > 0 || len(options.batch.ExcludeTags) > 0 {
+		hf, loadErr := app.Store.Load()
+		if loadErr != nil {
+			return loadErr
+		}
+		hosts, err = deploy.ApplyExcludes(hosts, hf.Hosts, options.batch.Exclude, options.batch.ExcludeTags)
+		if err != nil {
+			return err
+		}
+	}
 	options.multi = options.multi || len(hosts) > 1
 	if options.direction == "push" {
 		if _, err := localManifest(options.localPath); err != nil {
@@ -192,6 +205,7 @@ func (app *App) cmdTransfer(options transferOptions) error {
 		return &ExitError{Code: 3, Err: err}
 	}
 	executor := app.operationExecutor()
+	defer executor.CloseSessions()
 	ctx, cancel := signalContext()
 	defer cancel()
 	runner := batch.Runner{Options: batchOptions}
@@ -256,9 +270,9 @@ func (app *App) cmdTransfer(options transferOptions) error {
 func transferRetryCommand(options transferOptions, alias string) string {
 	command := fmt.Sprintf("sshm %s %s %s %s --yes",
 		options.direction,
-		shellSingleQuote(alias),
-		shellSingleQuote(transferSource(options)),
-		shellSingleQuote(transferDestination(options)),
+		shellquote.Single(alias),
+		shellquote.Single(transferSource(options)),
+		shellquote.Single(transferDestination(options)),
 	)
 	if options.overwrite {
 		command += " --overwrite"
@@ -270,7 +284,7 @@ func transferRetryCommand(options transferOptions, alias string) string {
 		command += " --no-validate-checksum"
 	}
 	if options.method != "" && options.method != "auto" {
-		command += " --method " + shellSingleQuote(options.method)
+		command += " --method " + shellquote.Single(options.method)
 	}
 	return command
 }
@@ -314,7 +328,6 @@ func transferOne(ctx context.Context, host config.Host, store *secret.FileStore,
 	if err != nil {
 		return "sftp", "", false, err
 	}
-	defer client.Close()
 	done := make(chan struct{})
 	defer close(done)
 	go func() {
@@ -326,14 +339,35 @@ func transferOne(ctx context.Context, host config.Host, store *secret.FileStore,
 	}()
 	sftpClient, err := sftp.NewClient(client)
 	if err != nil {
+		_ = client.Close()
 		return "sftp", "", false, fmt.Errorf("启动 SFTP 失败: %w", err)
 	}
-	defer sftpClient.Close()
+	return transferWithClients(ctx, host, store, options, client, sftpClient, func() {
+		_ = sftpClient.Close()
+		_ = client.Close()
+	})
+}
 
+// transferWithClients performs the transfer over pre-established clients.
+// closeFn may be nil when the clients are owned by a reusable session and
+// must stay open for later operations.
+func transferWithClients(
+	ctx context.Context,
+	host config.Host,
+	store *secret.FileStore,
+	options transferOptions,
+	client *ssh.Client,
+	sftpClient *sftp.Client,
+	closeFn func(),
+) (string, string, bool, error) {
+	if closeFn != nil {
+		defer closeFn()
+	}
 	if options.method == "" {
 		options.method = "auto"
 	}
 	destination := options.localPath
+	var err error
 	if options.direction == "pull" && !options.destinationExact {
 		destination, err = singlePullDestination(options.remotePath, options.localPath)
 		if err != nil {

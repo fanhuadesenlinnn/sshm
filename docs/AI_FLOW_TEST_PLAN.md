@@ -1169,7 +1169,7 @@ go run . deploy init --stdout >/tmp/sshm-deploy-sample.yaml
 
 Expected:
 
-- Global init creates a valid Deploy file with no active profiles.
+- Global init creates a valid Deploy file with no active plays.
 - `--stdout` prints sample YAML without writing.
 
 ### F111: Deploy init refuses overwrite by default
@@ -1195,7 +1195,7 @@ Expected:
 - First command fails because deploy file exists.
 - Second command overwrites successfully.
 
-### F112: Validate and list deploy profiles
+### F112: Validate and list deploy plays
 
 Type: local
 
@@ -1232,7 +1232,17 @@ Setup:
 export SSHM_HOME="$(mktemp -d)"
 go run . init
 go run . add web01 root@127.0.0.1:2222 --tags prod
-go run . deploy init --overwrite
+cat > "$SSHM_HOME/deploy.yaml" <<'EOF'
+version: 3
+plays:
+  - name: update-app
+    hosts:
+      tags: [prod]
+    tasks:
+      - name: probe
+        command:
+          cmd: hostname
+EOF
 ```
 
 Steps:
@@ -1255,7 +1265,8 @@ Type: remote
 
 Setup:
 
-Use reachable hosts matching the sample deploy profile targets.
+Write an active `update-app` playbook as in F113, with at least one reachable
+host tagged `prod`.
 
 Steps:
 
@@ -1274,7 +1285,26 @@ Type: remote
 
 Setup:
 
-Use a deploy profile with a text `push` action.
+Use a reachable host tagged `prod` and a text `template` action:
+
+```bash
+mkdir -p "$SSHM_HOME/templates"
+printf 'listen {{ port }};\n' > "$SSHM_HOME/templates/app.conf.tmpl"
+cat > "$SSHM_HOME/deploy.yaml" <<'EOF'
+version: 3
+plays:
+  - name: update-app
+    hosts:
+      tags: [prod]
+    vars:
+      port: 8080
+    tasks:
+      - name: render config
+        template:
+          src: ./templates/app.conf.tmpl
+          dest: /tmp/sshm-ai-app.conf
+EOF
+```
 
 Steps:
 
@@ -1293,7 +1323,7 @@ Type: remote
 
 Setup:
 
-Use at least two reachable hosts selected by the profile.
+Use at least two reachable hosts tagged `prod` with the F113 playbook.
 
 Steps:
 
@@ -1316,7 +1346,17 @@ Setup:
 export SSHM_HOME="$(mktemp -d)"
 go run . init
 go run . add web01 root@127.0.0.1:2222 --tags prod
-go run . deploy init -f /tmp/sshm-ai-deploy.yaml --overwrite
+cat > /tmp/sshm-ai-deploy.yaml <<'EOF'
+version: 3
+plays:
+  - name: update-app
+    hosts:
+      tags: [prod]
+    tasks:
+      - name: probe
+        command:
+          cmd: hostname
+EOF
 ```
 
 Steps:
@@ -1332,24 +1372,30 @@ Expected:
 - Explicit file is loaded.
 - Current directory `sshm.deploy.yaml` is not loaded unless passed with `-f`.
 
-### F118: Deploy rejects invalid action DSL
+### F118: Deploy rejects removed v2 files and unknown modules
 
 Type: local
 
 Setup:
 
-Create `/tmp/sshm-invalid-deploy.yaml` with a profile step that contains two
-actions, such as both `exec` and `wait`.
+Create a removed v2 file and a playbook with an unknown module:
+
+```bash
+printf 'version: 2\nprofiles: []\n' > /tmp/sshm-v2-deploy.yaml
+printf 'version: 3\nplays:\n  - name: bad\n    hosts:\n      tags: [prod]\n    tasks:\n      - name: x\n        no_such_module: {}\n' > /tmp/sshm-unknown-module.yaml
+```
 
 Steps:
 
 ```bash
-go run . deploy validate -f /tmp/sshm-invalid-deploy.yaml
+go run . deploy validate -f /tmp/sshm-v2-deploy.yaml
+go run . deploy validate -f /tmp/sshm-unknown-module.yaml
 ```
 
 Expected:
 
-- Validation fails with "must contain exactly one action" equivalent message.
+- The v2 file is rejected with a "Deploy v2" removal message.
+- The unknown module is rejected during validation.
 
 ## SSH Config Import And Export Flows
 
