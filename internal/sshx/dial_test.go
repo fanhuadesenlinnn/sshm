@@ -78,11 +78,18 @@ func TestDialContextUsesPlaintextPasswordWithoutVault(t *testing.T) {
 	host.Alias, host.User, host.Host, host.Port = "target", "test", hostName, port
 	host.Password = "secret"
 	host.HostKeyPolicy = config.HostKeyPolicyAcceptNew
+	if err := store.Add(host); err != nil {
+		t.Fatal(err)
+	}
+	loaded, _, _, err := store.FindHost("target")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Plaintext password must work with an initialized config but no vault
 	// entries at all.
 	vault := secret.NewFileStore(path, "master")
-	client, _, err := DialContext(context.Background(), host, vault)
+	client, _, err := DialContext(context.Background(), *loaded, vault)
 	if err != nil {
 		t.Fatalf("明文密码连接失败: %v", err)
 	}
