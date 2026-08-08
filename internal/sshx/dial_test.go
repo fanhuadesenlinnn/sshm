@@ -71,13 +71,18 @@ func TestDialContextUsesPlaintextPasswordWithoutVault(t *testing.T) {
 	addr, closeServer := startTestSSHServer(t, "secret", false)
 	defer closeServer()
 	hostName, port := splitTestAddress(t, addr)
+	path := filepath.Join(t.TempDir(), "sshm.yaml")
+	store := config.NewStoreWithPath(path)
+	initSSHXTestStore(t, store)
 	host := config.DefaultHost()
 	host.Alias, host.User, host.Host, host.Port = "target", "test", hostName, port
 	host.Password = "secret"
 	host.HostKeyPolicy = config.HostKeyPolicyAcceptNew
 
-	// Plaintext password must work without any vault store.
-	client, _, err := DialContext(context.Background(), host, nil)
+	// Plaintext password must work with an initialized config but no vault
+	// entries at all.
+	vault := secret.NewFileStore(path, "master")
+	client, _, err := DialContext(context.Background(), host, vault)
 	if err != nil {
 		t.Fatalf("明文密码连接失败: %v", err)
 	}
