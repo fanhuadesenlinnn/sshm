@@ -1,8 +1,8 @@
-# sshmd v6.2.0
+# sshmd v6.2.1
 
 sshmd 是一个本地优先、面向个人使用的 SSH 主机管理与轻量运维工具。它使用 Go 原生 SSH 能力管理主机、标签、凭据、批量命令、安全文件传输和 Deploy v3 编排。
 
-> 版本说明：产品发布版本是 `v6.2.0`，Go module 是 `github.com/fanhuadesenlinnn/sshmd/v6`，主配置 schema 为 `version: 2`，Deploy 配置 schema 为 `version: 3`。
+> 版本说明：产品发布版本是 `v6.2.1`，Go module 是 `github.com/fanhuadesenlinnn/sshmd/v6`，主配置 schema 为 `version: 2`，Deploy 配置 schema 为 `version: 3`。
 
 ## 安装
 
@@ -26,7 +26,7 @@ macOS/Linux 默认安装到 `/usr/local/bin`，权限不足时会请求 `sudo`�
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/fanhuadesenlinnn/sshmd/main/scripts/install.sh | \
-  sh -s -- --version v6.2.0 --install-dir "$HOME/.local/bin"
+  sh -s -- --version v6.2.1 --install-dir "$HOME/.local/bin"
 ```
 
 Windows 默认安装到 `%LOCALAPPDATA%\Programs\sshmd` 并加入用户 PATH。
@@ -53,14 +53,14 @@ $env:GOPROXY = "https://goproxy.cn,direct"; go install github.com/fanhuadesenlin
 
 也可以前往 [GitHub Releases](https://github.com/fanhuadesenlinnn/sshmd/releases/latest) 手工下载对应平台的压缩包和校验文件。
 
-## v6 破坏性变更
+## 配置约定
 
 - 默认数据目录只使用 `~/.sshmd`，唯一可用的路径覆盖变量是 `SSHMD_HOME`。
-- 不支持 `SSHMD_CONFIG_FILE`，也不读取、迁移或删除旧 `~/.config/sshmd/sshmd.yaml`。
-- 主配置必须显式使用 `version: 2`，不兼容旧 schema。
-- Deploy v2（`version: 2` 的 profile/steps/handlers）在 v6.1.0 移除，`deploy migrate` 一并移除；旧文件不会被加载，请改写为 v3 playbook。
-- `exec-all`、`push-all`、`pull-all` 已移除，统一使用虚拟标签 `all`。
-- 当前目录的 `sshmd.deploy.yaml` 不再隐式加载，项目文件必须通过 `--file` 指定。
+- 不支持 `SSHMD_CONFIG_FILE`；主配置固定为 `~/.sshmd/sshmd.yaml`。
+- 主配置使用 `version: 2` schema。
+- Deploy 仅支持 schema v3 playbook；`version: 2` 文件不会被加载。
+- `all` 是虚拟标签，`--all` 不能与具体主机或标签选择器混用。
+- 当前目录的 `sshmd.deploy.yaml` 不会被隐式加载，项目文件必须通过 `--file` 指定。
 
 ## 首次使用
 
@@ -213,7 +213,7 @@ sshmd pull-tag all /etc/hosts ./backup --flat --yes
 
 ## Deploy
 
-Deploy 使用模块化 playbook：文档 `version: 3`，由 plays（工作流）、tasks（任务）和 modules（模块）组成。文件结构沿用 `deploy.yaml` + `deploy.d/*.yaml`；v6.1.0 起仅支持 v3，不再加载 Deploy v2 文件。
+Deploy 使用模块化 playbook：文档 `version: 3`，由 plays（工作流）、tasks（任务）和 modules（模块）组成。文件结构沿用 `deploy.yaml` + `deploy.d/*.yaml`。
 
 ```bash
 sshmd deploy validate
@@ -253,12 +253,6 @@ sshmd deploy run update-app --check --diff --yes
 ### 变量插值
 
 `{{ }}` 插值支持 `vars`、play 级 `vars`、`vars_files` 与 CLI `--extra-var`，白名单函数：`default`、`join`、`upper`、`lower`、`trim`、`replace`、`shellquote`。缺失变量默认报错；`{{ missing | default "fallback" }}` 提供默认值。
-
-### 升级注意（v6.1.0）
-
-- Deploy v2（`version: 2` 的 profile/steps/handlers）与 `deploy migrate` 已移除；旧文件不会被加载，请改写为 v3 playbook。
-- v2 的 `wait`（定时延时）由 `sleep` 模块替代；v2 的 `confirm` 批次门禁由任务级 `confirm` 字段替代。
-- 主配置 schema 仍为 `version: 2`，不受影响。
 
 ## 配置与安全
 

@@ -1,6 +1,6 @@
 # sshmd Roadmap
 
-本文档只记录 v6.0.0 之后的候选能力，不是当前版本承诺。
+本文档记录候选能力，不是当前版本承诺。
 
 ## 候选项
 
@@ -9,7 +9,6 @@
 - 更丰富的 BatchRunner 机器可读输出：已在 v3 落地（`--output ndjson` 事件流）。
 - Deploy v3 模块化 playbook：已落地（plays/tasks/modules、register/when、block/rescue/always、静态 include、sleep/confirm）。
 - Deploy `--force-handlers`：已过时——v3 移除 handlers，条件执行使用 register + when。
-- Deploy v2 已移除（v6.1.0）：不再加载 `version: 2` 文件，`deploy migrate` 一并删除；v2 的 `wait`/`confirm` 由 v3 的 `sleep` 模块与任务级 `confirm` 替代。
 - 更精细的文本 unified diff 与可配置 diff 日志策略。
 - rsync 跨平台高保真集成测试环境，覆盖真实远端 `rsync --server` 行为。
 - Windows 路径与发布制品的持续兼容性测试扩展。

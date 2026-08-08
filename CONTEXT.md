@@ -4,12 +4,12 @@ sshmd 是一个本地优先、面向个人使用的 SSH 主机管理与轻量运
 
 ## 版本边界
 
-- 产品发布版本：`v6.2.0`
+- 产品发布版本：`v6.2.1`
 - Go module：`github.com/fanhuadesenlinnn/sshmd/v6`
 - 主配置 schema：`version: 2`
 - Deploy schema：`version: 3`
 
-这些版本含义不同。主配置和 Deploy schema 互不兼容；Deploy v2 自 v6.1.0 起已移除。
+主配置与 Deploy schema 相互独立；Deploy 仅支持 v3 playbook。
 
 ## 核心语言
 
@@ -89,7 +89,7 @@ Deploy Profile 静态解析出的来源文件、目标主机、steps、handlers 
 
 ## 不变量
 
-1. sshmd 不读取、迁移或删除旧 `~/.config/sshmd/sshmd.yaml`。
+1. 数据目录仅使用 `~/.sshmd`，唯一路径覆盖变量是 `SSHMD_HOME`。
 2. 除 `init`、`config path` 和 `doctor` 外，缺少主配置时不得静默创建。
 3. 主配置与 Deploy v3 严格拒绝缺失版本和未知字段。
 4. `--yes` 不跳过主密码和 host trust。
@@ -100,7 +100,7 @@ Deploy Profile 静态解析出的来源文件、目标主机、steps、handlers 
 9. Deploy `plan` 不连接远端；`check` 不修改最终目标。
 10. diff 可能包含敏感内容，默认不写入操作日志。
 11. sshmd 不提供后台任务、团队空间、完整 Ansible 兼容层或期望状态收敛。
-12. Deploy v2 已移除；Deploy 文件必须使用 `version: 3`，旧 schema 不再加载。
+12. Deploy 文件必须使用 `version: 3`。
 13. Deploy v3 的 `when` 引用未定义变量是错误而非静默跳过；可选变量必须显式使用 `is defined`。
 14. v3 不提供 handlers；条件执行必须通过 register + when 表达。
 15. v3 include 在 plan 阶段静态展开，不提供运行时动态 include。

@@ -1,6 +1,6 @@
-# sshmd v6.2.0 产品设计
+# sshmd v6.2.1 产品设计
 
-状态：v6.2.0 当前设计
+状态：v6.2.1 当前设计
 
 ## 产品定位
 
@@ -15,13 +15,13 @@ sshmd 是供个人开发者和个人运维使用者管理约 5 到 100 台 SSH �
 
 ## 当前产品事实
 
-- 产品版本为 `v6.2.0`，Go module 为 `/v6`。
+- 产品版本为 `v6.2.1`，Go module 为 `/v6`。
 - 主配置为严格 YAML schema `version: 2`；Deploy 配置为严格 YAML schema `version: 3`。
 - 默认数据目录只使用 `~/.sshmd`，仅支持 `SSHMD_HOME` 整体覆盖。
 - Cobra 提供 CLI 命令树，同时保留无参数工作台和 alias/ID 直连。
 - 交互工作台的 `x/exec` 与 `xt/exec-tag` 只解析本地目标和选项；`--` 后的远程命令作为不透明文本传递。
 - Go 原生 SSH 负责连接、认证、host trust、执行、SFTP 和端口转发。
-- Deploy 使用 schema v3 模块化 playbook（plays/tasks/modules）；v2 自 v6.1.0 起移除。
+- Deploy 使用 schema v3 模块化 playbook（plays/tasks/modules）。
 - rsync 是可选加速路径，必须保持与 SFTP 相同的安全和结果语义。
 - Linux、macOS、Windows 提供相同正式能力目标。
 - README 与 Release 页面提供 macOS/Linux 和 Windows 一键安装命令；安装脚本保存在仓库中，Release 附件只包含平台制品与校验和。
@@ -30,7 +30,7 @@ sshmd 是供个人开发者和个人运维使用者管理约 5 到 100 台 SSH �
 
 ### 初始化与发现
 
-新用户运行 `sshmd init` 创建带字段级中文说明的 v2 主配置、安全空白的 Deploy v3 模板和受限权限目录。Deploy 模板包含完全注释的示例，但没有活动 play；已有 Deploy 文件不会被全局初始化覆盖。发现旧 `~/.config/sshmd/sshmd.yaml` 时只警告，不读取、迁移或删除。
+新用户运行 `sshmd init` 创建带字段级中文说明的 v2 主配置、安全空白的 Deploy v3 模板和受限权限目录。Deploy 模板包含完全注释的示例，但没有活动 play；已有 Deploy 文件不会被全局初始化覆盖。
 
 未初始化时直接运行 `sshmd` 会展示首次使用引导。初始化后，用户可通过工作台、搜索、收藏、最近使用、标签和 `sshmd <alias|ID>` 快速定位主机。
 
@@ -52,7 +52,7 @@ sshmd 是供个人开发者和个人运维使用者管理约 5 到 100 台 SSH �
 - Ctrl+C 取消与未开始任务 skipped。
 - 统一结果状态与退出码。
 
-`all` 是虚拟标签，统一替代旧 `*-all` 命令。`--all` 不能与具体主机或 `--tag` 混用，避免误把单目标操作扩大成全量操作。
+`all` 是虚拟标签。`--all` 不能与具体主机或 `--tag` 混用，避免误把单目标操作扩大成全量操作。
 
 `passwd`、`forget-pass` 和托管密钥操作复用主机选择语义，支持多个别名或 ID、`--tag` 与 `--all`。批量密码更新在同一个配置与 vault 事务中完成，避免部分主机写入成功。
 

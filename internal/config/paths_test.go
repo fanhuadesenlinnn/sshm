@@ -96,7 +96,7 @@ func TestInitializeCreatesChineseV2ConfigAndForceBackup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"# sshmd 快速上手", "sshmd deploy validate", "安全边界"} {
+	for _, want := range []string{"# sshmd 使用指南", "sshmd deploy validate", "安全边界", "认证与凭据", "Deploy 编排", "端口转发"} {
 		if !strings.Contains(string(readmeData), want) {
 			t.Fatalf("README missing %q:\n%s", want, readmeData)
 		}
