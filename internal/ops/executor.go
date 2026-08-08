@@ -10,11 +10,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/operation"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/secret"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/shellquote"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/sshx"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/operation"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/secret"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/shellquote"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/sshx"
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
 )

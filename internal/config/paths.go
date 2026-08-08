@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// Paths contains every persistent path owned by sshm.
+// Paths contains every persistent path owned by sshmd.
 type Paths struct {
 	Home      string
 	Config    string
@@ -20,22 +20,22 @@ type Paths struct {
 	Temp      string
 }
 
-// ResolvePaths resolves the portable sshm home. SSHM_HOME is the only
+// ResolvePaths resolves the portable sshmd home. SSHMD_HOME is the only
 // supported path override.
 func ResolvePaths() (Paths, error) {
-	home := os.Getenv("SSHM_HOME")
+	home := os.Getenv("SSHMD_HOME")
 	if home == "" {
 		userHome, err := os.UserHomeDir()
 		if err != nil {
 			return Paths{}, fmt.Errorf("解析用户主目录失败: %w", err)
 		}
-		home = filepath.Join(userHome, ".sshm")
+		home = filepath.Join(userHome, ".sshmd")
 	} else {
 		home = ExpandPath(home)
 		if !filepath.IsAbs(home) {
 			absolute, err := filepath.Abs(home)
 			if err != nil {
-				return Paths{}, fmt.Errorf("解析 SSHM_HOME 失败: %w", err)
+				return Paths{}, fmt.Errorf("解析 SSHMD_HOME 失败: %w", err)
 			}
 			home = absolute
 		}
@@ -43,7 +43,7 @@ func ResolvePaths() (Paths, error) {
 	home = filepath.Clean(home)
 	return Paths{
 		Home:      home,
-		Config:    filepath.Join(home, "sshm.yaml"),
+		Config:    filepath.Join(home, "sshmd.yaml"),
 		Logs:      filepath.Join(home, "logs"),
 		Deploy:    filepath.Join(home, "deploy.yaml"),
 		DeployDir: filepath.Join(home, "deploy.d"),
@@ -54,11 +54,11 @@ func ResolvePaths() (Paths, error) {
 	}, nil
 }
 
-// SSHMHome returns the base directory for all sshm-owned data.
-func SSHMHome() string {
+// SSHMDHome returns the base directory for all sshmd-owned data.
+func SSHMDHome() string {
 	paths, err := ResolvePaths()
 	if err != nil {
-		return filepath.Join(".", ".sshm")
+		return filepath.Join(".", ".sshmd")
 	}
 	return paths.Home
 }
@@ -67,7 +67,7 @@ func SSHMHome() string {
 func ConfigFilePath() string {
 	paths, err := ResolvePaths()
 	if err != nil {
-		return filepath.Join(SSHMHome(), "sshm.yaml")
+		return filepath.Join(SSHMDHome(), "sshmd.yaml")
 	}
 	return paths.Config
 }
@@ -75,25 +75,25 @@ func ConfigFilePath() string {
 func LogsDir() string {
 	paths, err := ResolvePaths()
 	if err != nil {
-		return filepath.Join(SSHMHome(), "logs")
+		return filepath.Join(SSHMDHome(), "logs")
 	}
 	return paths.Logs
 }
 
 func DeployFilePath() string {
-	return filepath.Join(SSHMHome(), "deploy.yaml")
+	return filepath.Join(SSHMDHome(), "deploy.yaml")
 }
 
 func DeployDir() string {
-	return filepath.Join(SSHMHome(), "deploy.d")
+	return filepath.Join(SSHMDHome(), "deploy.d")
 }
 
 func BackupsDir() string {
-	return filepath.Join(SSHMHome(), "backups")
+	return filepath.Join(SSHMDHome(), "backups")
 }
 
 func TempDir() string {
-	return filepath.Join(SSHMHome(), "tmp")
+	return filepath.Join(SSHMDHome(), "tmp")
 }
 
 // LegacyConfigPath returns the old location only for warning users. v6 never
@@ -103,7 +103,7 @@ func LegacyConfigPath() string {
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(home, ".config", "sshm", "sshm.yaml")
+	return filepath.Join(home, ".config", "sshmd", "sshmd.yaml")
 }
 
 // EnsureDirs creates all required directories with proper permissions.

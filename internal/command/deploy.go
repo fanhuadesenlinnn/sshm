@@ -7,11 +7,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/deploy"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/safefile"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/shellquote"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/ui"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/deploy"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/safefile"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/shellquote"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -20,12 +20,12 @@ func newDeployCommand(app *App) *cobra.Command {
 		Use:     "deploy",
 		Short:   commandShort("deploy", "运行 Deploy v3 轻量编排"),
 		GroupID: commandGroupID("deploy"),
-		Long:    "运行 Deploy v3 轻量编排。deploy 从 ~/.sshm/deploy.yaml 和 ~/.sshm/deploy.d/*.yaml 读取 playbook；显式 --file 时只读取指定文件。",
+		Long:    "运行 Deploy v3 轻量编排。deploy 从 ~/.sshmd/deploy.yaml 和 ~/.sshmd/deploy.d/*.yaml 读取 playbook；显式 --file 时只读取指定文件。",
 		Example: strings.TrimSpace(`
-sshm deploy init
-sshm deploy list
-sshm deploy plan webapp --host web01
-sshm deploy run webapp --tag prod --check --yes`),
+sshmd deploy init
+sshmd deploy list
+sshmd deploy plan webapp --host web01
+sshmd deploy run webapp --tag prod --check --yes`),
 		RunE: func(_ *cobra.Command, _ []string) error {
 			app.printDeployHelp()
 			return nil
@@ -38,56 +38,56 @@ sshm deploy run webapp --tag prod --check --yes`),
 	}{
 		{
 			use: "init [-f 文件] [--stdout] [--overwrite]", short: "生成中文 Deploy v3 示例",
-			long: "生成 Deploy v3 示例配置。默认写入 ~/.sshm/deploy.yaml；使用 --stdout 可只打印不写文件。",
+			long: "生成 Deploy v3 示例配置。默认写入 ~/.sshmd/deploy.yaml；使用 --stdout 可只打印不写文件。",
 			example: strings.TrimSpace(`
-sshm deploy init
-sshm deploy init -f ./deploy.yaml
-sshm deploy init --stdout`),
+sshmd deploy init
+sshmd deploy init -f ./deploy.yaml
+sshmd deploy init --stdout`),
 			run: app.cmdDeployInit,
 		},
 		{
 			use: "validate [-f 文件...] [--output text|json]", short: "严格校验 Deploy 配置",
 			long: "校验 Deploy 配置、play、目标选择和模块参数。适合在真正执行前做本地检查。",
 			example: strings.TrimSpace(`
-sshm deploy validate
-sshm deploy validate -f ./deploy.yaml
-sshm deploy validate -f base.yaml -f project.yaml --output json`),
+sshmd deploy validate
+sshmd deploy validate -f ./deploy.yaml
+sshmd deploy validate -f base.yaml -f project.yaml --output json`),
 			run: app.deployValidate,
 		},
 		{
 			use: "list [-f 文件...] [--output text|json]", short: "列出 deploy plays",
 			long: "列出可用 Deploy plays 及其来源文件。",
 			example: strings.TrimSpace(`
-sshm deploy list
-sshm deploy list -f ./deploy.yaml
-sshm deploy list --output json`),
+sshmd deploy list
+sshmd deploy list -f ./deploy.yaml
+sshmd deploy list --output json`),
 			aliases: []string{"ls"}, run: app.deployList,
 		},
 		{
 			use: "show <play> [-f 文件...] [目标覆盖]", short: "展示解析后的 play",
 			long: "展示 play 解析后的配置，包含目标、任务和批量策略；不会连接远端。",
 			example: strings.TrimSpace(`
-sshm deploy show webapp
-sshm deploy show webapp --host web01
-sshm deploy show webapp -f ./deploy.yaml --tag prod`),
+sshmd deploy show webapp
+sshmd deploy show webapp --host web01
+sshmd deploy show webapp -f ./deploy.yaml --tag prod`),
 			run: func(args []string) error { return app.deployPlan(args, true) },
 		},
 		{
 			use: "plan <play> [-f 文件...] [目标覆盖]", short: "静态展示执行计划，不连接远端",
 			long: "生成 Deploy 执行计划并展示将要影响的主机与任务；不会连接远端。",
 			example: strings.TrimSpace(`
-sshm deploy plan webapp
-sshm deploy plan webapp --host web01
-sshm deploy plan webapp --tag prod --output json`),
+sshmd deploy plan webapp
+sshmd deploy plan webapp --host web01
+sshmd deploy plan webapp --tag prod --output json`),
 			run: func(args []string) error { return app.deployPlan(args, false) },
 		},
 		{
 			use: "run <play> [-f 文件...] [目标覆盖] [批量选项] [--check] [--diff] [--yes]", short: "执行 play，支持 --check 与 --diff",
 			long: "执行 Deploy play。默认会确认执行计划；脚本或 CI 中请显式传入 --yes。--check 只检查变化，--diff 展示差异。",
 			example: strings.TrimSpace(`
-sshm deploy run webapp --host web01 --check
-sshm deploy run webapp --tag prod --serial 2 --max-fail 1 --yes
-sshm deploy run webapp -f base.yaml -f project.yaml --all --diff --yes`),
+sshmd deploy run webapp --host web01 --check
+sshmd deploy run webapp --tag prod --serial 2 --max-fail 1 --yes
+sshmd deploy run webapp -f base.yaml -f project.yaml --all --diff --yes`),
 			run: app.deployRun,
 		},
 	}
@@ -124,7 +124,7 @@ func (app *App) cmdDeploy(args []string) error {
 		app.printDeployHelp()
 		return nil
 	default:
-		return fmt.Errorf("未知 deploy 命令 %q；使用 sshm deploy help 查看帮助", args[0])
+		return fmt.Errorf("未知 deploy 命令 %q；使用 sshmd deploy help 查看帮助", args[0])
 	}
 }
 
@@ -174,8 +174,8 @@ func (app *App) printDeployHelp() {
 	fmt.Println("  批量选项: --serial N --parallel N --fail-fast --max-fail N --max-fail-percent N")
 	fmt.Println("  输出选项: --output text|json|ndjson（run 支持 ndjson 事件流）")
 	fmt.Println("  变量覆盖: --extra-var key=value")
-	fmt.Println("  未使用 -f 时加载 ~/.sshm/deploy.yaml 与按文件名排序的 ~/.sshm/deploy.d/*.yaml")
-	fmt.Println("  当前目录的 sshm.deploy.yaml 不会被隐式加载")
+	fmt.Println("  未使用 -f 时加载 ~/.sshmd/deploy.yaml 与按文件名排序的 ~/.sshmd/deploy.d/*.yaml")
+	fmt.Println("  当前目录的 sshmd.deploy.yaml 不会被隐式加载")
 	fmt.Println()
 }
 
@@ -379,11 +379,11 @@ func (app *App) cmdDeployInit(args []string) error {
 	if len(options.files) == 1 {
 		fileArg = " -f " + shellquote.Single(path)
 	}
-	fmt.Printf("  sshm deploy validate%s\n", fileArg)
+	fmt.Printf("  sshmd deploy validate%s\n", fileArg)
 	if !app.hasHostWithAllTags("prod") {
-		fmt.Println("  sshm add web01 root@10.0.0.11 --tags prod")
+		fmt.Println("  sshmd add web01 root@10.0.0.11 --tags prod")
 	}
-	fmt.Printf("  sshm deploy plan update-app%s\n", fileArg)
+	fmt.Printf("  sshmd deploy plan update-app%s\n", fileArg)
 	return nil
 }
 

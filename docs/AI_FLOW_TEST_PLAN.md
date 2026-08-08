@@ -1,15 +1,15 @@
-# sshm AI flow test plan
+# sshmd AI flow test plan
 
-This document lists user-facing sshm flows as executable test scripts for an AI
+This document lists user-facing sshmd flows as executable test scripts for an AI
 tester. Each flow states the purpose, setup, steps, and expected result.
 
-Use a disposable SSHM_HOME for every test run. Do not run these flows against a
-real personal `~/.sshm` directory.
+Use a disposable SSHMD_HOME for every test run. Do not run these flows against a
+real personal `~/.sshmd` directory.
 
 Recommended common setup:
 
 ```bash
-export SSHM_HOME="$(mktemp -d)"
+export SSHMD_HOME="$(mktemp -d)"
 go run . init
 ```
 
@@ -18,12 +18,12 @@ Optional remote setup:
 - `web01`: reachable SSH host with either password or managed-key access.
 - `web02`: second reachable SSH host for batch and tag flows.
 - `prod` tag can point to one or both hosts.
-- Remote test paths should be under a disposable directory such as `/tmp/sshm-ai-test`.
-- For non-interactive password-vault tests, set `SSHM_MASTER_PASSWORD` in the
+- Remote test paths should be under a disposable directory such as `/tmp/sshmd-ai-test`.
+- For non-interactive password-vault tests, set `SSHMD_MASTER_PASSWORD` in the
   command environment after creating the temporary vault. Do not export a real
   personal master password into a shared shell history or CI log.
 
-Use `go run .` in development, or replace it with `sshm` when testing an
+Use `go run .` in development, or replace it with `sshmd` when testing an
 installed binary.
 
 ## Result Rules
@@ -45,7 +45,7 @@ Type: local
 Setup:
 
 ```bash
-export SSHM_HOME="$(mktemp -d)"
+export SSHMD_HOME="$(mktemp -d)"
 ```
 
 Steps:
@@ -56,8 +56,8 @@ go run .
 
 Expected:
 
-- Output says sshm is not initialized.
-- Output suggests `sshm init`.
+- Output says sshmd is not initialized.
+- Output suggests `sshmd init`.
 - Command does not create an invalid config.
 
 ### F002: Initialize a fresh workspace
@@ -67,21 +67,21 @@ Type: local
 Setup:
 
 ```bash
-export SSHM_HOME="$(mktemp -d)"
+export SSHMD_HOME="$(mktemp -d)"
 ```
 
 Steps:
 
 ```bash
 go run . init
-test -f "$SSHM_HOME/sshm.yaml"
-test -f "$SSHM_HOME/deploy.yaml"
+test -f "$SSHMD_HOME/sshmd.yaml"
+test -f "$SSHMD_HOME/deploy.yaml"
 go run . deploy validate
 go run . deploy list
-test -d "$SSHM_HOME/deploy.d"
-test -d "$SSHM_HOME/logs"
-test -d "$SSHM_HOME/backups"
-test -d "$SSHM_HOME/tmp"
+test -d "$SSHMD_HOME/deploy.d"
+test -d "$SSHMD_HOME/logs"
+test -d "$SSHMD_HOME/backups"
+test -d "$SSHMD_HOME/tmp"
 ```
 
 Expected:
@@ -98,7 +98,7 @@ Type: local
 Setup:
 
 ```bash
-export SSHM_HOME="$(mktemp -d)"
+export SSHMD_HOME="$(mktemp -d)"
 go run . init
 ```
 
@@ -106,13 +106,13 @@ Steps:
 
 ```bash
 go run . init --force
-find "$SSHM_HOME/backups" -type f
+find "$SSHMD_HOME/backups" -type f
 ```
 
 Expected:
 
 - Reinitialization succeeds.
-- A backup file appears in `$SSHM_HOME/backups`.
+- A backup file appears in `$SSHMD_HOME/backups`.
 
 ### F004: Print config path
 
@@ -121,7 +121,7 @@ Type: local
 Setup:
 
 ```bash
-export SSHM_HOME="$(mktemp -d)"
+export SSHMD_HOME="$(mktemp -d)"
 go run . init
 ```
 
@@ -133,7 +133,7 @@ go run . config path
 
 Expected:
 
-- Output contains `$SSHM_HOME/sshm.yaml`.
+- Output contains `$SSHMD_HOME/sshmd.yaml`.
 
 ### F005: Run doctor
 
@@ -142,7 +142,7 @@ Type: local
 Setup:
 
 ```bash
-export SSHM_HOME="$(mktemp -d)"
+export SSHMD_HOME="$(mktemp -d)"
 go run . init
 ```
 
@@ -193,15 +193,15 @@ None.
 Steps:
 
 ```bash
-go run . completion bash >/tmp/sshm.bash
-go run . completion zsh >/tmp/sshm.zsh
-go run . completion fish >/tmp/sshm.fish
+go run . completion bash >/tmp/sshmd.bash
+go run . completion zsh >/tmp/sshmd.zsh
+go run . completion fish >/tmp/sshmd.fish
 ```
 
 Expected:
 
 - Each file is non-empty.
-- Completion generation does not require `sshm init`.
+- Completion generation does not require `sshmd init`.
 
 ## Host Management Flows
 
@@ -212,7 +212,7 @@ Type: local
 Setup:
 
 ```bash
-export SSHM_HOME="$(mktemp -d)"
+export SSHMD_HOME="$(mktemp -d)"
 go run . init
 ```
 
@@ -236,7 +236,7 @@ Type: local
 Setup:
 
 ```bash
-export SSHM_HOME="$(mktemp -d)"
+export SSHMD_HOME="$(mktemp -d)"
 go run . init
 ```
 
@@ -259,7 +259,7 @@ Type: local
 Setup:
 
 ```bash
-export SSHM_HOME="$(mktemp -d)"
+export SSHMD_HOME="$(mktemp -d)"
 go run . init
 ```
 
@@ -282,7 +282,7 @@ Type: local
 Setup:
 
 ```bash
-export SSHM_HOME="$(mktemp -d)"
+export SSHMD_HOME="$(mktemp -d)"
 go run . init
 ```
 
@@ -306,7 +306,7 @@ Type: local
 Setup:
 
 ```bash
-export SSHM_HOME="$(mktemp -d)"
+export SSHMD_HOME="$(mktemp -d)"
 go run . init
 go run . add web01 root@127.0.0.1:2222 --tags prod,web --note nginx
 go run . add db01 root@127.0.0.1:2223 --tags prod,db --note postgres
@@ -335,7 +335,7 @@ Type: local
 Setup:
 
 ```bash
-export SSHM_HOME="$(mktemp -d)"
+export SSHMD_HOME="$(mktemp -d)"
 go run . init
 go run . add web01 root@127.0.0.1:2222
 ```
@@ -361,7 +361,7 @@ Type: local
 Setup:
 
 ```bash
-export SSHM_HOME="$(mktemp -d)"
+export SSHMD_HOME="$(mktemp -d)"
 go run . init
 go run . add web01 root@127.0.0.1:2222
 ```
@@ -385,7 +385,7 @@ Type: interactive
 Setup:
 
 ```bash
-export SSHM_HOME="$(mktemp -d)"
+export SSHMD_HOME="$(mktemp -d)"
 go run . init
 go run . add web01 root@127.0.0.1:2222
 ```
@@ -417,7 +417,7 @@ Type: interactive
 Setup:
 
 ```bash
-export SSHM_HOME="$(mktemp -d)"
+export SSHMD_HOME="$(mktemp -d)"
 go run . init
 ```
 
@@ -446,7 +446,7 @@ Type: local
 Setup:
 
 ```bash
-export SSHM_HOME="$(mktemp -d)"
+export SSHMD_HOME="$(mktemp -d)"
 go run . init
 go run . add web01 root@127.0.0.1:2222
 ```
@@ -473,7 +473,7 @@ Type: local
 Setup:
 
 ```bash
-export SSHM_HOME="$(mktemp -d)"
+export SSHMD_HOME="$(mktemp -d)"
 go run . init
 go run . add web01 root@127.0.0.1:2222
 go run . add web02 root@127.0.0.1:2223
@@ -500,7 +500,7 @@ Type: local
 Setup:
 
 ```bash
-export SSHM_HOME="$(mktemp -d)"
+export SSHMD_HOME="$(mktemp -d)"
 go run . init
 go run . add web01 root@127.0.0.1:2222 --tags old
 ```
@@ -527,7 +527,7 @@ Type: local
 Setup:
 
 ```bash
-export SSHM_HOME="$(mktemp -d)"
+export SSHMD_HOME="$(mktemp -d)"
 go run . init
 go run . add web01 root@127.0.0.1:2222 --tags prod
 ```
@@ -553,7 +553,7 @@ Type: local
 Setup:
 
 ```bash
-export SSHM_HOME="$(mktemp -d)"
+export SSHMD_HOME="$(mktemp -d)"
 go run . init
 go run . add web01 root@127.0.0.1:2222 --tags web
 go run . add web02 root@127.0.0.1:2223 --tags web
@@ -582,7 +582,7 @@ Type: interactive
 Setup:
 
 ```bash
-export SSHM_HOME="$(mktemp -d)"
+export SSHMD_HOME="$(mktemp -d)"
 go run . init
 go run . add web01 root@127.0.0.1:2222
 ```
@@ -598,7 +598,7 @@ go run . show web01
 
 During prompts:
 
-- Create an sshm master password if asked.
+- Create an sshmd master password if asked.
 - Enter matching SSH password twice.
 
 Expected:
@@ -614,7 +614,7 @@ Type: interactive
 Setup:
 
 ```bash
-export SSHM_HOME="$(mktemp -d)"
+export SSHMD_HOME="$(mktemp -d)"
 go run . init
 go run . add web01 root@127.0.0.1:2222
 go run . passwd web01
@@ -638,7 +638,7 @@ Type: interactive
 Setup:
 
 ```bash
-export SSHM_HOME="$(mktemp -d)"
+export SSHMD_HOME="$(mktemp -d)"
 go run . init
 ```
 
@@ -652,7 +652,7 @@ go run . key default
 
 During prompts:
 
-- Create an sshm master password if asked.
+- Create an sshmd master password if asked.
 
 Expected:
 
@@ -667,7 +667,7 @@ Type: interactive
 Setup:
 
 ```bash
-export SSHM_HOME="$(mktemp -d)"
+export SSHMD_HOME="$(mktemp -d)"
 go run . init
 ```
 
@@ -690,15 +690,15 @@ Type: interactive
 Setup:
 
 ```bash
-export SSHM_HOME="$(mktemp -d)"
+export SSHMD_HOME="$(mktemp -d)"
 go run . init
-ssh-keygen -t ed25519 -N "" -f /tmp/sshm-ai-id-ed25519
+ssh-keygen -t ed25519 -N "" -f /tmp/sshmd-ai-id-ed25519
 ```
 
 Steps:
 
 ```bash
-go run . key import imported /tmp/sshm-ai-id-ed25519 --default
+go run . key import imported /tmp/sshmd-ai-id-ed25519 --default
 go run . key show imported
 ```
 
@@ -714,7 +714,7 @@ Type: interactive
 Setup:
 
 ```bash
-export SSHM_HOME="$(mktemp -d)"
+export SSHMD_HOME="$(mktemp -d)"
 go run . init
 go run . add web01 root@127.0.0.1:2222
 go run . key create personal --default
@@ -740,7 +740,7 @@ Type: interactive
 Setup:
 
 ```bash
-export SSHM_HOME="$(mktemp -d)"
+export SSHMD_HOME="$(mktemp -d)"
 go run . init
 go run . add web01 root@127.0.0.1:2222
 go run . key create personal --default
@@ -770,7 +770,7 @@ Type: interactive
 Setup:
 
 ```bash
-export SSHM_HOME="$(mktemp -d)"
+export SSHMD_HOME="$(mktemp -d)"
 go run . init
 go run . add web01 root@127.0.0.1:2222
 ```
@@ -799,9 +799,9 @@ Type: remote
 Setup:
 
 ```bash
-export SSHM_HOME="$(mktemp -d)"
+export SSHMD_HOME="$(mktemp -d)"
 go run . init
-go run . add web01 "$SSHM_TEST_USER@$SSHM_TEST_HOST:$SSHM_TEST_PORT"
+go run . add web01 "$SSHMD_TEST_USER@$SSHMD_TEST_HOST:$SSHMD_TEST_PORT"
 ```
 
 Also configure password or managed-key access for `web01`.
@@ -824,10 +824,10 @@ Type: remote
 Setup:
 
 ```bash
-export SSHM_HOME="$(mktemp -d)"
+export SSHMD_HOME="$(mktemp -d)"
 go run . init
-go run . add web01 "$SSHM_TEST_USER@$SSHM_TEST_HOST:$SSHM_TEST_PORT"
-go run . add web02 "$SSHM_TEST_USER@$SSHM_TEST_HOST2:$SSHM_TEST_PORT2"
+go run . add web01 "$SSHMD_TEST_USER@$SSHMD_TEST_HOST:$SSHMD_TEST_PORT"
+go run . add web02 "$SSHMD_TEST_USER@$SSHMD_TEST_HOST2:$SSHMD_TEST_PORT2"
 ```
 
 Also configure credentials.
@@ -875,13 +875,13 @@ Use a reachable configured host `web01`.
 Steps:
 
 ```bash
-go run . exec --yes web01 "echo sshm-ok"
+go run . exec --yes web01 "echo sshmd-ok"
 go run . exec --yes --quiet --no-log web01 "hostname"
 ```
 
 Expected:
 
-- First command prints `sshm-ok`.
+- First command prints `sshmd-ok`.
 - `--quiet --no-log` succeeds without writing a new operation log.
 
 ### F074: Execute command by tag
@@ -895,7 +895,7 @@ Configure reachable hosts tagged `prod`.
 Steps:
 
 ```bash
-go run . exec-tag prod "echo sshm-prod" --yes
+go run . exec-tag prod "echo sshmd-prod" --yes
 go run . exec-tag all "hostname" --parallel 2 --serial 1 --yes
 ```
 
@@ -936,9 +936,9 @@ Use a new SSH server whose host key is not yet trusted.
 Steps:
 
 ```bash
-go run . add web01 "$SSHM_TEST_USER@$SSHM_TEST_HOST:$SSHM_TEST_PORT" --host-key-policy strict
+go run . add web01 "$SSHMD_TEST_USER@$SSHMD_TEST_HOST:$SSHMD_TEST_PORT" --host-key-policy strict
 go run . ping web01
-go run . add web02 "$SSHM_TEST_USER@$SSHM_TEST_HOST:$SSHM_TEST_PORT" --host-key-policy accept-new
+go run . add web02 "$SSHMD_TEST_USER@$SSHMD_TEST_HOST:$SSHMD_TEST_PORT" --host-key-policy accept-new
 go run . ping web02
 ```
 
@@ -961,9 +961,9 @@ Use a reachable configured host `web01`.
 Steps:
 
 ```bash
-printf 'hello\n' >/tmp/sshm-ai-file.txt
-go run . push web01 /tmp/sshm-ai-file.txt /tmp/sshm-ai-test/file.txt --method sftp --yes
-go run . exec --yes web01 "cat /tmp/sshm-ai-test/file.txt"
+printf 'hello\n' >/tmp/sshmd-ai-file.txt
+go run . push web01 /tmp/sshmd-ai-file.txt /tmp/sshmd-ai-test/file.txt --method sftp --yes
+go run . exec --yes web01 "cat /tmp/sshmd-ai-test/file.txt"
 ```
 
 Expected:
@@ -982,9 +982,9 @@ Complete F090 first.
 Steps:
 
 ```bash
-printf 'changed\n' >/tmp/sshm-ai-file.txt
-go run . push web01 /tmp/sshm-ai-file.txt /tmp/sshm-ai-test/file.txt --method sftp --yes
-go run . push web01 /tmp/sshm-ai-file.txt /tmp/sshm-ai-test/file.txt --method sftp --overwrite --yes
+printf 'changed\n' >/tmp/sshmd-ai-file.txt
+go run . push web01 /tmp/sshmd-ai-file.txt /tmp/sshmd-ai-test/file.txt --method sftp --yes
+go run . push web01 /tmp/sshmd-ai-file.txt /tmp/sshmd-ai-test/file.txt --method sftp --overwrite --yes
 ```
 
 Expected:
@@ -998,14 +998,14 @@ Type: remote
 
 Setup:
 
-Remote file exists at `/tmp/sshm-ai-test/file.txt`.
+Remote file exists at `/tmp/sshmd-ai-test/file.txt`.
 
 Steps:
 
 ```bash
-printf 'backup-change\n' >/tmp/sshm-ai-file.txt
-go run . push web01 /tmp/sshm-ai-file.txt /tmp/sshm-ai-test/file.txt --backup --yes
-go run . exec --yes web01 "ls /tmp/sshm-ai-test/file.txt.bak.*"
+printf 'backup-change\n' >/tmp/sshmd-ai-file.txt
+go run . push web01 /tmp/sshmd-ai-file.txt /tmp/sshmd-ai-test/file.txt --backup --yes
+go run . exec --yes web01 "ls /tmp/sshmd-ai-test/file.txt.bak.*"
 ```
 
 Expected:
@@ -1019,14 +1019,14 @@ Type: remote
 
 Setup:
 
-Remote file exists at `/tmp/sshm-ai-test/file.txt`.
+Remote file exists at `/tmp/sshmd-ai-test/file.txt`.
 
 Steps:
 
 ```bash
-rm -rf /tmp/sshm-ai-pull
-go run . pull web01 /tmp/sshm-ai-test/file.txt /tmp/sshm-ai-pull/file.txt --yes
-cat /tmp/sshm-ai-pull/file.txt
+rm -rf /tmp/sshmd-ai-pull
+go run . pull web01 /tmp/sshmd-ai-test/file.txt /tmp/sshmd-ai-pull/file.txt --yes
+cat /tmp/sshmd-ai-pull/file.txt
 ```
 
 Expected:
@@ -1045,13 +1045,13 @@ Use reachable host `web01`.
 Steps:
 
 ```bash
-rm -rf /tmp/sshm-ai-dir /tmp/sshm-ai-dir-pull
-mkdir -p /tmp/sshm-ai-dir/nested
-printf 'a\n' >/tmp/sshm-ai-dir/a.txt
-printf 'b\n' >/tmp/sshm-ai-dir/nested/b.txt
-go run . push web01 /tmp/sshm-ai-dir /tmp/sshm-ai-test/dir --yes
-go run . pull web01 /tmp/sshm-ai-test/dir /tmp/sshm-ai-dir-pull --yes
-find /tmp/sshm-ai-dir-pull -type f | sort
+rm -rf /tmp/sshmd-ai-dir /tmp/sshmd-ai-dir-pull
+mkdir -p /tmp/sshmd-ai-dir/nested
+printf 'a\n' >/tmp/sshmd-ai-dir/a.txt
+printf 'b\n' >/tmp/sshmd-ai-dir/nested/b.txt
+go run . push web01 /tmp/sshmd-ai-dir /tmp/sshmd-ai-test/dir --yes
+go run . pull web01 /tmp/sshmd-ai-test/dir /tmp/sshmd-ai-dir-pull --yes
+find /tmp/sshmd-ai-dir-pull -type f | sort
 ```
 
 Expected:
@@ -1070,10 +1070,10 @@ Use reachable host `web01`.
 Steps:
 
 ```bash
-printf 'x\n' >/tmp/sshm-ai-file.txt
-go run . push web01 /tmp/sshm-ai-file.txt "~/.bad" --yes
-go run . push web01 /tmp/sshm-ai-file.txt "../bad" --yes
-go run . pull web01 "/" /tmp/sshm-ai-root --yes
+printf 'x\n' >/tmp/sshmd-ai-file.txt
+go run . push web01 /tmp/sshmd-ai-file.txt "~/.bad" --yes
+go run . push web01 /tmp/sshmd-ai-file.txt "../bad" --yes
+go run . pull web01 "/" /tmp/sshmd-ai-root --yes
 ```
 
 Expected:
@@ -1086,14 +1086,14 @@ Type: remote
 
 Setup:
 
-Configure two reachable hosts tagged `prod`, each with `/tmp/sshm-ai-test/file.txt`.
+Configure two reachable hosts tagged `prod`, each with `/tmp/sshmd-ai-test/file.txt`.
 
 Steps:
 
 ```bash
-rm -rf /tmp/sshm-ai-batch-pull
-go run . pull-tag prod /tmp/sshm-ai-test/file.txt /tmp/sshm-ai-batch-pull --yes
-find /tmp/sshm-ai-batch-pull -type f | sort
+rm -rf /tmp/sshmd-ai-batch-pull
+go run . pull-tag prod /tmp/sshmd-ai-test/file.txt /tmp/sshmd-ai-batch-pull --yes
+find /tmp/sshmd-ai-batch-pull -type f | sort
 ```
 
 Expected:
@@ -1112,8 +1112,8 @@ Configure two reachable hosts tagged `prod`.
 Steps:
 
 ```bash
-rm -rf /tmp/sshm-ai-flat
-go run . pull-tag prod /tmp/sshm-ai-test/file.txt /tmp/sshm-ai-flat --flat --yes
+rm -rf /tmp/sshmd-ai-flat
+go run . pull-tag prod /tmp/sshmd-ai-test/file.txt /tmp/sshmd-ai-flat --flat --yes
 ```
 
 Expected:
@@ -1134,9 +1134,9 @@ Setup:
 Steps:
 
 ```bash
-printf 'rsync\n' >/tmp/sshm-ai-rsync.txt
-go run . push web01 /tmp/sshm-ai-rsync.txt /tmp/sshm-ai-test/rsync.txt --method rsync --yes
-go run . pull web01 /tmp/sshm-ai-test/rsync.txt /tmp/sshm-ai-rsync-pull.txt --method rsync --yes
+printf 'rsync\n' >/tmp/sshmd-ai-rsync.txt
+go run . push web01 /tmp/sshmd-ai-rsync.txt /tmp/sshmd-ai-test/rsync.txt --method rsync --yes
+go run . pull web01 /tmp/sshmd-ai-test/rsync.txt /tmp/sshmd-ai-rsync-pull.txt --method rsync --yes
 ```
 
 Expected:
@@ -1154,17 +1154,17 @@ Type: local
 Setup:
 
 ```bash
-export SSHM_HOME="$(mktemp -d)"
+export SSHMD_HOME="$(mktemp -d)"
 go run . init
 ```
 
 Steps:
 
 ```bash
-test -f "$SSHM_HOME/deploy.yaml"
+test -f "$SSHMD_HOME/deploy.yaml"
 go run . deploy validate
 go run . deploy list
-go run . deploy init --stdout >/tmp/sshm-deploy-sample.yaml
+go run . deploy init --stdout >/tmp/sshmd-deploy-sample.yaml
 ```
 
 Expected:
@@ -1179,7 +1179,7 @@ Type: local
 Setup:
 
 ```bash
-export SSHM_HOME="$(mktemp -d)"
+export SSHMD_HOME="$(mktemp -d)"
 go run . init
 ```
 
@@ -1202,7 +1202,7 @@ Type: local
 Setup:
 
 ```bash
-export SSHM_HOME="$(mktemp -d)"
+export SSHMD_HOME="$(mktemp -d)"
 go run . init
 go run . add web01 root@127.0.0.1:2222 --tags prod
 go run . deploy init --overwrite
@@ -1229,10 +1229,10 @@ Type: local
 Setup:
 
 ```bash
-export SSHM_HOME="$(mktemp -d)"
+export SSHMD_HOME="$(mktemp -d)"
 go run . init
 go run . add web01 root@127.0.0.1:2222 --tags prod
-cat > "$SSHM_HOME/deploy.yaml" <<'EOF'
+cat > "$SSHMD_HOME/deploy.yaml" <<'EOF'
 version: 3
 plays:
   - name: update-app
@@ -1288,9 +1288,9 @@ Setup:
 Use a reachable host tagged `prod` and a text `template` action:
 
 ```bash
-mkdir -p "$SSHM_HOME/templates"
-printf 'listen {{ port }};\n' > "$SSHM_HOME/templates/app.conf.tmpl"
-cat > "$SSHM_HOME/deploy.yaml" <<'EOF'
+mkdir -p "$SSHMD_HOME/templates"
+printf 'listen {{ port }};\n' > "$SSHMD_HOME/templates/app.conf.tmpl"
+cat > "$SSHMD_HOME/deploy.yaml" <<'EOF'
 version: 3
 plays:
   - name: update-app
@@ -1302,7 +1302,7 @@ plays:
       - name: render config
         template:
           src: ./templates/app.conf.tmpl
-          dest: /tmp/sshm-ai-app.conf
+          dest: /tmp/sshmd-ai-app.conf
 EOF
 ```
 
@@ -1343,10 +1343,10 @@ Type: local
 Setup:
 
 ```bash
-export SSHM_HOME="$(mktemp -d)"
+export SSHMD_HOME="$(mktemp -d)"
 go run . init
 go run . add web01 root@127.0.0.1:2222 --tags prod
-cat > /tmp/sshm-ai-deploy.yaml <<'EOF'
+cat > /tmp/sshmd-ai-deploy.yaml <<'EOF'
 version: 3
 plays:
   - name: update-app
@@ -1362,15 +1362,15 @@ EOF
 Steps:
 
 ```bash
-go run . deploy validate -f /tmp/sshm-ai-deploy.yaml
-go run . deploy list -f /tmp/sshm-ai-deploy.yaml
-go run . deploy plan update-app -f /tmp/sshm-ai-deploy.yaml
+go run . deploy validate -f /tmp/sshmd-ai-deploy.yaml
+go run . deploy list -f /tmp/sshmd-ai-deploy.yaml
+go run . deploy plan update-app -f /tmp/sshmd-ai-deploy.yaml
 ```
 
 Expected:
 
 - Explicit file is loaded.
-- Current directory `sshm.deploy.yaml` is not loaded unless passed with `-f`.
+- Current directory `sshmd.deploy.yaml` is not loaded unless passed with `-f`.
 
 ### F118: Deploy rejects removed v2 files and unknown modules
 
@@ -1381,15 +1381,15 @@ Setup:
 Create a removed v2 file and a playbook with an unknown module:
 
 ```bash
-printf 'version: 2\nprofiles: []\n' > /tmp/sshm-v2-deploy.yaml
-printf 'version: 3\nplays:\n  - name: bad\n    hosts:\n      tags: [prod]\n    tasks:\n      - name: x\n        no_such_module: {}\n' > /tmp/sshm-unknown-module.yaml
+printf 'version: 2\nprofiles: []\n' > /tmp/sshmd-v2-deploy.yaml
+printf 'version: 3\nplays:\n  - name: bad\n    hosts:\n      tags: [prod]\n    tasks:\n      - name: x\n        no_such_module: {}\n' > /tmp/sshmd-unknown-module.yaml
 ```
 
 Steps:
 
 ```bash
-go run . deploy validate -f /tmp/sshm-v2-deploy.yaml
-go run . deploy validate -f /tmp/sshm-unknown-module.yaml
+go run . deploy validate -f /tmp/sshmd-v2-deploy.yaml
+go run . deploy validate -f /tmp/sshmd-unknown-module.yaml
 ```
 
 Expected:
@@ -1406,7 +1406,7 @@ Type: local
 Setup:
 
 ```bash
-export SSHM_HOME="$(mktemp -d)"
+export SSHMD_HOME="$(mktemp -d)"
 go run . init
 go run . add web01 root@127.0.0.1:2222
 ```
@@ -1414,8 +1414,8 @@ go run . add web01 root@127.0.0.1:2222
 Steps:
 
 ```bash
-go run . export-ssh-config /tmp/sshm-ai-ssh-config
-cat /tmp/sshm-ai-ssh-config
+go run . export-ssh-config /tmp/sshmd-ai-ssh-config
+cat /tmp/sshmd-ai-ssh-config
 ```
 
 Expected:
@@ -1430,9 +1430,9 @@ Type: local
 Setup:
 
 ```bash
-export SSHM_HOME="$(mktemp -d)"
+export SSHMD_HOME="$(mktemp -d)"
 go run . init
-cat >/tmp/sshm-ai-import-config <<'EOF'
+cat >/tmp/sshmd-ai-import-config <<'EOF'
 Host imported
     HostName 127.0.0.1
     User root
@@ -1443,7 +1443,7 @@ EOF
 Steps:
 
 ```bash
-go run . import-ssh-config /tmp/sshm-ai-import-config
+go run . import-ssh-config /tmp/sshmd-ai-import-config
 go run . show imported
 ```
 
@@ -1459,9 +1459,9 @@ Type: local
 Setup:
 
 ```bash
-export SSHM_HOME="$(mktemp -d)"
+export SSHMD_HOME="$(mktemp -d)"
 go run . init
-cat >/tmp/sshm-ai-import-key-config <<'EOF'
+cat >/tmp/sshmd-ai-import-key-config <<'EOF'
 Host keyhost
     HostName 127.0.0.1
     User root
@@ -1472,7 +1472,7 @@ EOF
 Steps:
 
 ```bash
-go run . import-ssh-config /tmp/sshm-ai-import-key-config
+go run . import-ssh-config /tmp/sshmd-ai-import-key-config
 go run . list
 ```
 
@@ -1496,7 +1496,7 @@ Steps:
 ```bash
 go run . exec --yes web01 "echo log-test"
 go run . logs
-find "$SSHM_HOME/logs" -type f
+find "$SSHMD_HOME/logs" -type f
 ```
 
 Expected:
@@ -1515,9 +1515,9 @@ Use reachable host `web01`; record current log count.
 Steps:
 
 ```bash
-before=$(find "$SSHM_HOME/logs" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
+before=$(find "$SSHMD_HOME/logs" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
 go run . exec --yes --no-log web01 "echo no-log"
-after=$(find "$SSHM_HOME/logs" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
+after=$(find "$SSHMD_HOME/logs" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
 test "$before" = "$after"
 ```
 
@@ -1532,9 +1532,9 @@ Type: local
 Setup:
 
 ```bash
-export SSHM_HOME="$(mktemp -d)"
+export SSHMD_HOME="$(mktemp -d)"
 go run . init
-mkdir -p "$SSHM_HOME/logs/manual"
+mkdir -p "$SSHMD_HOME/logs/manual"
 ```
 
 Steps:
@@ -1542,14 +1542,14 @@ Steps:
 ```bash
 go run . logs
 go run . logs clean --yes
-test ! -e "$SSHM_HOME/logs"
+test ! -e "$SSHMD_HOME/logs"
 ```
 
 Expected:
 
 - Logs are listed before clean.
 - Logs directory is removed.
-- Command refuses unsafe root-like SSHM_HOME values.
+- Command refuses unsafe root-like SSHMD_HOME values.
 
 ## Port Forward Flow
 
@@ -1590,7 +1590,7 @@ Type: interactive
 Setup:
 
 ```bash
-export SSHM_HOME="$(mktemp -d)"
+export SSHMD_HOME="$(mktemp -d)"
 go run . init
 ```
 
@@ -1619,7 +1619,7 @@ Type: interactive
 Setup:
 
 ```bash
-export SSHM_HOME="$(mktemp -d)"
+export SSHMD_HOME="$(mktemp -d)"
 go run . init
 ```
 
@@ -1647,7 +1647,7 @@ Type: interactive
 Setup:
 
 ```bash
-export SSHM_HOME="$(mktemp -d)"
+export SSHMD_HOME="$(mktemp -d)"
 go run . init
 ```
 
@@ -1674,7 +1674,7 @@ Type: interactive
 Setup:
 
 ```bash
-export SSHM_HOME="$(mktemp -d)"
+export SSHMD_HOME="$(mktemp -d)"
 go run . init
 ```
 
@@ -1704,7 +1704,7 @@ Type: local
 Setup:
 
 ```bash
-export SSHM_HOME="$(mktemp -d)"
+export SSHMD_HOME="$(mktemp -d)"
 go run . init
 go run . add web01 root@127.0.0.1:2222
 ```
@@ -1730,7 +1730,7 @@ Type: local
 Setup:
 
 ```bash
-export SSHM_HOME="$(mktemp -d)"
+export SSHMD_HOME="$(mktemp -d)"
 go run . init
 ```
 
@@ -1754,7 +1754,7 @@ Type: local
 Setup:
 
 ```bash
-export SSHM_HOME="$(mktemp -d)"
+export SSHMD_HOME="$(mktemp -d)"
 ```
 
 Steps:
@@ -1799,14 +1799,14 @@ Type: local
 Setup:
 
 ```bash
-export SSHM_HOME="$(mktemp -d)"
+export SSHMD_HOME="$(mktemp -d)"
 go run . init
 go run . add web01 root@127.0.0.1:2222
 ```
 
 Steps:
 
-- Edit `$SSHM_HOME/sshm.yaml` manually and set `identity: managed:missing`.
+- Edit `$SSHMD_HOME/sshmd.yaml` manually and set `identity: managed:missing`.
 - Run `go run . list`.
 - Restore config, then set `jump_host: missing`.
 - Run `go run . list`.
@@ -1824,8 +1824,8 @@ Type: local
 Setup:
 
 ```bash
-export SSHM_HOME="$(mktemp -d)"
-export SSHM_CONFIG_FILE="/tmp/should-not-be-used.yaml"
+export SSHMD_HOME="$(mktemp -d)"
+export SSHMD_CONFIG_FILE="/tmp/should-not-be-used.yaml"
 go run . init
 ```
 
@@ -1838,5 +1838,5 @@ test ! -e /tmp/should-not-be-used.yaml
 
 Expected:
 
-- Only `SSHM_HOME` controls the data directory.
-- `SSHM_CONFIG_FILE` is ignored.
+- Only `SSHMD_HOME` controls the data directory.
+- `SSHMD_CONFIG_FILE` is ignored.

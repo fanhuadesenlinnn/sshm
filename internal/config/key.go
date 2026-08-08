@@ -12,14 +12,14 @@ const managedIdentityPrefix = "managed:"
 
 var managedKeyNameRegexp = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 
-// ManagedKey describes a private key encrypted in the sshm secret store.
+// ManagedKey describes a private key encrypted in the sshmd secret store.
 type ManagedKey struct {
 	Name      string `yaml:"name"`
 	PublicKey string `yaml:"public_key"`
 	CreatedAt string `yaml:"created_at"`
 }
 
-// ManagedKeysFile is the managed-key section of sshm.yaml.
+// ManagedKeysFile is the managed-key section of sshmd.yaml.
 type ManagedKeysFile struct {
 	Default string       `yaml:"default,omitempty"`
 	Keys    []ManagedKey `yaml:"items"`

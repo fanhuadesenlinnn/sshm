@@ -12,11 +12,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/batch"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/deploy"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/ops"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/secret"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/batch"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/deploy"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/ops"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/secret"
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
 	"gopkg.in/yaml.v3"
@@ -28,7 +28,7 @@ func TestTransferOnePushesAndPullsDirectoryOverSFTP(t *testing.T) {
 	defer closeServer()
 	hostName, port := splitCommandTestAddress(t, addr)
 
-	configPath := filepath.Join(t.TempDir(), "sshm.yaml")
+	configPath := filepath.Join(t.TempDir(), "sshmd.yaml")
 	store := config.NewStoreWithPath(configPath)
 	initCommandTestStore(t, store)
 	host := config.DefaultHost()
@@ -147,11 +147,11 @@ func TestTransferOnePushesAndPullsDirectoryOverSFTP(t *testing.T) {
 		t.Fatalf("no-checksum existing target error = %v", err)
 	}
 
-	matches, err := filepath.Glob(filepath.Join(localDestination, host.Alias, "*.sshm-*"))
+	matches, err := filepath.Glob(filepath.Join(localDestination, host.Alias, "*.sshmd-*"))
 	if err != nil || len(matches) != 0 {
 		t.Fatalf("local temporary paths = %v, err = %v", matches, err)
 	}
-	matches, err = filepath.Glob(filepath.Join(remoteRoot, "*.sshm-*"))
+	matches, err = filepath.Glob(filepath.Join(remoteRoot, "*.sshmd-*"))
 	if err != nil || len(matches) != 0 {
 		t.Fatalf("remote temporary paths = %v, err = %v", matches, err)
 	}
@@ -163,7 +163,7 @@ func TestDeployRunnerExecutesCopyThenExecOverSharedExecutor(t *testing.T) {
 	defer closeServer()
 	hostName, port := splitCommandTestAddress(t, addr)
 
-	configPath := filepath.Join(t.TempDir(), "sshm.yaml")
+	configPath := filepath.Join(t.TempDir(), "sshmd.yaml")
 	store := config.NewStoreWithPath(configPath)
 	initCommandTestStore(t, store)
 	host := config.DefaultHost()

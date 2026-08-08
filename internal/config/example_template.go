@@ -1,7 +1,7 @@
 package config
 
 // ExampleTemplateFile is a commented template example created in
-// <SSHM_HOME>/templates/ by sshm init. It is referenced by the commented
+// <SSHMD_HOME>/templates/ by sshmd init. It is referenced by the commented
 // update-app example in deploy.yaml.
 const ExampleTemplateFile = `# 模板示例：由 template 模块渲染后上传到远端。
 # {{ }} 中引用 deploy.yaml 里的变量；| default 提供变量缺失时的兜底值。

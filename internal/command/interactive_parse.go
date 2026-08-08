@@ -35,7 +35,7 @@ var interactiveBatchValueFlags = map[string]bool{
 	"--exclude-tag":      true,
 }
 
-// parseInteractiveInput separates sshm's local routing prefix from an exec
+// parseInteractiveInput separates sshmd's local routing prefix from an exec
 // payload. Remote commands are kept as one argument after -- so their quotes,
 // escapes, variables, and spacing are not parsed and reconstructed locally.
 func parseInteractiveInput(input string) ([]string, error) {
@@ -110,7 +110,7 @@ func parseInteractiveRemoteInput(
 			continue
 		}
 		if strings.HasPrefix(token.Value, "-") {
-			return nil, fmt.Errorf("未知 sshm 选项 %s；如果它属于远程命令，请在前面加 --", token.Value)
+			return nil, fmt.Errorf("未知 sshmd 选项 %s；如果它属于远程命令，请在前面加 --", token.Value)
 		}
 		if target == "" {
 			target = token.Value
@@ -146,7 +146,7 @@ func legacyWrappedCommand(raw string) string {
 	return raw
 }
 
-// parseArgs tokenizes sshm management commands without performing shell
+// parseArgs tokenizes sshmd management commands without performing shell
 // expansion. It supports quoting, escaped characters, and empty quoted values,
 // and reports malformed input instead of silently changing it.
 func parseArgs(input string) ([]string, error) {

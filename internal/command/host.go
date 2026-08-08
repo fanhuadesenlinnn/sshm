@@ -8,8 +8,8 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/ui"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/ui"
 )
 
 func (app *App) cmdHost(args []string) error {
@@ -43,7 +43,7 @@ func (app *App) cmdHost(args []string) error {
 		app.printHostHelp()
 		return nil
 	default:
-		return fmt.Errorf("未知 host 命令 %q；使用 sshm host help 查看帮助", args[0])
+		return fmt.Errorf("未知 host 命令 %q；使用 sshmd host help 查看帮助", args[0])
 	}
 }
 
@@ -79,7 +79,7 @@ func printHostCenterHelp() {
 	fmt.Println("  ab/add-batch [别名=目标...]     批量添加主机")
 	fmt.Println("  e/edit <别名|ID>               交互式编辑主机")
 	fmt.Println("  d/delete <别名|ID> [--yes]     删除主机")
-	fmt.Println("  config-edit                    使用 $EDITOR 校验后更新 sshm.yaml")
+	fmt.Println("  config-edit                    使用 $EDITOR 校验后更新 sshmd.yaml")
 	fmt.Println("  import-ssh-config [路径]       导入 OpenSSH 配置")
 	fmt.Println()
 	fmt.Println("  输入 back/q 返回主命令页")
@@ -152,7 +152,7 @@ func (app *App) cmdConfigEdit(_ []string) error {
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return fmt.Errorf("创建配置目录失败: %w", err)
 	}
-	tmp, err := os.CreateTemp(dir, ".sshm-edit-*.yaml")
+	tmp, err := os.CreateTemp(dir, ".sshmd-edit-*.yaml")
 	if err != nil {
 		return fmt.Errorf("创建临时编辑文件失败: %w", err)
 	}

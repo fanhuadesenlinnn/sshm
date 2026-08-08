@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
 )
 
 func TestTargetSelectorStringAndEmpty(t *testing.T) {
@@ -179,7 +179,7 @@ func TestDiscoverExplicitDeduplicatesAndAbsolutizes(t *testing.T) {
 
 func TestDiscoverDefaultUsesHome(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("SSHM_HOME", home)
+	t.Setenv("SSHMD_HOME", home)
 	if err := os.MkdirAll(config.DeployDir(), 0700); err != nil {
 		t.Fatal(err)
 	}

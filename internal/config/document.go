@@ -8,14 +8,14 @@ import (
 	"sort"
 	"time"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/safefile"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/safefile"
 	"golang.org/x/crypto/ssh"
 	"gopkg.in/yaml.v3"
 )
 
 const DocumentVersion = 2
 
-var ErrNotInitialized = errors.New("sshm 尚未初始化；请先运行 sshm init")
+var ErrNotInitialized = errors.New("sshmd 尚未初始化；请先运行 sshmd init")
 
 // Defaults contains global operation defaults.
 type Defaults struct {
@@ -72,7 +72,7 @@ func (d *LogDefaults) UnmarshalYAML(node *yaml.Node) error {
 	return nil
 }
 
-// HostTrustEntry records a trusted SSH host key owned by sshm.
+// HostTrustEntry records a trusted SSH host key owned by sshmd.
 type HostTrustEntry struct {
 	Host      string `yaml:"host"`
 	Port      int    `yaml:"port"`
@@ -103,7 +103,7 @@ type ScryptConfig struct {
 	KeyLen int `yaml:"key_len"`
 }
 
-// Document is the only persistent configuration owned by sshm.
+// Document is the only persistent configuration owned by sshmd.
 type Document struct {
 	Version     int             `yaml:"version"`
 	Defaults    Defaults        `yaml:"defaults"`
@@ -114,7 +114,7 @@ type Document struct {
 	Vault       *EncryptedVault `yaml:"vault"`
 }
 
-// Repository atomically reads and updates sshm.yaml.
+// Repository atomically reads and updates sshmd.yaml.
 type Repository struct {
 	path string
 }
@@ -426,15 +426,15 @@ func encodeDocument(doc *Document) ([]byte, error) {
 	if err := encoder.Close(); err != nil {
 		return nil, err
 	}
-	header := `# sshm 配置文件
+	header := `# sshmd 配置文件
 #
 # 快速开始：
-#   添加主机：sshm add web01 root@10.0.0.11 --tags prod,web
-#   保存密码：sshm passwd web01
-#   测试连接：sshm ping web01
-#   连接主机：sshm web01
+#   添加主机：sshmd add web01 root@10.0.0.11 --tags prod,web
+#   保存密码：sshmd passwd web01
+#   测试连接：sshmd ping web01
+#   连接主机：sshmd web01
 #
-# 默认数据目录是 ~/.sshm；设置 SSHM_HOME 后，所有路径改用指定目录。
+# 默认数据目录是 ~/.sshmd；设置 SSHMD_HOME 后，所有路径改用指定目录。
 # Deploy 编排请编辑同目录的 deploy.yaml 或 deploy.d/*.yaml。
 #
 # 主机密钥策略：
@@ -452,11 +452,11 @@ func encodeDocument(doc *Document) ([]byte, error) {
 #     tags: [prod, web]
 #     note: 生产 Web 服务器
 #
-# 手工新增 hosts 条目时可以省略 id，sshm 校验后会自动生成并写回
+# 手工新增 hosts 条目时可以省略 id，sshmd 校验后会自动生成并写回
 # 已有主机的 id 用于关联凭据，请勿修改
-# 密码两种方式：sshm passwd 加密进 vault（推荐）；或显式写 password 字段（明文，受 0600 保护）
-# managed_keys、host_trust 与 vault 由 sshm 管理，请勿手动编辑
-# sshm 保存时会规范化 YAML；自定义说明请写入主机或标签的 note 字段
+# 密码两种方式：sshmd passwd 加密进 vault（推荐）；或显式写 password 字段（明文，受 0600 保护）
+# managed_keys、host_trust 与 vault 由 sshmd 管理，请勿手动编辑
+# sshmd 保存时会规范化 YAML；自定义说明请写入主机或标签的 note 字段
 `
 	return append([]byte(header), rendered.Bytes()...), nil
 }
@@ -468,11 +468,11 @@ func annotateDocument(root *yaml.Node) {
 	document := root.Content[0]
 	setMappingHeadComment(document, "version", "配置格式版本；当前必须是 2。")
 	setMappingHeadComment(document, "defaults", "全局默认值；单台主机可以覆盖主机信任策略。")
-	setMappingHeadComment(document, "tags", "标签定义；主机引用新标签时 sshm 会自动登记。")
-	setMappingHeadComment(document, "hosts", "主机列表；推荐使用 sshm add，也支持按文件顶部示例手工编辑。")
-	setMappingHeadComment(document, "managed_keys", "sshm 托管的密钥元数据；请通过 sshm key 命令维护。")
-	setMappingHeadComment(document, "host_trust", "已确认的 SSH 主机公钥；由 sshm 自动维护，请勿手工修改。")
-	setMappingHeadComment(document, "vault", "加密凭据数据；由 sshm 自动维护，绝不能改成明文密码。")
+	setMappingHeadComment(document, "tags", "标签定义；主机引用新标签时 sshmd 会自动登记。")
+	setMappingHeadComment(document, "hosts", "主机列表；推荐使用 sshmd add，也支持按文件顶部示例手工编辑。")
+	setMappingHeadComment(document, "managed_keys", "sshmd 托管的密钥元数据；请通过 sshmd key 命令维护。")
+	setMappingHeadComment(document, "host_trust", "已确认的 SSH 主机公钥；由 sshmd 自动维护，请勿手工修改。")
+	setMappingHeadComment(document, "vault", "加密凭据数据；由 sshmd 自动维护，绝不能改成明文密码。")
 
 	defaults := mappingValue(document, "defaults")
 	setMappingHeadComment(defaults, "host_key_policy", "主机密钥策略：strict | accept-new | insecure（不推荐）。")

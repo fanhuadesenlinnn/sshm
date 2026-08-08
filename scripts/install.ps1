@@ -1,12 +1,12 @@
 [CmdletBinding()]
 param(
-    [string]$Version = $env:SSHM_VERSION,
-    [string]$InstallDir = $env:SSHM_INSTALL_DIR,
+    [string]$Version = $env:SSHMD_VERSION,
+    [string]$InstallDir = $env:SSHMD_INSTALL_DIR,
     [switch]$NoPathUpdate
 )
 
 $ErrorActionPreference = 'Stop'
-$Repository = 'fanhuadesenlinnn/sshm'
+$Repository = 'fanhuadesenlinnn/sshmd'
 
 if ([string]::IsNullOrWhiteSpace($Version)) {
     $Version = 'latest'
@@ -22,7 +22,7 @@ if ([string]::IsNullOrWhiteSpace($InstallDir)) {
         $InstallDir = Join-Path $HOME '.local\bin'
     }
     else {
-        $InstallDir = Join-Path $env:LOCALAPPDATA 'Programs\sshm'
+        $InstallDir = Join-Path $env:LOCALAPPDATA 'Programs\sshmd'
     }
 }
 
@@ -38,9 +38,9 @@ $Architecture = switch -Regex ($RawArchitecture) {
     default { throw "Unsupported Windows architecture: $RawArchitecture" }
 }
 
-$Asset = "sshm_windows_$Architecture.zip"
-if (-not [string]::IsNullOrWhiteSpace($env:SSHM_RELEASE_BASE_URL)) {
-    $ReleaseBase = $env:SSHM_RELEASE_BASE_URL.TrimEnd('/')
+$Asset = "sshmd_windows_$Architecture.zip"
+if (-not [string]::IsNullOrWhiteSpace($env:SSHMD_RELEASE_BASE_URL)) {
+    $ReleaseBase = $env:SSHMD_RELEASE_BASE_URL.TrimEnd('/')
 }
 elseif ($Version -eq 'latest') {
     $ReleaseBase = "https://github.com/$Repository/releases/latest/download"
@@ -57,7 +57,7 @@ catch {
     # PowerShell 7 uses the operating system TLS stack and needs no override.
 }
 
-$TempDir = Join-Path ([IO.Path]::GetTempPath()) ("sshm-install-" + [Guid]::NewGuid().ToString('N'))
+$TempDir = Join-Path ([IO.Path]::GetTempPath()) ("sshmd-install-" + [Guid]::NewGuid().ToString('N'))
 $Archive = Join-Path $TempDir $Asset
 $Checksums = Join-Path $TempDir 'checksums.txt'
 $ExtractDir = Join-Path $TempDir 'extracted'
@@ -86,13 +86,13 @@ try {
     Write-Host "Verified SHA-256: $Actual"
 
     Expand-Archive -LiteralPath $Archive -DestinationPath $ExtractDir -Force
-    $Source = Join-Path $ExtractDir 'sshm.exe'
+    $Source = Join-Path $ExtractDir 'sshmd.exe'
     if (-not (Test-Path -LiteralPath $Source -PathType Leaf)) {
-        throw "$Asset does not contain sshm.exe."
+        throw "$Asset does not contain sshmd.exe."
     }
 
     New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
-    $Destination = Join-Path $InstallDir 'sshm.exe'
+    $Destination = Join-Path $InstallDir 'sshmd.exe'
     Copy-Item -LiteralPath $Source -Destination $Destination -Force
 
     if (-not $NoPathUpdate) {

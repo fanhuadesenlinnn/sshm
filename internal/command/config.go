@@ -3,8 +3,8 @@ package command
 import (
 	"fmt"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/ui"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -12,7 +12,7 @@ func newInitCommand(app *App) *cobra.Command {
 	var force bool
 	cmd := &cobra.Command{
 		Use:         "init",
-		Short:       commandShort("init", "初始化 ~/.sshm 工作目录和带注释的配置模板"),
+		Short:       commandShort("init", "初始化 ~/.sshmd 工作目录和带注释的配置模板"),
 		GroupID:     commandGroupID("init"),
 		Args:        cobra.NoArgs,
 		Annotations: map[string]string{allowWithoutConfig: "true"},
@@ -20,7 +20,7 @@ func newInitCommand(app *App) *cobra.Command {
 			return app.cmdInit(force)
 		},
 	}
-	cmd.Flags().BoolVar(&force, "force", false, "备份并覆盖已有 sshm.yaml")
+	cmd.Flags().BoolVar(&force, "force", false, "备份并覆盖已有 sshmd.yaml")
 	return cmd
 }
 
@@ -40,7 +40,7 @@ func newConfigCommand(app *App) *cobra.Command {
 	cmd.Flags().BoolVar(&yes, "yes", false, "确认安全降级等高风险配置变更")
 	cmd.AddCommand(&cobra.Command{
 		Use:         "path",
-		Short:       "显示当前 sshm 路径",
+		Short:       "显示当前 sshmd 路径",
 		Args:        cobra.NoArgs,
 		Annotations: map[string]string{allowWithoutConfig: "true"},
 		RunE: func(_ *cobra.Command, _ []string) error {
@@ -49,7 +49,7 @@ func newConfigCommand(app *App) *cobra.Command {
 	})
 	cmd.AddCommand(&cobra.Command{
 		Use:   "edit",
-		Short: "使用编辑器校验后更新 sshm.yaml",
+		Short: "使用编辑器校验后更新 sshmd.yaml",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			return app.cmdConfigEdit(nil)
@@ -66,16 +66,16 @@ func (app *App) cmdInit(force bool) error {
 	if legacy, exists := config.LegacyConfigExists(); exists {
 		ui.PrintWarn("发现旧配置 %s；v6 不会读取、迁移或删除该文件", legacy)
 	}
-	fmt.Println("initialized sshm home:")
+	fmt.Println("initialized sshmd home:")
 	printPaths(paths)
 	if backup != "" {
 		fmt.Printf("backup:   %s\n", backup)
 	}
 	fmt.Println()
 	fmt.Println("下一步:")
-	fmt.Println("  sshm add web01 root@10.0.0.11")
-	fmt.Println("  sshm deploy validate")
-	fmt.Println("  sshm doctor")
+	fmt.Println("  sshmd add web01 root@10.0.0.11")
+	fmt.Println("  sshmd deploy validate")
+	fmt.Println("  sshmd doctor")
 	fmt.Println()
 	fmt.Println("先读 README.md（本目录）和 deploy.yaml 顶部的注释，按注释一步步来。")
 	return nil
@@ -139,17 +139,17 @@ func (app *App) cmdConfig(args []string) error {
 		ui.PrintSuccess("默认主机信任策略已设置为 %s", args[1])
 		return nil
 	}
-	return fmt.Errorf("用法: sshm config [show | host-key-policy <strict|accept-new|insecure> [--yes]]")
+	return fmt.Errorf("用法: sshmd config [show | host-key-policy <strict|accept-new|insecure> [--yes]]")
 }
 
 func printConfigHelp() {
-	fmt.Println("sshm 核心状态只使用一个文件：<SSHM_HOME>/sshm.yaml")
+	fmt.Println("sshmd 核心状态只使用一个文件：<SSHMD_HOME>/sshmd.yaml")
 	fmt.Println("deploy 工作流使用独立 deploy.yaml、deploy.d/*.yaml 或显式 --file")
 	fmt.Println("主机信任策略：strict | accept-new | insecure")
 	fmt.Println("设置 insecure 会跳过主机身份验证，非交互环境必须显式使用 --yes")
 	fmt.Println("主机的 host_key_policy 为空时继承 defaults.host_key_policy")
 	fmt.Println("标签定义保存在 tags.items；主机引用的新标签会自动登记")
-	fmt.Println("host_trust 与 vault 由 sshm 管理，请勿手动修改")
-	fmt.Println("使用 sshm config edit 校验后编辑完整配置")
-	fmt.Println("v6 不读取或迁移旧 ~/.config/sshm/sshm.yaml")
+	fmt.Println("host_trust 与 vault 由 sshmd 管理，请勿手动修改")
+	fmt.Println("使用 sshmd config edit 校验后编辑完整配置")
+	fmt.Println("v6 不读取或迁移旧 ~/.config/sshmd/sshmd.yaml")
 }

@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/secret"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/shellquote"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/secret"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/shellquote"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -55,7 +55,7 @@ func TestAutoRsyncFallsBackWhenCapabilityProbeCannotGuaranteeSemantics(t *testin
 }
 
 func TestRsyncAvailableRejectsUnsupportedInputsBeforeExternalProbe(t *testing.T) {
-	vault := secret.NewFileStore(filepath.Join(t.TempDir(), "sshm.yaml"), "master")
+	vault := secret.NewFileStore(filepath.Join(t.TempDir(), "sshmd.yaml"), "master")
 	host := commandTestHost()
 	host.Identity = config.ManagedIdentity("personal")
 	options := transferOptions{localPath: "local", remotePath: "remote"}
@@ -94,7 +94,7 @@ func TestPrepareRsyncTransportPinsTrustAndDisablesPassword(t *testing.T) {
 	}
 	publicText := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(publicKey)))
 
-	configPath := filepath.Join(t.TempDir(), "sshm.yaml")
+	configPath := filepath.Join(t.TempDir(), "sshmd.yaml")
 	host := config.DefaultHost()
 	host.Alias, host.User, host.Host = "server", "user", "example.test"
 	host.Identity, host.HostKeyPolicy = config.ManagedIdentity("personal"), config.HostKeyPolicyStrict

@@ -5,13 +5,13 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
 )
 
 func TestPingSingleHostUnreachableExitCode(t *testing.T) {
-	t.Setenv("SSHM_HOME", t.TempDir())
+	t.Setenv("SSHMD_HOME", t.TempDir())
 	dir := t.TempDir()
-	store := config.NewStoreWithPath(filepath.Join(dir, "sshm.yaml"))
+	store := config.NewStoreWithPath(filepath.Join(dir, "sshmd.yaml"))
 	initCommandTestStore(t, store)
 	host := config.DefaultHost()
 	host.Alias, host.User, host.Host, host.Port = "dead", "root", "127.0.0.1", 1

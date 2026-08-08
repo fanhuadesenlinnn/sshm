@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
 )
 
 func TestHostLogFiles(t *testing.T) {
@@ -31,7 +31,7 @@ func TestHostLogFiles(t *testing.T) {
 
 func TestLogActionFilterMatchesSuffixedRunDirectories(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("SSHM_HOME", dir)
+	t.Setenv("SSHMD_HOME", dir)
 	for _, name := range []string{
 		"20260808-000000000000000000-exec",
 		"20260808-000000000000000001-exec-batch",

@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/secret"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/sshx"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/secret"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/sshx"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -39,7 +39,7 @@ func TestRunLocalForwardCarriesTraffic(t *testing.T) {
 	sshAddr, closeSSH := startCommandTestForwardServer(t, "secret")
 	defer closeSSH()
 	hostName, port := splitCommandTestAddress(t, sshAddr)
-	configPath := filepath.Join(t.TempDir(), "sshm.yaml")
+	configPath := filepath.Join(t.TempDir(), "sshmd.yaml")
 	store := config.NewStoreWithPath(configPath)
 	initCommandTestStore(t, store)
 	host := config.DefaultHost()
@@ -120,7 +120,7 @@ func TestRunLocalForwardsTwoPairs(t *testing.T) {
 	sshAddr, closeSSH := startCommandTestForwardServer(t, "secret")
 	defer closeSSH()
 	hostName, port := splitCommandTestAddress(t, sshAddr)
-	configPath := filepath.Join(t.TempDir(), "sshm.yaml")
+	configPath := filepath.Join(t.TempDir(), "sshmd.yaml")
 	store := config.NewStoreWithPath(configPath)
 	initCommandTestStore(t, store)
 	host := config.DefaultHost()

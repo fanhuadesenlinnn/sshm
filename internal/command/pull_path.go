@@ -8,7 +8,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
 )
 
 func multiPullDestination(localDest, hostAlias, remotePath string, flat bool) (string, error) {

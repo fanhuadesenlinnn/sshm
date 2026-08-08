@@ -9,7 +9,7 @@ import (
 )
 
 func TestRepositoryCreatesCommentedSingleFile(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "sshm.yaml")
+	path := filepath.Join(t.TempDir(), "sshmd.yaml")
 	repo := NewRepositoryWithPath(path)
 	if err := repo.Replace(DefaultDocument()); err != nil {
 		t.Fatal(err)
@@ -27,11 +27,11 @@ func TestRepositoryCreatesCommentedSingleFile(t *testing.T) {
 	}
 	text := string(data)
 	for _, want := range []string{
-		"# sshm 配置文件",
+		"# sshmd 配置文件",
 		"# 快速开始：",
 		"# 主机密钥策略：",
-		"# 主机列表；推荐使用 sshm add",
-		"# 加密凭据数据；由 sshm 自动维护",
+		"# 主机列表；推荐使用 sshmd add",
+		"# 加密凭据数据；由 sshmd 自动维护",
 		"version: 2",
 		"tags:",
 		"hosts: []",
@@ -45,7 +45,7 @@ func TestRepositoryCreatesCommentedSingleFile(t *testing.T) {
 }
 
 func TestRepositoryRejectsDuplicateStableIDs(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "sshm.yaml")
+	path := filepath.Join(t.TempDir(), "sshmd.yaml")
 	repo := NewRepositoryWithPath(path)
 	if err := repo.Replace(DefaultDocument()); err != nil {
 		t.Fatal(err)
@@ -73,7 +73,7 @@ func TestEffectiveHostKeyPolicy(t *testing.T) {
 }
 
 func TestRepositoryMutationFailureLeavesDocumentUnchanged(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "sshm.yaml")
+	path := filepath.Join(t.TempDir(), "sshmd.yaml")
 	repo := NewRepositoryWithPath(path)
 	if err := repo.Replace(DefaultDocument()); err != nil {
 		t.Fatal(err)
@@ -99,12 +99,12 @@ func TestRepositoryMutationFailureLeavesDocumentUnchanged(t *testing.T) {
 		t.Fatal(err)
 	}
 	if string(after) != string(before) {
-		t.Fatal("failed transaction changed sshm.yaml")
+		t.Fatal("failed transaction changed sshmd.yaml")
 	}
 }
 
 func TestRepositoryGeneratesAndPersistsMissingHostID(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "sshm.yaml")
+	path := filepath.Join(t.TempDir(), "sshmd.yaml")
 	data := []byte(`version: 2
 defaults:
   host_key_policy: strict
@@ -181,7 +181,7 @@ func TestHostValidateRejectsDualPasswordSources(t *testing.T) {
 }
 
 func TestRepositoryDoesNotRewriteInvalidHostWhenIDIsMissing(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "sshm.yaml")
+	path := filepath.Join(t.TempDir(), "sshmd.yaml")
 	data := []byte(`version: 2
 hosts:
   - alias: ../invalid

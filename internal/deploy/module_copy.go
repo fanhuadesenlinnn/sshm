@@ -8,11 +8,11 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/batch"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/operation"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/ops"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/safefile"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/shellquote"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/batch"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/operation"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/ops"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/safefile"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/shellquote"
 )
 
 type copyArgs struct {
@@ -116,7 +116,7 @@ func pushToRemote(tc TaskContext, src, content, dest string, backup bool, checks
 
 func writeTempContent(content string) (string, error) {
 	dir := os.TempDir()
-	file, err := os.CreateTemp(dir, "sshm-content-*")
+	file, err := os.CreateTemp(dir, "sshmd-content-*")
 	if err != nil {
 		return "", fmt.Errorf("创建临时文件失败: %w", err)
 	}

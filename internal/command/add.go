@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/ui"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/ui"
 )
 
 func (app *App) cmdAdd(args []string) error {
@@ -19,7 +19,7 @@ func (app *App) cmdAdd(args []string) error {
 
 func (app *App) cmdQuickAdd(args []string) error {
 	if len(args) < 2 {
-		return fmt.Errorf("用法: sshm add <别名> <用户@主机[:端口]> [--identity 托管密钥] [--tags 标签] [--auth 策略] [--host-key-policy 策略] [--jump-host 别名]")
+		return fmt.Errorf("用法: sshmd add <别名> <用户@主机[:端口]> [--identity 托管密钥] [--tags 标签] [--auth 策略] [--host-key-policy 策略] [--jump-host 别名]")
 	}
 
 	h := config.DefaultHost()
@@ -123,7 +123,7 @@ func (app *App) cmdAddWizard() error {
 	fmt.Println("  认证方式: auto（推荐）/ key / password")
 	h.Auth = ui.ReadLineDefault("认证方式 [auto]: ", "auto")
 
-	h.Identity = normalizeManagedIdentity(ui.ReadLine("托管密钥名称，可留空（使用 sshm key create 创建）: "))
+	h.Identity = normalizeManagedIdentity(ui.ReadLine("托管密钥名称，可留空（使用 sshmd key create 创建）: "))
 
 	h.Note = ui.ReadLine("备注，可留空: ")
 	h.Tags = config.ParseTags(ui.ReadLine("标签（空格或逗号分隔），可留空: "))
@@ -175,10 +175,10 @@ func printAddedHost(h config.Host, savedPassword bool) {
 	}
 	fmt.Println()
 	fmt.Println("  下一步:")
-	fmt.Printf("    sshm ping %s\n", h.Alias)
+	fmt.Printf("    sshmd ping %s\n", h.Alias)
 	if !savedPassword && h.Identity == "" {
-		fmt.Printf("    sshm passwd %s\n", h.Alias)
+		fmt.Printf("    sshmd passwd %s\n", h.Alias)
 	}
-	fmt.Printf("    sshm %s\n", h.Alias)
+	fmt.Printf("    sshmd %s\n", h.Alias)
 	fmt.Println()
 }

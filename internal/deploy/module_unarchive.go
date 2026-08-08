@@ -7,10 +7,10 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/batch"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/operation"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/ops"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/shellquote"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/batch"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/operation"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/ops"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/shellquote"
 )
 
 type unarchiveArgs struct {
@@ -56,7 +56,7 @@ func (m *unarchiveModule) Run(tc TaskContext, raw any) ModuleResult {
 	if kind.extension == "" {
 		return failedModule(fmt.Errorf("无法识别的压缩包格式: %s（支持 .tar.gz/.tgz/.zip）", localPath), operation.StageConfig)
 	}
-	tempDirResult := runRemote(tc, "mktemp -d -t sshm-unarchive-XXXXXX")
+	tempDirResult := runRemote(tc, "mktemp -d -t sshmd-unarchive-XXXXXX")
 	if tempDirResult.Status != batch.StatusOK {
 		return tempDirResult
 	}

@@ -1,8 +1,8 @@
-# sshm v6.1.2
+# sshmd v6.2.0
 
-sshm 是一个本地优先、面向个人使用的 SSH 主机管理与轻量运维工具。它使用 Go 原生 SSH 能力管理主机、标签、凭据、批量命令、安全文件传输和 Deploy v3 编排。
+sshmd 是一个本地优先、面向个人使用的 SSH 主机管理与轻量运维工具。它使用 Go 原生 SSH 能力管理主机、标签、凭据、批量命令、安全文件传输和 Deploy v3 编排。
 
-> 版本说明：产品发布版本是 `v6.1.2`，Go module 是 `github.com/fanhuadesenlinnn/sshm/v6`，主配置 schema 为 `version: 2`，Deploy 配置 schema 为 `version: 3`。
+> 版本说明：产品发布版本是 `v6.2.0`，Go module 是 `github.com/fanhuadesenlinnn/sshmd/v6`，主配置 schema 为 `version: 2`，Deploy 配置 schema 为 `version: 3`。
 
 ## 安装
 
@@ -11,73 +11,73 @@ sshm 是一个本地优先、面向个人使用的 SSH 主机管理与轻量运�
 macOS / Linux：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/fanhuadesenlinnn/sshm/main/scripts/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/fanhuadesenlinnn/sshmd/main/scripts/install.sh | sh
 ```
 
 Windows PowerShell：
 
 ```powershell
-irm https://raw.githubusercontent.com/fanhuadesenlinnn/sshm/main/scripts/install.ps1 | iex
+irm https://raw.githubusercontent.com/fanhuadesenlinnn/sshmd/main/scripts/install.ps1 | iex
 ```
 
-安装器会自动识别操作系统和 AMD64/ARM64 架构，从最新 GitHub Release 下载对应制品，使用 `checksums.txt` 验证 SHA-256，然后安装并执行 `sshm --version`。安装脚本只保存在代码仓库中，不会作为 Release 附件发布。
+安装器会自动识别操作系统和 AMD64/ARM64 架构，从最新 GitHub Release 下载对应制品，使用 `checksums.txt` 验证 SHA-256，然后安装并执行 `sshmd --version`。安装脚本只保存在代码仓库中，不会作为 Release 附件发布。
 
 macOS/Linux 默认安装到 `/usr/local/bin`，权限不足时会请求 `sudo`；也可以指定版本或安装目录：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/fanhuadesenlinnn/sshm/main/scripts/install.sh | \
-  sh -s -- --version v6.1.2 --install-dir "$HOME/.local/bin"
+curl -fsSL https://raw.githubusercontent.com/fanhuadesenlinnn/sshmd/main/scripts/install.sh | \
+  sh -s -- --version v6.2.0 --install-dir "$HOME/.local/bin"
 ```
 
-Windows 默认安装到 `%LOCALAPPDATA%\Programs\sshm` 并加入用户 PATH。
+Windows 默认安装到 `%LOCALAPPDATA%\Programs\sshmd` 并加入用户 PATH。
 
 ### 使用 Go 安装
 
 已经安装 Go 1.25 或更高版本时，也可以使用：
 
 ```bash
-go install github.com/fanhuadesenlinnn/sshm/v6@latest
+go install github.com/fanhuadesenlinnn/sshmd/v6@latest
 ```
 
 如果 `proxy.golang.org` 访问较慢，可临时指定国内代理：
 
 ```bash
-GOPROXY=https://goproxy.cn,direct go install github.com/fanhuadesenlinnn/sshm/v6@latest
+GOPROXY=https://goproxy.cn,direct go install github.com/fanhuadesenlinnn/sshmd/v6@latest
 ```
 
 PowerShell：
 
 ```powershell
-$env:GOPROXY = "https://goproxy.cn,direct"; go install github.com/fanhuadesenlinnn/sshm/v6@latest
+$env:GOPROXY = "https://goproxy.cn,direct"; go install github.com/fanhuadesenlinnn/sshmd/v6@latest
 ```
 
-也可以前往 [GitHub Releases](https://github.com/fanhuadesenlinnn/sshm/releases/latest) 手工下载对应平台的压缩包和校验文件。
+也可以前往 [GitHub Releases](https://github.com/fanhuadesenlinnn/sshmd/releases/latest) 手工下载对应平台的压缩包和校验文件。
 
 ## v6 破坏性变更
 
-- 默认数据目录只使用 `~/.sshm`，唯一可用的路径覆盖变量是 `SSHM_HOME`。
-- 不支持 `SSHM_CONFIG_FILE`，也不读取、迁移或删除旧 `~/.config/sshm/sshm.yaml`。
+- 默认数据目录只使用 `~/.sshmd`，唯一可用的路径覆盖变量是 `SSHMD_HOME`。
+- 不支持 `SSHMD_CONFIG_FILE`，也不读取、迁移或删除旧 `~/.config/sshmd/sshmd.yaml`。
 - 主配置必须显式使用 `version: 2`，不兼容旧 schema。
 - Deploy v2（`version: 2` 的 profile/steps/handlers）在 v6.1.0 移除，`deploy migrate` 一并移除；旧文件不会被加载，请改写为 v3 playbook。
 - `exec-all`、`push-all`、`pull-all` 已移除，统一使用虚拟标签 `all`。
-- 当前目录的 `sshm.deploy.yaml` 不再隐式加载，项目文件必须通过 `--file` 指定。
+- 当前目录的 `sshmd.deploy.yaml` 不再隐式加载，项目文件必须通过 `--file` 指定。
 
 ## 首次使用
 
 ```bash
-sshm
-sshm init
-sshm config path
-sshm doctor
+sshmd
+sshmd init
+sshmd config path
+sshmd doctor
 ```
 
-未初始化时直接运行 `sshm` 会显示首次使用引导，不会直接进入空工作台。
+未初始化时直接运行 `sshmd` 会显示首次使用引导，不会直接进入空工作台。
 
-`sshm init` 创建：
+`sshmd init` 创建：
 
 ```text
-~/.sshm/
-├── sshm.yaml
+~/.sshmd/
+├── sshmd.yaml
 ├── deploy.yaml
 ├── deploy.d/
 ├── templates/
@@ -87,54 +87,54 @@ sshm doctor
 └── tmp/
 ```
 
-`sshm.yaml` 会包含快速开始、字段用途、主机示例和安全边界说明。`deploy.yaml` 默认不启用任何工作流，提供一份完全注释掉的 Deploy v3 示例（快速开始、全部模块、register/when、block/rescue、include、sleep/confirm）；可以安全地先运行 `sshm deploy validate`，再按注释创建 play。`templates/` 含一个可运行的模板示例，`README.md` 是一页速查。已有 `deploy.yaml` 不会被 `sshm init --force` 覆盖。
+`sshmd.yaml` 会包含快速开始、字段用途、主机示例和安全边界说明。`deploy.yaml` 默认不启用任何工作流，提供一份完全注释掉的 Deploy v3 示例（快速开始、全部模块、register/when、block/rescue、include、sleep/confirm）；可以安全地先运行 `sshmd deploy validate`，再按注释创建 play。`templates/` 含一个可运行的模板示例，`README.md` 是一页速查。已有 `deploy.yaml` 不会被 `sshmd init --force` 覆盖。
 
-主配置、日志、deploy 文件和备份都以同一个 `SSHM_HOME` 为根目录。发现旧配置时，`init` 与 `doctor` 只输出警告。
+主配置、日志、deploy 文件和备份都以同一个 `SSHMD_HOME` 为根目录。发现旧配置时，`init` 与 `doctor` 只输出警告。
 
 ## 常用命令
 
 ```bash
-sshm                         # 打开轻量工作台
-sshm web01                   # 按别名或 ID 直连
-sshm list
-sshm add web01 root@10.0.0.11
-sshm edit web01
-sshm tag
-sshm ping web01
-sshm passwd web01 web02
-sshm passwd --tag prod
-sshm exec web01 "uptime"
-sshm exec-tag prod "uptime"
-sshm exec-tag all "uptime"
+sshmd                         # 打开轻量工作台
+sshmd web01                   # 按别名或 ID 直连
+sshmd list
+sshmd add web01 root@10.0.0.11
+sshmd edit web01
+sshmd tag
+sshmd ping web01
+sshmd passwd web01 web02
+sshmd passwd --tag prod
+sshmd exec web01 "uptime"
+sshmd exec-tag prod "uptime"
+sshmd exec-tag all "uptime"
 ```
 
 Cobra 提供根命令和 Deploy 子命令帮助：
 
 ```bash
-sshm --help
-sshm host --help
-sshm key --help
-sshm tag --help
-sshm deploy --help
-sshm deploy run --help
+sshmd --help
+sshmd host --help
+sshmd key --help
+sshmd tag --help
+sshmd deploy --help
+sshmd deploy run --help
 ```
 
-在交互工作台中，复杂远程命令建议用 `--` 明确标记起点；`--` 后的文本不再由 sshm 拆分或重组：
+在交互工作台中，复杂远程命令建议用 `--` 明确标记起点；`--` 后的文本不再由 sshmd 拆分或重组：
 
 ```text
-sshm> x web01 --quiet -- pwd
-sshm> x web01 -- awk '{print $1}' /tmp/data
-sshm> xt prod --parallel 4 --yes -- systemctl restart app
+sshmd> x web01 --quiet -- pwd
+sshmd> x web01 -- awk '{print $1}' /tmp/data
+sshmd> xt prod --parallel 4 --yes -- systemctl restart app
 ```
 
-不写 `--` 时仍兼容 `x web01 pwd` 和 `x web01 --quiet pwd`。只有远程命令开始前的已知 sshm 选项会被解析；一旦识别到命令起点，后续引号、变量、反斜杠和命令参数都原样传给远程 Shell。
+不写 `--` 时仍兼容 `x web01 pwd` 和 `x web01 --quiet pwd`。只有远程命令开始前的已知 sshmd 选项会被解析；一旦识别到命令起点，后续引号、变量、反斜杠和命令参数都原样传给远程 Shell。
 
 ## 批量执行
 
 `exec-tag`、`push-tag`、`pull-tag` 和 `deploy run` 复用同一个 BatchRunner。
 
 ```bash
-sshm exec-tag prod "systemctl status app" \
+sshmd exec-tag prod "systemctl status app" \
   --serial 2 \
   --parallel 2 \
   --timeout 30s \
@@ -180,16 +180,16 @@ sshm exec-tag prod "systemctl status app" \
 单主机：
 
 ```bash
-sshm push web01 ./dist/app.tar.gz /opt/app/app.tar.gz
-sshm pull web01 /etc/nginx/nginx.conf ./nginx.web01.conf
+sshmd push web01 ./dist/app.tar.gz /opt/app/app.tar.gz
+sshmd pull web01 /etc/nginx/nginx.conf ./nginx.web01.conf
 ```
 
 按标签：
 
 ```bash
-sshm push-tag prod ./dist/app.tar.gz /opt/app/app.tar.gz --backup --yes
-sshm pull-tag prod /etc/nginx ./backup --yes
-sshm pull-tag all /etc/hosts ./backup --flat --yes
+sshmd push-tag prod ./dist/app.tar.gz /opt/app/app.tar.gz --backup --yes
+sshmd pull-tag prod /etc/nginx ./backup --yes
+sshmd pull-tag all /etc/hosts ./backup --flat --yes
 ```
 
 传输语义：
@@ -216,10 +216,10 @@ sshm pull-tag all /etc/hosts ./backup --flat --yes
 Deploy 使用模块化 playbook：文档 `version: 3`，由 plays（工作流）、tasks（任务）和 modules（模块）组成。文件结构沿用 `deploy.yaml` + `deploy.d/*.yaml`；v6.1.0 起仅支持 v3，不再加载 Deploy v2 文件。
 
 ```bash
-sshm deploy validate
-sshm deploy list
-sshm deploy plan update-app
-sshm deploy run update-app --check --diff --yes
+sshmd deploy validate
+sshmd deploy list
+sshmd deploy plan update-app
+sshmd deploy run update-app --check --diff --yes
 ```
 
 支持 13 个幂等模块：`command`/`shell`、`file`、`copy`、`template`、`service`、`wait_for`、`sleep`、`unarchive`、`fetch`、`pause`、`fail`、`debug`。每个模块内置 check/diff 与 changed 判定，另支持 `register`/`when`、`loop`、`run_once`、`ignore_errors`、`failed_when`/`changed_when`、`become`、`confirm`（linear 策略下每个 serial 批次开始前的人工门禁）、`block`/`rescue`/`always`、静态 `include`、`strategy: linear|free` 与 `gather_facts`。
@@ -263,20 +263,20 @@ sshm deploy run update-app --check --diff --yes
 ## 配置与安全
 
 - 默认主机信任策略是 `strict`。
-- 初始化生成的主配置包含字段级中文说明；sshm 保存配置时会恢复官方注释，自定义说明应写入主机或标签的 `note` 字段。
-- 可以通过菜单/命令或手工编辑 `sshm.yaml` 添加主机；手工新增的 `hosts` 条目可省略内部 `id`，sshm 会自动生成并写回。已有主机的 `id` 用于关联凭据，不应修改。
+- 初始化生成的主配置包含字段级中文说明；sshmd 保存配置时会恢复官方注释，自定义说明应写入主机或标签的 `note` 字段。
+- 可以通过菜单/命令或手工编辑 `sshmd.yaml` 添加主机；手工新增的 `hosts` 条目可省略内部 `id`，sshmd 会自动生成并写回。已有主机的 `id` 用于关联凭据，不应修改。
 - `--yes` 只跳过当前操作确认，不跳过主密码或 host trust。
 - `--all` 不能与具体主机或 `--tag` 混用，避免意外扩大操作范围。
 - `passwd` 和 `forget-pass` 支持多个主机、`--tag` 与 `--all`；批量 `passwd` 会把同一个 SSH 密码保存到全部目标主机。
 - 删除保存密码、删除托管密钥、清理日志和设置 `host-key-policy insecure` 默认需要确认；非交互环境必须显式使用 `--yes`。
-- 密码与托管私钥默认保存在 `sshm.yaml` 的加密 vault 中；也支持在主机条目显式写 `password` 明文字段（与 `password_ref` 互斥，受 0600 权限保护，`sshm doctor` 会给出提醒）。Deploy 编排文件始终禁止保存密码或私钥。
+- 密码与托管私钥默认保存在 `sshmd.yaml` 的加密 vault 中；也支持在主机条目显式写 `password` 明文字段（与 `password_ref` 互斥，受 0600 权限保护，`sshmd doctor` 会给出提醒）。Deploy 编排文件始终禁止保存密码或私钥。
 - 主密码只在当前进程内按需解锁，`lock` 或进程退出后失效。
 - host alias 采用跨平台安全字符规则，可直接用于多主机 pull 目录。
 - 主配置和 Deploy 配置均严格拒绝未知字段。
 
 ## 日志
 
-日志默认写入 `~/.sshm/logs`，目录权限为 `0700`，文件权限为 `0600`。可在主配置中关闭日志或调整保留时间：
+日志默认写入 `~/.sshmd/logs`，目录权限为 `0700`，文件权限为 `0600`。可在主配置中关闭日志或调整保留时间：
 
 ```yaml
 defaults:
@@ -286,8 +286,8 @@ defaults:
 ```
 
 ```bash
-sshm logs
-sshm logs clean
+sshmd logs
+sshmd logs clean
 ```
 
 ## 开发与验收

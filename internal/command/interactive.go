@@ -7,11 +7,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/operation"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/secret"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/sshx"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/ui"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/operation"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/secret"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/sshx"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/ui"
 )
 
 func (app *App) interactiveMode() error {
@@ -29,7 +29,7 @@ func (app *App) interactiveMode() error {
 	app.printWorkbench()
 
 	for {
-		input := ui.ReadLine(ui.CyanText("sshm> "))
+		input := ui.ReadLine(ui.CyanText("sshmd> "))
 		if input == "" {
 			continue
 		}
@@ -137,7 +137,7 @@ func (app *App) dispatchInteractive(parts []string) (bool, error) {
 }
 
 func (app *App) printWorkbench() {
-	ui.PrintHeader("sshm 工作台")
+	ui.PrintHeader("sshmd 工作台")
 	fmt.Println()
 	fmt.Println("  p/ping        测试连接")
 	fmt.Println("  f/find-con    查找并连接主机")
@@ -181,7 +181,7 @@ func (app *App) cmdConnect(args []string) (err error) {
 		return fmt.Errorf("请指定主机别名或ID")
 	}
 	if len(args) > 1 {
-		return fmt.Errorf("不支持透传 OpenSSH 参数；请使用 sshm 的原生能力")
+		return fmt.Errorf("不支持透传 OpenSSH 参数；请使用 sshmd 的原生能力")
 	}
 
 	aliasOrID := args[0]

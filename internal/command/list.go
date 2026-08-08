@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/ui"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/ui"
 )
 
 type indexedHost struct {
@@ -64,9 +64,9 @@ func (app *App) cmdList(args []string) error {
 
 	if len(rows) == 0 {
 		if len(tagFilters) > 0 {
-			ui.PrintWarn("没有匹配标签的主机，使用 sshm tag list 查看标签，或 sshm tag add 绑定主机")
+			ui.PrintWarn("没有匹配标签的主机，使用 sshmd tag list 查看标签，或 sshmd tag add 绑定主机")
 		} else {
-			ui.PrintWarn("没有匹配的主机，使用 sshm add 添加")
+			ui.PrintWarn("没有匹配的主机，使用 sshmd add 添加")
 		}
 		return nil
 	}

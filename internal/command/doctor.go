@@ -4,19 +4,19 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/deploy"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/ui"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/deploy"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/ui"
 )
 
 func (app *App) cmdDoctor(_ []string) error {
 	hf, err := app.Store.Load()
 	if errors.Is(err, config.ErrNotInitialized) {
-		ui.PrintHeader("sshm 环境检查")
+		ui.PrintHeader("sshmd 环境检查")
 		fmt.Println()
 		fmt.Printf("  %-14s %s\n", "版本", CurrentVersion())
 		fmt.Printf("  %-14s %s\n", "配置文件", app.Store.Path())
-		ui.PrintWarn("sshm 尚未初始化；请运行 sshm init")
+		ui.PrintWarn("sshmd 尚未初始化；请运行 sshmd init")
 		if legacy, exists := config.LegacyConfigExists(); exists {
 			ui.PrintWarn("发现旧配置 %s；v6 不会读取、迁移或删除该文件", legacy)
 		}
@@ -31,7 +31,7 @@ func (app *App) cmdDoctor(_ []string) error {
 	}
 	app.checkDeployConfig()
 
-	ui.PrintHeader("sshm 环境检查")
+	ui.PrintHeader("sshmd 环境检查")
 	fmt.Println()
 	fmt.Printf("  %-14s %s\n", "版本", CurrentVersion())
 	fmt.Printf("  %-14s %s\n", "配置文件", app.Store.Path())
@@ -93,7 +93,7 @@ func (app *App) cmdDoctor(_ []string) error {
 		}
 	}
 	if plaintext > 0 {
-		ui.PrintWarn("%d 台主机使用主配置明文密码；建议用 sshm passwd 加密到 vault", plaintext)
+		ui.PrintWarn("%d 台主机使用主配置明文密码；建议用 sshmd passwd 加密到 vault", plaintext)
 	}
 	if missingKeys == 0 && credentialIssues == 0 {
 		ui.PrintSuccess("环境检查完成（%d 台使用托管密钥，%d 台跳过身份验证）", managedKeys, insecureHosts)

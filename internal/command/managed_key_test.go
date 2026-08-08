@@ -5,13 +5,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/secret"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/secret"
 )
 
 func TestManagedKeyCreateAndUse(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "sshm.yaml")
+	configPath := filepath.Join(dir, "sshmd.yaml")
 	hostStore := config.NewStoreWithPath(configPath)
 	initCommandTestStore(t, hostStore)
 	host := config.DefaultHost()
@@ -48,7 +48,7 @@ func TestManagedKeyCreateAndUse(t *testing.T) {
 
 func TestSelectHostsSupportsTagAndAlias(t *testing.T) {
 	dir := t.TempDir()
-	store := config.NewStoreWithPath(filepath.Join(dir, "sshm.yaml"))
+	store := config.NewStoreWithPath(filepath.Join(dir, "sshmd.yaml"))
 	initCommandTestStore(t, store)
 	for _, host := range []config.Host{
 		{ID: config.NewID(), Alias: "one", User: "root", Host: "one", Port: 22, Auth: "auto", Tags: []string{"prod"}},
@@ -94,7 +94,7 @@ func TestInstallAndRevokeCommandsQuotePublicKey(t *testing.T) {
 
 func TestSelectHostsSupportsExcludes(t *testing.T) {
 	dir := t.TempDir()
-	store := config.NewStoreWithPath(filepath.Join(dir, "sshm.yaml"))
+	store := config.NewStoreWithPath(filepath.Join(dir, "sshmd.yaml"))
 	initCommandTestStore(t, store)
 	for _, host := range []config.Host{
 		{ID: config.NewID(), Alias: "web01", User: "root", Host: "web01", Port: 22, Auth: "auto", Tags: []string{"prod", "web"}},

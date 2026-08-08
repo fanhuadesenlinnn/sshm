@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
 	"golang.org/x/term"
 )
 
@@ -356,7 +356,7 @@ func RenderHostDetail(h config.Host, index int) {
 func RenderSearchResults(hosts []config.Host, indices []int, keyword string) {
 	if len(hosts) == 0 {
 		fmt.Println("  (未找到匹配主机)")
-		fmt.Println("  使用 sshm list 查看全部主机，或 sshm add 添加新主机。")
+		fmt.Println("  使用 sshmd list 查看全部主机，或 sshmd add 添加新主机。")
 		return
 	}
 	fmt.Println()

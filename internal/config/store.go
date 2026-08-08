@@ -9,7 +9,7 @@ import (
 
 const CurrentVersion = DocumentVersion
 
-// Store is a host-focused view over the single sshm.yaml repository.
+// Store is a host-focused view over the single sshmd.yaml repository.
 type Store struct {
 	repo *Repository
 }

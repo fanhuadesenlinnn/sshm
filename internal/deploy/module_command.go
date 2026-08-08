@@ -6,9 +6,9 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/batch"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/operation"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/shellquote"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/batch"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/operation"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/shellquote"
 )
 
 type commandArgs struct {
@@ -19,7 +19,7 @@ type commandArgs struct {
 }
 
 // commandModule implements both command and shell; both run through the remote
-// shell, keeping sshm's existing exec semantics.
+// shell, keeping sshmd's existing exec semantics.
 type commandModule struct {
 	name string
 }

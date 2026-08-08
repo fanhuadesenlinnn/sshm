@@ -2,26 +2,26 @@
 
 set -eu
 
-repository="fanhuadesenlinnn/sshm"
-version=${SSHM_VERSION:-latest}
-install_dir=${SSHM_INSTALL_DIR:-}
+repository="fanhuadesenlinnn/sshmd"
+version=${SSHMD_VERSION:-latest}
+install_dir=${SSHMD_INSTALL_DIR:-}
 explicit_install_dir=false
 
 usage() {
 	cat <<'EOF'
-Install sshm from GitHub Releases.
+Install sshmd from GitHub Releases.
 
 Usage:
   install.sh [--version vX.Y.Z] [--install-dir DIR]
 
 Environment:
-  SSHM_VERSION       Version to install; defaults to latest.
-  SSHM_INSTALL_DIR   Installation directory; defaults to /usr/local/bin.
+  SSHMD_VERSION       Version to install; defaults to latest.
+  SSHMD_INSTALL_DIR   Installation directory; defaults to /usr/local/bin.
 EOF
 }
 
 fail() {
-	printf 'sshm installer: %s\n' "$*" >&2
+	printf 'sshmd installer: %s\n' "$*" >&2
 	exit 1
 }
 
@@ -68,9 +68,9 @@ arm64 | aarch64) arch=arm64 ;;
 *) fail "unsupported architecture: $(uname -m)" ;;
 esac
 
-asset="sshm_${os}_${arch}.tar.gz"
-if [ -n "${SSHM_RELEASE_BASE_URL:-}" ]; then
-	release_base=$SSHM_RELEASE_BASE_URL
+asset="sshmd_${os}_${arch}.tar.gz"
+if [ -n "${SSHMD_RELEASE_BASE_URL:-}" ]; then
+	release_base=$SSHMD_RELEASE_BASE_URL
 elif [ "$version" = "latest" ]; then
 	release_base="https://github.com/${repository}/releases/latest/download"
 else
@@ -102,7 +102,7 @@ sha256_file() {
 	fi
 }
 
-temp_dir=$(mktemp -d "${TMPDIR:-/tmp}/sshm-install.XXXXXX")
+temp_dir=$(mktemp -d "${TMPDIR:-/tmp}/sshmd-install.XXXXXX")
 cleanup() {
 	rm -rf -- "$temp_dir"
 }
@@ -124,12 +124,12 @@ actual=$(printf '%s' "$actual" | tr '[:upper:]' '[:lower:]')
 printf 'Verified SHA-256: %s\n' "$actual"
 
 tar -xzf "$archive" -C "$temp_dir"
-[ -f "$temp_dir/sshm" ] || fail "$asset does not contain the sshm binary"
+[ -f "$temp_dir/sshmd" ] || fail "$asset does not contain the sshmd binary"
 
 install_without_sudo() {
 	directory=$1
 	mkdir -p "$directory"
-	install -m 0755 "$temp_dir/sshm" "$directory/sshm"
+	install -m 0755 "$temp_dir/sshmd" "$directory/sshmd"
 }
 
 if mkdir -p "$install_dir" 2>/dev/null && [ -w "$install_dir" ]; then
@@ -137,7 +137,7 @@ if mkdir -p "$install_dir" 2>/dev/null && [ -w "$install_dir" ]; then
 elif command -v sudo >/dev/null 2>&1; then
 	printf 'Installing to %s requires administrator permission.\n' "$install_dir"
 	sudo mkdir -p "$install_dir"
-	sudo install -m 0755 "$temp_dir/sshm" "$install_dir/sshm"
+	sudo install -m 0755 "$temp_dir/sshmd" "$install_dir/sshmd"
 elif [ "$explicit_install_dir" = false ] && [ -n "${HOME:-}" ]; then
 	install_dir="$HOME/.local/bin"
 	printf 'No administrator permission available; installing to %s instead.\n' "$install_dir"
@@ -146,14 +146,14 @@ else
 	fail "cannot write to $install_dir and sudo is unavailable"
 fi
 
-destination="$install_dir/sshm"
+destination="$install_dir/sshmd"
 printf 'Installed: %s\n' "$destination"
 "$destination" --version
 
 case ":${PATH:-}:" in
 *":$install_dir:"*) ;;
 *)
-	printf '\nAdd sshm to your PATH:\n'
+	printf '\nAdd sshmd to your PATH:\n'
 	printf '  export PATH="%s:%s"\n' "$install_dir" "\$PATH"
 	;;
 esac

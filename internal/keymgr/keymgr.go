@@ -16,7 +16,7 @@ func GenerateManagedKey(name string) ([]byte, string, error) {
 	if err != nil {
 		return nil, "", fmt.Errorf("生成 Ed25519 密钥失败: %w", err)
 	}
-	block, err := ssh.MarshalPrivateKey(private, "sshm:"+name)
+	block, err := ssh.MarshalPrivateKey(private, "sshmd:"+name)
 	if err != nil {
 		return nil, "", fmt.Errorf("序列化私钥失败: %w", err)
 	}
@@ -25,7 +25,7 @@ func GenerateManagedKey(name string) ([]byte, string, error) {
 		return nil, "", fmt.Errorf("序列化公钥失败: %w", err)
 	}
 	privatePEM := pem.EncodeToMemory(block)
-	publicLine := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(sshPublic))) + " sshm:" + name
+	publicLine := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(sshPublic))) + " sshmd:" + name
 	return privatePEM, publicLine, nil
 }
 
@@ -45,10 +45,10 @@ func ParseManagedKey(privatePEM []byte, passphrase []byte, name string) ([]byte,
 	if err != nil {
 		return nil, "", fmt.Errorf("创建 SSH signer 失败: %w", err)
 	}
-	block, err := ssh.MarshalPrivateKey(rawKey, "sshm:"+name)
+	block, err := ssh.MarshalPrivateKey(rawKey, "sshmd:"+name)
 	if err != nil {
 		return nil, "", fmt.Errorf("标准化 SSH 私钥失败: %w", err)
 	}
-	publicLine := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(signer.PublicKey()))) + " sshm:" + name
+	publicLine := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(signer.PublicKey()))) + " sshmd:" + name
 	return pem.EncodeToMemory(block), publicLine, nil
 }

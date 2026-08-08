@@ -8,7 +8,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
 	"golang.org/x/term"
 )
 
@@ -131,7 +131,7 @@ func renderHostPicker(hosts []config.Host, query string, selected int) {
 
 func renderHostPickerTo(w io.Writer, hosts []config.Host, query string, selected, width int) {
 	fmt.Fprint(w, "\033[2J\033[H")
-	fmt.Fprintf(w, "%s\r\n", Header("sshm 主机选择器"))
+	fmt.Fprintf(w, "%s\r\n", Header("sshmd 主机选择器"))
 	fmt.Fprintf(w, "  搜索: %s\r\n", query)
 	fmt.Fprint(w, "  输入过滤 / ↑↓选择 / Enter连接 / q或Ctrl+C进入命令模式\r\n\r\n")
 	if len(hosts) == 0 {

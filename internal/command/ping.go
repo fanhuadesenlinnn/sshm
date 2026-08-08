@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/operation"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/secret"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/sshx"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/ui"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/operation"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/secret"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/sshx"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/ui"
 )
 
 func (app *App) cmdPing(args []string) error {
@@ -31,7 +31,7 @@ func (app *App) cmdPing(args []string) error {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		output, pingErr := sshx.CheckPingContext(ctx, *h, fs)
 		cancel()
-		result := newOperationResult(*h, output, pingErr, operation.StageExecute, fmt.Sprintf("sshm ping %s", h.Alias), time.Since(start))
+		result := newOperationResult(*h, output, pingErr, operation.StageExecute, fmt.Sprintf("sshmd ping %s", h.Alias), time.Since(start))
 		if pingErr == nil {
 			ui.PrintSuccess("%s (%s@%s:%d) 连接成功", h.Alias, h.User, h.Host, h.Port)
 		} else {
@@ -80,7 +80,7 @@ func (app *App) cmdPing(args []string) error {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			output, pingErr := sshx.CheckPingContext(ctx, h, fs)
 			cancel()
-			result := newOperationResult(h, output, pingErr, operation.StageExecute, fmt.Sprintf("sshm ping %s", h.Alias), time.Since(start))
+			result := newOperationResult(h, output, pingErr, operation.StageExecute, fmt.Sprintf("sshmd ping %s", h.Alias), time.Since(start))
 			results = append(results, result)
 			if pingErr == nil {
 				fmt.Println(ui.Success("ok"))

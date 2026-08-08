@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/ui"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/ui"
 )
 
 func TestSearchMatchHost(t *testing.T) {
@@ -29,7 +29,7 @@ func TestSearchWithoutArgsRequiresTerminal(t *testing.T) {
 		t.Skip("需要在非终端环境验证")
 	}
 	app := &App{}
-	if err := app.cmdSearch(nil); err == nil || !strings.Contains(err.Error(), "sshm search") {
+	if err := app.cmdSearch(nil); err == nil || !strings.Contains(err.Error(), "sshmd search") {
 		t.Fatalf("非交互无关键词应报用法: %v", err)
 	}
 }
@@ -48,7 +48,7 @@ func TestSearchMatchHostTerms(t *testing.T) {
 }
 
 func TestHostLookupErrorSuggestsCloseAlias(t *testing.T) {
-	store := config.NewStoreWithPath(filepath.Join(t.TempDir(), "sshm.yaml"))
+	store := config.NewStoreWithPath(filepath.Join(t.TempDir(), "sshmd.yaml"))
 	initCommandTestStore(t, store)
 	host := config.DefaultHost()
 	host.Alias, host.User, host.Host = "web01", "root", "10.0.0.1"

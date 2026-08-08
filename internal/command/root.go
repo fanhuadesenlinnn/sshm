@@ -6,14 +6,14 @@ import (
 	"os"
 	"runtime/debug"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/secret"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/ui"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/secret"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/ui"
 )
 
 var Version = "dev"
 
-const masterPasswordEnv = "SSHM_MASTER_PASSWORD"
+const masterPasswordEnv = "SSHMD_MASTER_PASSWORD"
 
 func CurrentVersion() string {
 	moduleVersion := ""
@@ -77,7 +77,7 @@ func unknownOptionError(option string) error {
 	if best != "" {
 		return fmt.Errorf("未知选项 %q；你是否想使用 %q？", option, best)
 	}
-	return fmt.Errorf("未知选项 %q；使用 sshm help 查看可用命令", option)
+	return fmt.Errorf("未知选项 %q；使用 sshmd help 查看可用命令", option)
 }
 
 func editDistance(a, b string) int {
@@ -103,12 +103,12 @@ func editDistance(a, b string) int {
 }
 
 func (app *App) printHelp() {
-	ui.PrintHeader("sshm - SSH 主机管理器")
+	ui.PrintHeader("sshmd - SSH 主机管理器")
 	fmt.Println()
 	fmt.Println("用法:")
-	fmt.Println("  sshm                          进入交互模式")
-	fmt.Println("  sshm <别名|ID>                 连接到主机")
-	fmt.Println("  sshm <命令> [参数...]           执行管理命令")
+	fmt.Println("  sshmd                          进入交互模式")
+	fmt.Println("  sshmd <别名|ID>                 连接到主机")
+	fmt.Println("  sshmd <命令> [参数...]           执行管理命令")
 	fmt.Println()
 	fmt.Println("常用命令（旧版 --参数仍然兼容）:")
 	for _, group := range commandGroups {
@@ -126,21 +126,21 @@ func (app *App) printHelp() {
 }
 
 func (app *App) printFirstRunGuide() {
-	ui.PrintHeader("sshm 尚未初始化")
+	ui.PrintHeader("sshmd 尚未初始化")
 	fmt.Println()
 	fmt.Println("先创建本地数据目录和配置文件：")
-	fmt.Println("  sshm init")
+	fmt.Println("  sshmd init")
 	fmt.Println()
 	fmt.Println("初始化后可以继续：")
-	fmt.Println("  sshm add web01 root@10.0.0.11")
-	fmt.Println("  sshm doctor")
-	fmt.Println("  sshm web01")
+	fmt.Println("  sshmd add web01 root@10.0.0.11")
+	fmt.Println("  sshmd doctor")
+	fmt.Println("  sshmd web01")
 	fmt.Println()
 }
 
 // printInteractiveHelp shows help for interactive mode with short aliases.
 func (app *App) printInteractiveHelp() {
-	ui.PrintHeader("sshm - 交互模式帮助")
+	ui.PrintHeader("sshmd - 交互模式帮助")
 	fmt.Println()
 	fmt.Println("  进入交互模式后，可直接输入以下命令：")
 	fmt.Println()
@@ -176,7 +176,7 @@ func (app *App) printInteractiveHelp() {
 	fmt.Println()
 	fmt.Println("  配置")
 	fmt.Printf("    %-14s %-24s %s\n", "ssh-config, sc", "导入/导出 SSH 配置", "")
-	fmt.Printf("    %-14s %-24s %s\n", "config edit", "校验后编辑 sshm.yaml", "")
+	fmt.Printf("    %-14s %-24s %s\n", "config edit", "校验后编辑 sshmd.yaml", "")
 	fmt.Printf("    %-14s %-24s %s\n", "doctor", "检查本机环境", "")
 	fmt.Println()
 	fmt.Println("  其他")
@@ -200,14 +200,14 @@ func (app *App) requireSecretStore() (*secret.FileStore, error) {
 	}
 	if !exists {
 		fmt.Println("首次创建密码库。主密码无法恢复，请妥善保管。")
-		pass1, err := ui.ReadPassword("请创建 sshm 主密码: ")
+		pass1, err := ui.ReadPassword("请创建 sshmd 主密码: ")
 		if err != nil {
 			return nil, fmt.Errorf("读取主密码失败: %w", err)
 		}
 		if pass1 == "" {
 			return nil, fmt.Errorf("主密码不能为空")
 		}
-		pass2, err := ui.ReadPassword("请再次输入 sshm 主密码: ")
+		pass2, err := ui.ReadPassword("请再次输入 sshmd 主密码: ")
 		if err != nil {
 			return nil, fmt.Errorf("读取主密码失败: %w", err)
 		}
@@ -223,7 +223,7 @@ func (app *App) requireSecretStore() (*secret.FileStore, error) {
 	}
 
 	for attempt := 1; attempt <= 3; attempt++ {
-		pass, err := ui.ReadPassword("请输入 sshm 主密码: ")
+		pass, err := ui.ReadPassword("请输入 sshmd 主密码: ")
 		if err != nil {
 			return nil, fmt.Errorf("读取主密码失败: %w", err)
 		}

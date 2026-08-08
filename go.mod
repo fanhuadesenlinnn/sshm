@@ -1,4 +1,4 @@
-module github.com/fanhuadesenlinnn/sshm/v6
+module github.com/fanhuadesenlinnn/sshmd/v6
 
 go 1.25.0
 

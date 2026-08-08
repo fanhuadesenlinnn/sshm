@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/operation"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/operation"
 )
 
 func TestParseArgs(t *testing.T) {
@@ -64,7 +64,7 @@ func TestParseArgsRejectsUnclosedQuotes(t *testing.T) {
 }
 
 func TestInteractiveAliasRouting(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "sshm.yaml")
+	path := filepath.Join(t.TempDir(), "sshmd.yaml")
 	store := config.NewStoreWithPath(path)
 	if err := store.Repository().Replace(config.DefaultDocument()); err != nil {
 		t.Fatal(err)

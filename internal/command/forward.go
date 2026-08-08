@@ -9,14 +9,14 @@ import (
 	"os/signal"
 	"sync"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/sshx"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/ui"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/sshx"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/ui"
 	"golang.org/x/crypto/ssh"
 )
 
 func (app *App) cmdForward(args []string) error {
 	if len(args) < 3 || len(args)%2 == 0 {
-		return fmt.Errorf("用法: sshm forward <别名|ID> <本地监听> <远程目标> [<本地监听> <远程目标> ...]\n示例: sshm forward prod 127.0.0.1:8080 127.0.0.1:80 127.0.0.1:8443 127.0.0.1:443")
+		return fmt.Errorf("用法: sshmd forward <别名|ID> <本地监听> <远程目标> [<本地监听> <远程目标> ...]\n示例: sshmd forward prod 127.0.0.1:8080 127.0.0.1:80 127.0.0.1:8443 127.0.0.1:443")
 	}
 	pairs := make([]forwardPair, 0, (len(args)-1)/2)
 	for i := 1; i < len(args); i += 2 {

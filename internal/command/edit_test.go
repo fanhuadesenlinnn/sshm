@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
 )
 
 func TestEditHostWithBlankInputsDoesNotRewriteConfig(t *testing.T) {
@@ -28,7 +28,7 @@ func TestEditHostWithBlankInputsDoesNotRewriteConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	if string(after) != string(before) {
-		t.Fatal("blank edit rewrote sshm.yaml")
+		t.Fatal("blank edit rewrote sshmd.yaml")
 	}
 }
 
@@ -98,7 +98,7 @@ func TestHostEditPatchOnlyAppliesSpecifiedFields(t *testing.T) {
 
 func newEditTestApp(t *testing.T) *App {
 	t.Helper()
-	store := config.NewStoreWithPath(filepath.Join(t.TempDir(), "sshm.yaml"))
+	store := config.NewStoreWithPath(filepath.Join(t.TempDir(), "sshmd.yaml"))
 	initCommandTestStore(t, store)
 	host := config.Host{
 		ID:            config.NewID(),

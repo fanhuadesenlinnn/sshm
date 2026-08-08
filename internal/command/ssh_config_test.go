@@ -6,7 +6,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
 )
 
 func TestParseSSHConfig(t *testing.T) {
@@ -56,7 +56,7 @@ func TestParseSSHConfigSkipsWildcardAndNoise(t *testing.T) {
 
 func TestExportSSHConfigWritesSafeFile(t *testing.T) {
 	dir := t.TempDir()
-	store := config.NewStoreWithPath(filepath.Join(dir, "sshm.yaml"))
+	store := config.NewStoreWithPath(filepath.Join(dir, "sshmd.yaml"))
 	initCommandTestStore(t, store)
 	host := config.DefaultHost()
 	host.Alias, host.User, host.Host, host.Port = "web01", "deploy", "10.0.0.11", 2222
@@ -91,7 +91,7 @@ func TestExportSSHConfigWritesSafeFile(t *testing.T) {
 
 func TestExportSSHConfigIncludesJumpAndIdentity(t *testing.T) {
 	dir := t.TempDir()
-	store := config.NewStoreWithPath(filepath.Join(dir, "sshm.yaml"))
+	store := config.NewStoreWithPath(filepath.Join(dir, "sshmd.yaml"))
 	initCommandTestStore(t, store)
 	bastion := config.DefaultHost()
 	bastion.Alias, bastion.User, bastion.Host = "bastion", "root", "10.0.0.1"

@@ -8,12 +8,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/operation"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/operation"
 )
 
 func TestCobraHelpWorksWithoutInitializationAndRemovedCommandsAreAbsent(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "sshm.yaml")
+	path := filepath.Join(t.TempDir(), "sshmd.yaml")
 	app := &App{Store: config.NewStoreWithPath(path), ConfigPath: path}
 	for _, args := range [][]string{{"--help"}, {"deploy", "--help"}, {"deploy", "run", "--help"}} {
 		if err := runCobra(app, args); err != nil {
@@ -29,7 +29,7 @@ func TestCobraHelpWorksWithoutInitializationAndRemovedCommandsAreAbsent(t *testi
 }
 
 func TestDoctorWorksWithoutInitialization(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "sshm.yaml")
+	path := filepath.Join(t.TempDir(), "sshmd.yaml")
 	app := &App{Store: config.NewStoreWithPath(path), ConfigPath: path}
 	if err := app.cmdDoctor(nil); err != nil {
 		t.Fatal(err)
@@ -37,7 +37,7 @@ func TestDoctorWorksWithoutInitialization(t *testing.T) {
 }
 
 func TestOnlyDocumentedCommandsRunWithoutInitialization(t *testing.T) {
-	t.Setenv("SSHM_HOME", t.TempDir())
+	t.Setenv("SSHMD_HOME", t.TempDir())
 	path := config.ConfigFilePath()
 	app := &App{Store: config.NewStoreWithPath(path), ConfigPath: path}
 	if err := runCobra(app, nil); err != nil {
@@ -67,7 +67,7 @@ func TestOnlyDocumentedCommandsRunWithoutInitialization(t *testing.T) {
 }
 
 func TestCompletionCandidatesMatchV6CommandSurface(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "sshm.yaml")
+	path := filepath.Join(t.TempDir(), "sshmd.yaml")
 	store := config.NewStoreWithPath(path)
 	if err := store.Repository().Replace(config.DefaultDocument()); err != nil {
 		t.Fatal(err)
@@ -92,7 +92,7 @@ func TestCompletionCandidatesMatchV6CommandSurface(t *testing.T) {
 
 func TestCoreCommandHelpIncludesRunnableExamples(t *testing.T) {
 	root := newRootCommand(&App{})
-	if !strings.Contains(root.Example, "sshm init") || !strings.Contains(root.Example, "sshm passwd web01") {
+	if !strings.Contains(root.Example, "sshmd init") || !strings.Contains(root.Example, "sshmd passwd web01") {
 		t.Fatalf("root examples should include first-run path: %q", root.Example)
 	}
 	cases := []struct {
@@ -100,12 +100,12 @@ func TestCoreCommandHelpIncludesRunnableExamples(t *testing.T) {
 		wantUse     string
 		wantExample string
 	}{
-		{[]string{"exec"}, "exec [--yes] [--quiet] [--no-log] <别名|ID> [--] <命令>", "sshm exec --yes web01"},
-		{[]string{"exec-tag"}, "exec-tag [批量选项] <标签|all> [--] <命令>", "sshm exec-tag all"},
-		{[]string{"push"}, "push [选项] <别名|ID> <本地路径> <远程路径>", "sshm push web01"},
-		{[]string{"key"}, "key <命令> [参数]", "sshm key setup personal web01 --yes"},
-		{[]string{"tag"}, "tag <命令> [参数]", "sshm tag add prod"},
-		{[]string{"deploy", "run"}, "run <play>", "sshm deploy run webapp --tag prod"},
+		{[]string{"exec"}, "exec [--yes] [--quiet] [--no-log] <别名|ID> [--] <命令>", "sshmd exec --yes web01"},
+		{[]string{"exec-tag"}, "exec-tag [批量选项] <标签|all> [--] <命令>", "sshmd exec-tag all"},
+		{[]string{"push"}, "push [选项] <别名|ID> <本地路径> <远程路径>", "sshmd push web01"},
+		{[]string{"key"}, "key <命令> [参数]", "sshmd key setup personal web01 --yes"},
+		{[]string{"tag"}, "tag <命令> [参数]", "sshmd tag add prod"},
+		{[]string{"deploy", "run"}, "run <play>", "sshmd deploy run webapp --tag prod"},
 	}
 	for _, tt := range cases {
 		cmd, _, err := root.Find(tt.path)
@@ -168,7 +168,7 @@ func TestExitCodeForErrorContract(t *testing.T) {
 }
 
 func TestConfigInsecureYesWorksThroughCobra(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "sshm.yaml")
+	path := filepath.Join(t.TempDir(), "sshmd.yaml")
 	store := config.NewStoreWithPath(path)
 	if err := store.Repository().Replace(config.DefaultDocument()); err != nil {
 		t.Fatal(err)

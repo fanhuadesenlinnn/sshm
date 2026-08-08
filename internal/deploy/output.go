@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/batch"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/operation"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/safefile"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/batch"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/operation"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/safefile"
 	"gopkg.in/yaml.v3"
 )
 
@@ -184,7 +184,7 @@ func indent(value, prefix string) string {
 	return prefix + strings.Join(lines, "\n"+prefix) + "\n"
 }
 
-// WriteLog persists the plan and result as JSON under the sshm logs directory.
+// WriteLog persists the plan and result as JSON under the sshmd logs directory.
 func WriteLog(plan *Plan, result *RunResult, retention time.Duration) (string, error) {
 	if err := operation.CleanExpired(retention); err != nil {
 		return "", err

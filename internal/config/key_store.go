@@ -2,7 +2,7 @@ package config
 
 import "fmt"
 
-// KeyStore is a managed-key-focused view over the single sshm.yaml repository.
+// KeyStore is a managed-key-focused view over the single sshmd.yaml repository.
 type KeyStore struct {
 	repo *Repository
 }

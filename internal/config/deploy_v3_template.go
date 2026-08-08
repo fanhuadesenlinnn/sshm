@@ -2,25 +2,25 @@ package config
 
 // SampleDeployV3 is the commented Deploy v3 starter manifest. It is
 // deliberately valid YAML with no active plays; every example is commented so
-// `sshm deploy validate` passes immediately after `sshm init`.
-const SampleDeployV3 = `# sshm Deploy v3 编排配置
+// `sshmd deploy validate` passes immediately after `sshmd init`.
+const SampleDeployV3 = `# sshmd Deploy v3 编排配置
 #
 # 快速开始：
-#   1. 添加主机：sshm add web01 root@10.0.0.11 --tags prod
+#   1. 添加主机：sshmd add web01 root@10.0.0.11 --tags prod
 #   2. 阅读本文件（全部是注释，不会执行），把末尾的示例复制到 plays 下并按需修改
-#   3. 校验配置：sshm deploy validate
-#   4. 查看计划：sshm deploy plan update-app
-#   5. 模拟执行：sshm deploy run update-app --check
-#   6. 确认无误后执行：sshm deploy run update-app --yes
+#   3. 校验配置：sshmd deploy validate
+#   4. 查看计划：sshmd deploy plan update-app
+#   5. 模拟执行：sshmd deploy run update-app --check
+#   6. 确认无误后执行：sshmd deploy run update-app --yes
 #
-# 默认读取 <SSHM_HOME>/deploy.yaml 和按文件名排序的 deploy.d/*.yaml。
+# 默认读取 <SSHMD_HOME>/deploy.yaml 和按文件名排序的 deploy.d/*.yaml。
 # 使用 -f/--file 时只读取显式指定的文件，当前目录文件不会被自动加载。
 #
 # v3 模型：plays（工作流）-> tasks（任务）-> modules（模块，幂等）。
 #
 # 安全边界：
 #   - 本文件只描述"做什么"，请勿在本文件中保存密码、私钥、SSH 用户、端口或主机信任
-#   - 密钥一律由主配置的 vault 管理（sshm passwd / sshm key）
+#   - 密钥一律由主配置的 vault 管理（sshmd passwd / sshmd key）
 #   - 需要人工确认的操作用 pause 模块表达
 
 version: 3
@@ -76,7 +76,7 @@ plays: []
 #           name: app
 #           state: restarted          # started | stopped | restarted | enabled | disabled
 #         become: true                # 需要 root 时开启；sudo 需要密码时可用：
-#                                     #   become_password 字段 / 环境变量 SSHM_BECOME_PASSWORD
+#                                     #   become_password 字段 / 环境变量 SSHMD_BECOME_PASSWORD
 #                                     #   或自动复用该主机保存在 vault 中的 SSH 密码（推荐）
 #       - name: 等待端口就绪
 #         wait_for:

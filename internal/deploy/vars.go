@@ -10,7 +10,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/shellquote"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/shellquote"
 )
 
 // MergeVars overlays layers in order; later layers win.

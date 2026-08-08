@@ -6,7 +6,7 @@ import (
 )
 
 func TestKeyStoreLifecycle(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "sshm.yaml")
+	path := filepath.Join(t.TempDir(), "sshmd.yaml")
 	if err := NewRepositoryWithPath(path).Replace(DefaultDocument()); err != nil {
 		t.Fatal(err)
 	}

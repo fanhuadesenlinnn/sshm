@@ -20,7 +20,7 @@ func TestStageOfClassifiesWrappedAndTextErrors(t *testing.T) {
 	if got := StageOf(fmt.Errorf("远程命令超时或取消: context deadline exceeded"), StageExecute); got != StageTimeout {
 		t.Fatalf("timeout stage = %q", got)
 	}
-	if got := StageOf(fmt.Errorf("托管密钥需要先解锁 sshm 密码库"), StageAuth); got != StageVault {
+	if got := StageOf(fmt.Errorf("托管密钥需要先解锁 sshmd 密码库"), StageAuth); got != StageVault {
 		t.Fatalf("vault stage = %q", got)
 	}
 	if got := StageOf(fmt.Errorf("主机 web01 未配置可用的认证凭据"), StageAuth); got != StageCredential {

@@ -8,7 +8,7 @@ import (
 )
 
 func TestRepositoryRegistersReferencedTags(t *testing.T) {
-	repo := NewRepositoryWithPath(filepath.Join(t.TempDir(), "sshm.yaml"))
+	repo := NewRepositoryWithPath(filepath.Join(t.TempDir(), "sshmd.yaml"))
 	if err := repo.Replace(DefaultDocument()); err != nil {
 		t.Fatal(err)
 	}

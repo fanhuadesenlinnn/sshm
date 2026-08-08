@@ -6,13 +6,13 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/deploy"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/deploy"
 )
 
 func (app *App) cmdCompletion(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("用法: sshm completion <bash|zsh|fish>")
+		return fmt.Errorf("用法: sshmd completion <bash|zsh|fish>")
 	}
 	if containsHelpToken(args) {
 		printCompletionHelp()
@@ -21,7 +21,7 @@ func (app *App) cmdCompletion(args []string) error {
 	switch args[0] {
 	case "candidates":
 		if len(args) != 1 {
-			return fmt.Errorf("用法: sshm completion candidates")
+			return fmt.Errorf("用法: sshmd completion candidates")
 		}
 		candidates, err := app.completionCandidates()
 		if err != nil {
@@ -30,17 +30,17 @@ func (app *App) cmdCompletion(args []string) error {
 		fmt.Println(strings.Join(candidates, "\n"))
 	case "bash":
 		if len(args) != 1 {
-			return fmt.Errorf("用法: sshm completion bash")
+			return fmt.Errorf("用法: sshmd completion bash")
 		}
 		fmt.Print(completionScript("bash"))
 	case "zsh":
 		if len(args) != 1 {
-			return fmt.Errorf("用法: sshm completion zsh")
+			return fmt.Errorf("用法: sshmd completion zsh")
 		}
 		fmt.Print(completionScript("zsh"))
 	case "fish":
 		if len(args) != 1 {
-			return fmt.Errorf("用法: sshm completion fish")
+			return fmt.Errorf("用法: sshmd completion fish")
 		}
 		fmt.Print(completionScript("fish"))
 	default:
@@ -52,13 +52,13 @@ func (app *App) cmdCompletion(args []string) error {
 func printCompletionHelp() {
 	fmt.Println("Shell 自动补全")
 	fmt.Println()
-	fmt.Println("  sshm completion bash      生成 bash 补全脚本")
-	fmt.Println("  sshm completion zsh       生成 zsh 补全脚本")
-	fmt.Println("  sshm completion fish      生成 fish 补全脚本")
+	fmt.Println("  sshmd completion bash      生成 bash 补全脚本")
+	fmt.Println("  sshmd completion zsh       生成 zsh 补全脚本")
+	fmt.Println("  sshmd completion fish      生成 fish 补全脚本")
 	fmt.Println()
 	fmt.Println("示例:")
-	fmt.Println("  sshm completion zsh > ~/.zsh/completions/_sshm")
-	fmt.Println("  sshm completion bash > ~/.local/share/bash-completion/completions/sshm")
+	fmt.Println("  sshmd completion zsh > ~/.zsh/completions/_sshm")
+	fmt.Println("  sshmd completion bash > ~/.local/share/bash-completion/completions/sshmd")
 	fmt.Println()
 }
 
@@ -100,23 +100,23 @@ func (app *App) completionCandidates() ([]string, error) {
 func completionScript(shell string) string {
 	switch shell {
 	case "bash":
-		return `_sshm_complete() {
+		return `_sshmd_complete() {
   local cur="${COMP_WORDS[COMP_CWORD]}"
-  COMPREPLY=( $(compgen -W "$(sshm completion candidates 2>/dev/null)" -- "$cur") )
+  COMPREPLY=( $(compgen -W "$(sshmd completion candidates 2>/dev/null)" -- "$cur") )
 }
-complete -F _sshm_complete sshm
+complete -F _sshmd_complete sshmd
 `
 	case "zsh":
-		return `#compdef sshm
+		return `#compdef sshmd
 _sshm() {
   local -a candidates
-  candidates=("${(@f)$(sshm completion candidates 2>/dev/null)}")
-  _describe 'sshm command or host' candidates
+  candidates=("${(@f)$(sshmd completion candidates 2>/dev/null)}")
+  _describe 'sshmd command or host' candidates
 }
-compdef _sshm sshm
+compdef _sshm sshmd
 `
 	case "fish":
-		return "complete -c sshm -f -a '(sshm completion candidates 2>/dev/null)'\n"
+		return "complete -c sshmd -f -a '(sshmd completion candidates 2>/dev/null)'\n"
 	default:
 		return ""
 	}

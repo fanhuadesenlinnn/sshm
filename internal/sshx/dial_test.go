@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/operation"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/secret"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/operation"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/secret"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -21,7 +21,7 @@ func TestDialContextUsesStoredTrustAndPassword(t *testing.T) {
 	addr, closeServer := startTestSSHServer(t, "secret", false)
 	defer closeServer()
 	hostName, port := splitTestAddress(t, addr)
-	path := filepath.Join(t.TempDir(), "sshm.yaml")
+	path := filepath.Join(t.TempDir(), "sshmd.yaml")
 	store := config.NewStoreWithPath(path)
 	initSSHXTestStore(t, store)
 	host := config.DefaultHost()
@@ -71,7 +71,7 @@ func TestDialContextUsesPlaintextPasswordWithoutVault(t *testing.T) {
 	addr, closeServer := startTestSSHServer(t, "secret", false)
 	defer closeServer()
 	hostName, port := splitTestAddress(t, addr)
-	path := filepath.Join(t.TempDir(), "sshm.yaml")
+	path := filepath.Join(t.TempDir(), "sshmd.yaml")
 	store := config.NewStoreWithPath(path)
 	initSSHXTestStore(t, store)
 	host := config.DefaultHost()
@@ -108,7 +108,7 @@ func TestClientConfigUsesExplicitConnectionTimeout(t *testing.T) {
 	host := config.DefaultHost()
 	host.Alias, host.User, host.Host = "server", "test", "127.0.0.1"
 	host.PasswordRef = host.ID
-	path := filepath.Join(t.TempDir(), "sshm.yaml")
+	path := filepath.Join(t.TempDir(), "sshmd.yaml")
 	if err := config.NewRepositoryWithPath(path).Replace(config.DefaultDocument()); err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +162,7 @@ func TestDialContextUsesSingleJumpHost(t *testing.T) {
 	targetHost, targetPort := splitTestAddress(t, targetAddr)
 	jumpHost, jumpPort := splitTestAddress(t, jumpAddr)
 
-	path := filepath.Join(t.TempDir(), "sshm.yaml")
+	path := filepath.Join(t.TempDir(), "sshmd.yaml")
 	store := config.NewStoreWithPath(path)
 	initSSHXTestStore(t, store)
 	jump := config.DefaultHost()
@@ -204,7 +204,7 @@ func TestDialContextUsesSingleJumpHost(t *testing.T) {
 }
 
 func TestDialContextClassifiesDNSFailure(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "sshm.yaml")
+	path := filepath.Join(t.TempDir(), "sshmd.yaml")
 	store := config.NewStoreWithPath(path)
 	initSSHXTestStore(t, store)
 	host := config.DefaultHost()

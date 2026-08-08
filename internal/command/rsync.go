@@ -14,10 +14,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/secret"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/shellquote"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/sshx"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/secret"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/shellquote"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/sshx"
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
@@ -97,7 +97,7 @@ func prepareRsyncTransportWithTimeout(host config.Host, store *secret.FileStore,
 	if err != nil {
 		return "", nil, err
 	}
-	tempDir, err := os.MkdirTemp("", "sshm-rsync-*")
+	tempDir, err := os.MkdirTemp("", "sshmd-rsync-*")
 	if err != nil {
 		return "", nil, err
 	}
@@ -229,7 +229,7 @@ func pushRsync(ctx context.Context, rsyncPath, sshCommand string, client *sftp.C
 	if options.check {
 		return remotePath, true, nil
 	}
-	temp := remotePath + fmt.Sprintf(".sshm-rsync-tmp-%d-%d", os.Getpid(), time.Now().UnixNano())
+	temp := remotePath + fmt.Sprintf(".sshmd-rsync-tmp-%d-%d", os.Getpid(), time.Now().UnixNano())
 	_ = client.RemoveAll(temp)
 	defer client.RemoveAll(temp)
 	if err := runRsync(ctx, rsyncPath, sshCommand, filepath.Clean(options.localPath), rsyncRemote(host, temp)); err != nil {
@@ -286,7 +286,7 @@ func pullRsync(ctx context.Context, rsyncPath, sshCommand string, client *sftp.C
 	if err := os.MkdirAll(filepath.Dir(destination), 0700); err != nil {
 		return destination, false, err
 	}
-	temp := filepath.Join(filepath.Dir(destination), "."+filepath.Base(destination)+fmt.Sprintf(".sshm-rsync-tmp-%d-%d", os.Getpid(), time.Now().UnixNano()))
+	temp := filepath.Join(filepath.Dir(destination), "."+filepath.Base(destination)+fmt.Sprintf(".sshmd-rsync-tmp-%d-%d", os.Getpid(), time.Now().UnixNano()))
 	_ = os.RemoveAll(temp)
 	defer os.RemoveAll(temp)
 	if err := runRsync(ctx, rsyncPath, sshCommand, rsyncRemote(host, remotePath), temp); err != nil {

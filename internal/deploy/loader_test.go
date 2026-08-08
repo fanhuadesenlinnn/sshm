@@ -6,12 +6,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
 )
 
 func TestGlobalInitializeCreatesLoadableEmptyV3Starter(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("SSHM_HOME", home)
+	t.Setenv("SSHMD_HOME", home)
 	if _, _, err := config.Initialize(false); err != nil {
 		t.Fatal(err)
 	}

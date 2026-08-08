@@ -7,10 +7,10 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/batch"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/deploy"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/ui"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/batch"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/deploy"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/ui"
 )
 
 func (app *App) loadDeploy(files []string) (*deploy.Catalog, []config.Host, error) {
@@ -69,14 +69,14 @@ func (app *App) deployPlanCommand(options deployCLIOptions, show bool) error {
 		if show {
 			command = "show"
 		}
-		return fmt.Errorf("用法: sshm deploy %s <play> [-f 文件...] [目标覆盖]", command)
+		return fmt.Errorf("用法: sshmd deploy %s <play> [-f 文件...] [目标覆盖]", command)
 	}
 	catalog, hosts, err := app.loadDeploy(options.files)
 	if err != nil {
 		return err
 	}
 	if _, ok := catalog.ByName[options.positionals[0]]; !ok {
-		return fmt.Errorf("未找到 deploy play %q；使用 sshm deploy list 查看全部 play", options.positionals[0])
+		return fmt.Errorf("未找到 deploy play %q；使用 sshmd deploy list 查看全部 play", options.positionals[0])
 	}
 	overrides, _, err := app.deployOverrides(options)
 	if err != nil {
@@ -95,7 +95,7 @@ func (app *App) deployPlanCommand(options deployCLIOptions, show bool) error {
 
 func (app *App) cmdDeployRun(options deployCLIOptions) error {
 	if len(options.positionals) != 1 {
-		return fmt.Errorf("用法: sshm deploy run <play> [-f 文件...] [目标覆盖] [批量选项] [--check] [--diff] [--yes]")
+		return fmt.Errorf("用法: sshmd deploy run <play> [-f 文件...] [目标覆盖] [批量选项] [--check] [--diff] [--yes]")
 	}
 	catalog, hosts, err := app.loadDeploy(options.files)
 	if err != nil {
@@ -106,7 +106,7 @@ func (app *App) cmdDeployRun(options deployCLIOptions) error {
 		if best, suggested := closestString(options.positionals[0], candidates, 3); suggested {
 			return fmt.Errorf("未找到 deploy play %q；你是否想使用 %q？", options.positionals[0], best)
 		}
-		return fmt.Errorf("未找到 deploy play %q；使用 sshm deploy list 查看全部 play", options.positionals[0])
+		return fmt.Errorf("未找到 deploy play %q；使用 sshmd deploy list 查看全部 play", options.positionals[0])
 	}
 	overrides, logs, err := app.deployOverrides(options)
 	if err != nil {
@@ -149,7 +149,7 @@ func (app *App) cmdDeployRun(options deployCLIOptions) error {
 			return nil
 		},
 		BecomePassword: func(host config.Host) (string, bool) {
-			if envPassword := os.Getenv("SSHM_BECOME_PASSWORD"); envPassword != "" {
+			if envPassword := os.Getenv("SSHMD_BECOME_PASSWORD"); envPassword != "" {
 				return envPassword, true
 			}
 			if host.PasswordRef == "" {

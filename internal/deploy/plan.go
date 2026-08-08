@@ -10,8 +10,8 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/batch"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/batch"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
 )
 
 const maxIncludeDepth = 10
@@ -198,7 +198,7 @@ func BuildPlan(catalog *Catalog, name string, hosts []config.Host, overrides Ove
 		Hosts: resolvedHosts, Batch: batchOptions, Timeout: timeout,
 		ConnectTimeout: connectTimeout, Check: overrides.Check, Diff: overrides.Diff,
 		Vars: vars, Tasks: tasks, GatherFacts: play.GatherFacts,
-		FactsDir: filepath.Join(config.SSHMHome(), "facts"),
+		FactsDir: filepath.Join(config.SSHMDHome(), "facts"),
 	}
 	if err := plan.Validate(); err != nil {
 		return nil, err

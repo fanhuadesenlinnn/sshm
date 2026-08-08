@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/safefile"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/safefile"
 )
 
 type FailureStage string
@@ -80,7 +80,7 @@ func StageOf(err error, fallback FailureStage) FailureStage {
 	}
 }
 
-// IsConnectionFailure reports whether a stage means sshm could not establish
+// IsConnectionFailure reports whether a stage means sshmd could not establish
 // an authenticated SSH connection before the requested remote action ran.
 func IsConnectionFailure(stage FailureStage) bool {
 	switch stage {
@@ -94,7 +94,7 @@ func IsConnectionFailure(stage FailureStage) bool {
 func Suggestion(stage FailureStage) string {
 	switch stage {
 	case StageResolve:
-		return "检查主机名或使用 sshm edit 修正地址"
+		return "检查主机名或使用 sshmd edit 修正地址"
 	case StageNetwork:
 		return "检查地址、端口、防火墙和 SSH 服务"
 	case StageJump:
@@ -102,9 +102,9 @@ func Suggestion(stage FailureStage) string {
 	case StageTrust:
 		return "核对主机密钥；确认无风险后再更新信任配置"
 	case StageCredential:
-		return "该主机尚未配置凭据；使用 sshm passwd 或 sshm key setup 后重试（此错误未尝试连接，若持续失败请另行确认主机网络可达）"
+		return "该主机尚未配置凭据；使用 sshmd passwd 或 sshmd key setup 后重试（此错误未尝试连接，若持续失败请另行确认主机网络可达）"
 	case StageAuth:
-		return "使用 sshm passwd 或 sshm key setup 配置可用凭据"
+		return "使用 sshmd passwd 或 sshmd key setup 配置可用凭据"
 	case StageSession:
 		return "检查远端 SSH 会话与 Shell 配置"
 	case StageTransfer:
@@ -112,9 +112,9 @@ func Suggestion(stage FailureStage) string {
 	case StageTimeout:
 		return "检查超时设置、网络状态和远端命令耗时"
 	case StageConfig:
-		return "检查 deploy 配置并先运行 sshm deploy validate"
+		return "检查 deploy 配置并先运行 sshmd deploy validate"
 	case StageVault:
-		return "解锁 sshm 密码库并检查凭据"
+		return "解锁 sshmd 密码库并检查凭据"
 	default:
 		return "检查远程命令、权限和连接状态"
 	}

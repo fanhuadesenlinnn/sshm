@@ -6,7 +6,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/batch"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/batch"
 )
 
 // PlayEvent is one machine-readable event emitted while a play runs.

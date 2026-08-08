@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/batch"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/deploy"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/batch"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/deploy"
 )
 
 func TestParseDeployCLIOptionsSupportsRunFlags(t *testing.T) {
@@ -33,7 +33,7 @@ func TestParseDeployCLIOptionsSupportsRunFlags(t *testing.T) {
 
 func TestDeployPlanAllowsRuntimeTargetForTargetlessProfile(t *testing.T) {
 	dir := t.TempDir()
-	store := config.NewStoreWithPath(filepath.Join(dir, "sshm.yaml"))
+	store := config.NewStoreWithPath(filepath.Join(dir, "sshmd.yaml"))
 	initCommandTestStore(t, store)
 	host := config.DefaultHost()
 	host.Alias, host.User, host.Host = "one", "root", "127.0.0.1"
@@ -64,14 +64,14 @@ func TestDeployInitRefusesOverwriteUnlessExplicitAndWritesV3(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(output, "sshm deploy validate -f") || !strings.Contains(output, "sshm deploy plan update-app -f") {
+	if !strings.Contains(output, "sshmd deploy validate -f") || !strings.Contains(output, "sshmd deploy plan update-app -f") {
 		t.Fatalf("explicit deploy init should print next steps with -f path: %q", output)
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(string(data), "# sshm Deploy v3") || !containsText(
+	if !strings.HasPrefix(string(data), "# sshmd Deploy v3") || !containsText(
 		string(data),
 		"version: 3",
 		"plays: []",
@@ -94,7 +94,7 @@ func TestDeployInitRefusesOverwriteUnlessExplicitAndWritesV3(t *testing.T) {
 
 func TestDeployValidateAllowsInitializedSampleBeforeHosts(t *testing.T) {
 	dir := t.TempDir()
-	store := config.NewStoreWithPath(filepath.Join(dir, "sshm.yaml"))
+	store := config.NewStoreWithPath(filepath.Join(dir, "sshmd.yaml"))
 	if err := store.Repository().Replace(config.DefaultDocument()); err != nil {
 		t.Fatal(err)
 	}

@@ -5,12 +5,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/secret"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/secret"
 )
 
 func TestCmdPasswdBatchRequiresConfirmation(t *testing.T) {
-	store := config.NewStoreWithPath(filepath.Join(t.TempDir(), "sshm.yaml"))
+	store := config.NewStoreWithPath(filepath.Join(t.TempDir(), "sshmd.yaml"))
 	initCommandTestStore(t, store)
 	for _, alias := range []string{"one", "two"} {
 		host := config.DefaultHost()
@@ -26,7 +26,7 @@ func TestCmdPasswdBatchRequiresConfirmation(t *testing.T) {
 }
 
 func TestSavePasswordsForHostsUpdatesSelectedTargetsAtomically(t *testing.T) {
-	store := config.NewStoreWithPath(filepath.Join(t.TempDir(), "sshm.yaml"))
+	store := config.NewStoreWithPath(filepath.Join(t.TempDir(), "sshmd.yaml"))
 	initCommandTestStore(t, store)
 	for _, host := range []config.Host{
 		{ID: config.NewID(), Alias: "one", User: "root", Host: "one", Port: 22, Auth: "auto", Tags: []string{"prod"}},
@@ -70,7 +70,7 @@ func TestSavePasswordsForHostsUpdatesSelectedTargetsAtomically(t *testing.T) {
 }
 
 func TestEncryptPlaintextPasswordsMovesToVault(t *testing.T) {
-	store := config.NewStoreWithPath(filepath.Join(t.TempDir(), "sshm.yaml"))
+	store := config.NewStoreWithPath(filepath.Join(t.TempDir(), "sshmd.yaml"))
 	initCommandTestStore(t, store)
 	host := config.DefaultHost()
 	host.Alias, host.User, host.Host = "one", "root", "one"
@@ -101,7 +101,7 @@ func TestEncryptPlaintextPasswordsMovesToVault(t *testing.T) {
 }
 
 func TestSavePasswordsForHostsRollsBackWhenTargetDisappears(t *testing.T) {
-	store := config.NewStoreWithPath(filepath.Join(t.TempDir(), "sshm.yaml"))
+	store := config.NewStoreWithPath(filepath.Join(t.TempDir(), "sshmd.yaml"))
 	initCommandTestStore(t, store)
 	host := config.DefaultHost()
 	host.Alias, host.User, host.Host = "one", "root", "one"
@@ -124,7 +124,7 @@ func TestSavePasswordsForHostsRollsBackWhenTargetDisappears(t *testing.T) {
 }
 
 func TestRemovePasswordsForHostsClearsBatch(t *testing.T) {
-	store := config.NewStoreWithPath(filepath.Join(t.TempDir(), "sshm.yaml"))
+	store := config.NewStoreWithPath(filepath.Join(t.TempDir(), "sshmd.yaml"))
 	initCommandTestStore(t, store)
 	var hosts []config.Host
 	for _, alias := range []string{"one", "two"} {

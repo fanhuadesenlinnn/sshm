@@ -6,10 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
 )
 
-// FileStore is a credential-focused view over the vault in sshm.yaml.
+// FileStore is a credential-focused view over the vault in sshmd.yaml.
 type FileStore struct {
 	path       string
 	passphrase string

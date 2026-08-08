@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/secret"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/secret"
 )
 
 func TestParseSSHTarget(t *testing.T) {
@@ -103,14 +103,14 @@ func TestResolveVersion(t *testing.T) {
 func TestCompletionScripts(t *testing.T) {
 	for _, shell := range []string{"bash", "zsh", "fish"} {
 		script := completionScript(shell)
-		if !strings.Contains(script, "sshm completion candidates") {
+		if !strings.Contains(script, "sshmd completion candidates") {
 			t.Fatalf("%s completion script is incomplete: %q", shell, script)
 		}
 	}
 }
 
 func TestCmdQuickAddPersistsDefaultsAndOptions(t *testing.T) {
-	store := config.NewStoreWithPath(filepath.Join(t.TempDir(), "sshm.yaml"))
+	store := config.NewStoreWithPath(filepath.Join(t.TempDir(), "sshmd.yaml"))
 	initCommandTestStore(t, store)
 	app := &App{Store: store, ConfigPath: store.Path()}
 	err := app.cmdQuickAdd([]string{
@@ -133,7 +133,7 @@ func TestCmdQuickAddPersistsDefaultsAndOptions(t *testing.T) {
 }
 
 func TestCompletionCandidatesIncludeCommandsAndHosts(t *testing.T) {
-	store := config.NewStoreWithPath(filepath.Join(t.TempDir(), "sshm.yaml"))
+	store := config.NewStoreWithPath(filepath.Join(t.TempDir(), "sshmd.yaml"))
 	initCommandTestStore(t, store)
 	host := config.DefaultHost()
 	host.Alias = "my-server"
@@ -160,7 +160,7 @@ func TestCompletionCandidatesIncludeCommandsAndHosts(t *testing.T) {
 }
 
 func TestCompletionCandidatesWorkWithoutInitialization(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "sshm.yaml")
+	path := filepath.Join(t.TempDir(), "sshmd.yaml")
 	app := &App{Store: config.NewStoreWithPath(path), ConfigPath: path}
 	candidates, err := app.completionCandidates()
 	if err != nil {
@@ -175,17 +175,17 @@ func TestCompletionCandidatesWorkWithoutInitialization(t *testing.T) {
 }
 
 func TestConfigEditRequiresInitializedConfig(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "sshm.yaml")
+	path := filepath.Join(t.TempDir(), "sshmd.yaml")
 	store := config.NewStoreWithPath(path)
 	app := &App{Store: store, ConfigPath: path}
 	t.Setenv("EDITOR", "true")
-	if err := app.cmdConfigEdit(nil); err == nil || !strings.Contains(err.Error(), "sshm init") {
+	if err := app.cmdConfigEdit(nil); err == nil || !strings.Contains(err.Error(), "sshmd init") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
 func TestConfigInsecurePolicyRequiresConfirmationUnlessYes(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "sshm.yaml")
+	path := filepath.Join(t.TempDir(), "sshmd.yaml")
 	store := config.NewStoreWithPath(path)
 	if err := store.Repository().Replace(config.DefaultDocument()); err != nil {
 		t.Fatal(err)
@@ -236,7 +236,7 @@ func TestHostSelectorRejectsAllMixedWithSpecificTargets(t *testing.T) {
 }
 
 func TestLogsRejectUnknownSubcommand(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "sshm.yaml")
+	path := filepath.Join(t.TempDir(), "sshmd.yaml")
 	store := config.NewStoreWithPath(path)
 	if err := store.Repository().Replace(config.DefaultDocument()); err != nil {
 		t.Fatal(err)
@@ -247,15 +247,15 @@ func TestLogsRejectUnknownSubcommand(t *testing.T) {
 	}
 }
 
-func TestLogsCleanRejectsRootSSHMHome(t *testing.T) {
-	t.Setenv("SSHM_HOME", string(os.PathSeparator))
+func TestLogsCleanRejectsRootSSHMDHome(t *testing.T) {
+	t.Setenv("SSHMD_HOME", string(os.PathSeparator))
 	if _, err := safeLogsDirForClean(); err == nil || !strings.Contains(err.Error(), "根目录") {
-		t.Fatalf("root SSHM_HOME should be rejected: %v", err)
+		t.Fatalf("root SSHMD_HOME should be rejected: %v", err)
 	}
 }
 
 func TestDeleteRequiresConfirmationUnlessYes(t *testing.T) {
-	store := config.NewStoreWithPath(filepath.Join(t.TempDir(), "sshm.yaml"))
+	store := config.NewStoreWithPath(filepath.Join(t.TempDir(), "sshmd.yaml"))
 	initCommandTestStore(t, store)
 	host := config.DefaultHost()
 	host.Alias = "prod"
@@ -299,7 +299,7 @@ func TestPrintAddedHostIncludesTagsAndNote(t *testing.T) {
 }
 
 func TestSecretStoreCanUnlockFromEnvironment(t *testing.T) {
-	store := config.NewStoreWithPath(filepath.Join(t.TempDir(), "sshm.yaml"))
+	store := config.NewStoreWithPath(filepath.Join(t.TempDir(), "sshmd.yaml"))
 	initCommandTestStore(t, store)
 	fs := secret.NewFileStore(store.Path(), "master")
 	if err := fs.SetPassword("host-id", "ssh-password"); err != nil {
@@ -318,7 +318,7 @@ func TestSecretStoreCanUnlockFromEnvironment(t *testing.T) {
 }
 
 func TestUnlockVaultForHostsMentionsEnvironmentInNonInteractiveMode(t *testing.T) {
-	store := config.NewStoreWithPath(filepath.Join(t.TempDir(), "sshm.yaml"))
+	store := config.NewStoreWithPath(filepath.Join(t.TempDir(), "sshmd.yaml"))
 	initCommandTestStore(t, store)
 	host := config.DefaultHost()
 	host.Alias = "web01"

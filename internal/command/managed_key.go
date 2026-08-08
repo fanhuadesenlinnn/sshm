@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/keymgr"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/ui"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/keymgr"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/ui"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -59,7 +59,7 @@ func (app *App) cmdKey(args []string) error {
 		app.printKeyHelp()
 		return nil
 	default:
-		return fmt.Errorf("未知 key 命令 %q；使用 sshm key help 查看帮助", args[0])
+		return fmt.Errorf("未知 key 命令 %q；使用 sshmd key help 查看帮助", args[0])
 	}
 }
 
@@ -116,7 +116,7 @@ func (app *App) cmdKeyList(_ []string) error {
 		return err
 	}
 	if len(kf.Keys) == 0 {
-		ui.PrintWarn("暂无托管密钥，使用 sshm key create <名称> 创建")
+		ui.PrintWarn("暂无托管密钥，使用 sshmd key create <名称> 创建")
 		return nil
 	}
 	fmt.Println()
@@ -135,7 +135,7 @@ func (app *App) cmdKeyList(_ []string) error {
 
 func (app *App) cmdKeyCreate(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("用法: sshm key create <名称> [--default]")
+		return fmt.Errorf("用法: sshmd key create <名称> [--default]")
 	}
 	name := args[0]
 	makeDefault, err := parseOnlyDefaultFlag(args[1:])
@@ -154,7 +154,7 @@ func (app *App) cmdKeyCreate(args []string) error {
 
 func (app *App) cmdKeyCreateBatch(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("用法: sshm key create-batch <名称...>")
+		return fmt.Errorf("用法: sshmd key create-batch <名称...>")
 	}
 	failed := 0
 	for _, name := range args {
@@ -171,7 +171,7 @@ func (app *App) cmdKeyCreateBatch(args []string) error {
 
 func (app *App) cmdKeyImport(args []string) error {
 	if len(args) < 2 {
-		return fmt.Errorf("用法: sshm key import <名称> <私钥路径> [--default]")
+		return fmt.Errorf("用法: sshmd key import <名称> <私钥路径> [--default]")
 	}
 	name := args[0]
 	makeDefault, flagErr := parseOnlyDefaultFlag(args[2:])
@@ -204,7 +204,7 @@ func (app *App) cmdKeyImport(args []string) error {
 
 func (app *App) cmdKeyImportBatch(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("用法: sshm key import-batch <名称=私钥路径...>")
+		return fmt.Errorf("用法: sshmd key import-batch <名称=私钥路径...>")
 	}
 	failed := 0
 	for _, pair := range args {
@@ -284,7 +284,7 @@ func (app *App) cmdKeyDefault(args []string) error {
 func (app *App) cmdKeyDeleteUnused(args []string) error {
 	yes, args := removeFlag(args, "--yes")
 	if len(args) != 0 {
-		return fmt.Errorf("用法: sshm key delete-unused [--yes]")
+		return fmt.Errorf("用法: sshmd key delete-unused [--yes]")
 	}
 	kf, err := app.keyStore().Load()
 	if err != nil {
@@ -332,7 +332,7 @@ func (app *App) cmdKeyShow(args []string) error {
 func (app *App) cmdKeyDelete(args []string) error {
 	yes, args := removeFlag(args, "--yes")
 	if len(args) == 0 {
-		return fmt.Errorf("用法: sshm key delete <名称...> [--yes]")
+		return fmt.Errorf("用法: sshmd key delete <名称...> [--yes]")
 	}
 	hf, err := app.Store.Load()
 	if err != nil {
@@ -412,7 +412,7 @@ func parseOnlyDefaultFlag(args []string) (bool, error) {
 		if strings.HasPrefix(arg, "-") {
 			return false, unknownOptionError(arg)
 		}
-		return false, fmt.Errorf("多余参数 %q；用法: sshm key create/import <名称> ... [--default]", arg)
+		return false, fmt.Errorf("多余参数 %q；用法: sshmd key create/import <名称> ... [--default]", arg)
 	}
 	return makeDefault, nil
 }

@@ -12,7 +12,7 @@ func TestGenerateAndParseManagedKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(publicKey, "sshm:personal") {
+	if !strings.Contains(publicKey, "sshmd:personal") {
 		t.Fatalf("public key comment missing: %q", publicKey)
 	}
 	signer, err := ssh.ParsePrivateKey(privateKey)

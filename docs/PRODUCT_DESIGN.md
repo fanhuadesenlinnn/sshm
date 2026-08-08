@@ -1,10 +1,10 @@
-# sshm v6.1.2 产品设计
+# sshmd v6.2.0 产品设计
 
-状态：v6.1.2 当前设计
+状态：v6.2.0 当前设计
 
 ## 产品定位
 
-sshm 是供个人开发者和个人运维使用者管理约 5 到 100 台 SSH 主机的本地工具。它提供比手写 OpenSSH 配置更清晰的主机组织、凭据管理、批量操作、安全传输和轻量部署能力。
+sshmd 是供个人开发者和个人运维使用者管理约 5 到 100 台 SSH 主机的本地工具。它提供比手写 OpenSSH 配置更清晰的主机组织、凭据管理、批量操作、安全传输和轻量部署能力。
 
 明确非目标：
 
@@ -15,9 +15,9 @@ sshm 是供个人开发者和个人运维使用者管理约 5 到 100 台 SSH �
 
 ## 当前产品事实
 
-- 产品版本为 `v6.1.2`，Go module 为 `/v6`。
+- 产品版本为 `v6.2.0`，Go module 为 `/v6`。
 - 主配置为严格 YAML schema `version: 2`；Deploy 配置为严格 YAML schema `version: 3`。
-- 默认数据目录只使用 `~/.sshm`，仅支持 `SSHM_HOME` 整体覆盖。
+- 默认数据目录只使用 `~/.sshmd`，仅支持 `SSHMD_HOME` 整体覆盖。
 - Cobra 提供 CLI 命令树，同时保留无参数工作台和 alias/ID 直连。
 - 交互工作台的 `x/exec` 与 `xt/exec-tag` 只解析本地目标和选项；`--` 后的远程命令作为不透明文本传递。
 - Go 原生 SSH 负责连接、认证、host trust、执行、SFTP 和端口转发。
@@ -30,15 +30,15 @@ sshm 是供个人开发者和个人运维使用者管理约 5 到 100 台 SSH �
 
 ### 初始化与发现
 
-新用户运行 `sshm init` 创建带字段级中文说明的 v2 主配置、安全空白的 Deploy v3 模板和受限权限目录。Deploy 模板包含完全注释的示例，但没有活动 play；已有 Deploy 文件不会被全局初始化覆盖。发现旧 `~/.config/sshm/sshm.yaml` 时只警告，不读取、迁移或删除。
+新用户运行 `sshmd init` 创建带字段级中文说明的 v2 主配置、安全空白的 Deploy v3 模板和受限权限目录。Deploy 模板包含完全注释的示例，但没有活动 play；已有 Deploy 文件不会被全局初始化覆盖。发现旧 `~/.config/sshmd/sshmd.yaml` 时只警告，不读取、迁移或删除。
 
-未初始化时直接运行 `sshm` 会展示首次使用引导。初始化后，用户可通过工作台、搜索、收藏、最近使用、标签和 `sshm <alias|ID>` 快速定位主机。
+未初始化时直接运行 `sshmd` 会展示首次使用引导。初始化后，用户可通过工作台、搜索、收藏、最近使用、标签和 `sshmd <alias|ID>` 快速定位主机。
 
 ### 安全认证
 
-主机默认使用 strict host trust。密码和托管密钥默认由主密码保护并保存在主配置的加密 vault 中；密码也可显式写为主配置的明文 `password` 字段（与 `password_ref` 互斥，受 0600 权限保护，`doctor` 会提醒）。`sshm passwd` 可将明文一键升级为 vault 加密并清掉明文字段。主密码只在当前进程按需解锁。
+主机默认使用 strict host trust。密码和托管密钥默认由主密码保护并保存在主配置的加密 vault 中；密码也可显式写为主配置的明文 `password` 字段（与 `password_ref` 互斥，受 0600 权限保护，`doctor` 会提醒）。`sshmd passwd` 可将明文一键升级为 vault 加密并清掉明文字段。主密码只在当前进程按需解锁。
 
-主机既可以通过菜单/命令添加，也可以手工写入主配置。手工新增主机时允许省略内部稳定 ID，配置校验通过后由 sshm 自动生成并写回；已有主机的稳定 ID 保持不变，菜单中的数字 ID 继续表示当前列表位置。
+主机既可以通过菜单/命令添加，也可以手工写入主配置。手工新增主机时允许省略内部稳定 ID，配置校验通过后由 sshmd 自动生成并写回；已有主机的稳定 ID 保持不变，菜单中的数字 ID 继续表示当前列表位置。
 
 `--yes` 只跳过一次普通操作确认，不跳过主密码或 host trust。删除保存密码、删除托管密钥、清理日志和设置 `host-key-policy insecure` 属于需要明确确认的本地风险操作。
 
@@ -74,7 +74,7 @@ Deploy v3 是声明式模块模型，借鉴 Ansible 的执行语义但不引入�
 - task 调用一个模块（command/shell、file、copy、template、service、wait_for、sleep、unarchive、fetch、pause、fail、debug），模块内置幂等与 check/diff 语义。
 - register + when 取代 handlers 表达条件执行；v3 明确移除 notify/handlers。
 - block/rescue/always 提供同主机失败回滚结构。
-- become 支持密码提权：sudo 需要密码时，密码可来自任务级 `become_password`、环境变量 `SSHM_BECOME_PASSWORD`，或自动复用该主机 vault 中的 SSH 密码；密码始终经 stdin 传入 `sudo -S`，不出现在命令行或日志中。
+- become 支持密码提权：sudo 需要密码时，密码可来自任务级 `become_password`、环境变量 `SSHMD_BECOME_PASSWORD`，或自动复用该主机 vault 中的 SSH 密码；密码始终经 stdin 传入 `sudo -S`，不出现在命令行或日志中。
 - `confirm` 字段提供 linear 策略下的 serial 批次人工门禁；`sleep` 提供 check 模式自动跳过的定时延时。
 - 变量支持文件级、play 级、vars_files 与 CLI `--extra-var` 覆盖；`{{ }}` 插值用于参数与模板。
 - include 支持任务片段与 vars_files 的静态展开，带循环检测。
@@ -95,8 +95,8 @@ Deploy v3 是声明式模块模型，借鉴 Ansible 的执行语义但不引入�
 ## 配置与路径
 
 ```text
-<SSHM_HOME>/
-├── sshm.yaml
+<SSHMD_HOME>/
+├── sshmd.yaml
 ├── deploy.yaml
 ├── deploy.d/
 ├── logs/

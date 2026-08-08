@@ -11,13 +11,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/operation"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/secret"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/operation"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/secret"
 	"golang.org/x/crypto/ssh"
 )
 
-// DialContext establishes an authenticated SSH client using sshm's trust policy.
+// DialContext establishes an authenticated SSH client using sshmd's trust policy.
 func DialContext(ctx context.Context, h config.Host, store *secret.FileStore) (*ssh.Client, string, error) {
 	return DialContextWithTimeout(ctx, h, store, 10*time.Second)
 }
@@ -61,7 +61,7 @@ func dialConfiguredContext(ctx context.Context, h config.Host, store *secret.Fil
 		return dialDirectWithConfig(ctx, h, targetConfig, label)
 	}
 	if h.ConfigPath == "" {
-		return nil, "", operation.Wrap(operation.StageJump, fmt.Errorf("跳板机连接需要主机来自 sshm 配置"))
+		return nil, "", operation.Wrap(operation.StageJump, fmt.Errorf("跳板机连接需要主机来自 sshmd 配置"))
 	}
 	jump, _, _, err := config.NewStoreWithPath(h.ConfigPath).FindHost(h.JumpHost)
 	if err != nil {
@@ -255,7 +255,7 @@ func ExecCommandStreamWithConnectTimeoutContext(ctx context.Context, h config.Ho
 	return ExecCommandOnClient(ctx, client, command, stdout, stderr)
 }
 
-// Client is the subset of *ssh.Client needed by sshm's reusable sessions.
+// Client is the subset of *ssh.Client needed by sshmd's reusable sessions.
 type Client interface {
 	NewSession() (*ssh.Session, error)
 	Dial(network, address string) (net.Conn, error)
@@ -350,7 +350,7 @@ func CheckPingContext(ctx context.Context, h config.Host, store *secret.FileStor
 	return string(output), operation.Wrap(operation.StageExecute, err)
 }
 
-// isManagedIdentity reports whether the host uses an sshm-managed key.
+// isManagedIdentity reports whether the host uses an sshmd-managed key.
 func isManagedIdentity(h config.Host) bool {
 	_, ok := config.ManagedKeyName(h.Identity)
 	return ok
@@ -363,7 +363,7 @@ func managedKeyMaterial(h config.Host, store *secret.FileStore) ([]byte, ssh.Sig
 		return nil, nil, fmt.Errorf("主机 %s 未配置托管密钥", h.Alias)
 	}
 	if store == nil {
-		return nil, nil, fmt.Errorf("托管密钥 %s 需要先解锁 sshm 密码库", name)
+		return nil, nil, fmt.Errorf("托管密钥 %s 需要先解锁 sshmd 密码库", name)
 	}
 	privateKey, err := store.GetManagedKey(name)
 	if err != nil {

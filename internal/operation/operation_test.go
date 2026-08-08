@@ -7,15 +7,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
 )
 
 func TestWriteLogCreatesPerHostFiles(t *testing.T) {
-	t.Setenv("SSHM_HOME", t.TempDir())
+	t.Setenv("SSHMD_HOME", t.TempDir())
 	path, err := WriteLog("exec-batch", "uname", []Result{{
 		Host:   config.Host{Alias: "prod", Host: "10.0.0.1", User: "root", Port: 22},
 		Output: "Linux\n", Err: errors.New("failed"), Stage: StageExecute,
-		RetryCommand: "sshm exec --yes prod uname",
+		RetryCommand: "sshmd exec --yes prod uname",
 	}})
 	if err != nil {
 		t.Fatal(err)
@@ -34,7 +34,7 @@ func TestWriteLogCreatesPerHostFiles(t *testing.T) {
 }
 
 func TestWriteLogPreservesExplicitSkippedStatus(t *testing.T) {
-	t.Setenv("SSHM_HOME", t.TempDir())
+	t.Setenv("SSHMD_HOME", t.TempDir())
 	path, err := WriteLog("exec-batch", "uname", []Result{{
 		Host: config.Host{Alias: "prod", Host: "10.0.0.1"}, Status: "skipped", Output: "skipped: fail-fast\n",
 	}})

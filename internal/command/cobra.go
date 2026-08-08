@@ -6,8 +6,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/ui"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -38,9 +38,9 @@ func runCobra(app *App, args []string) error {
 
 func newRootCommand(app *App) *cobra.Command {
 	root := &cobra.Command{
-		Use:           "sshm",
+		Use:           "sshmd",
 		Short:         "本地优先的个人 SSH 运维工具",
-		Long:          "sshm 是本地优先的个人 SSH 运维工具，用来管理主机、凭据、标签、批量命令、安全传输和轻量 Deploy 编排。",
+		Long:          "sshmd 是本地优先的个人 SSH 运维工具，用来管理主机、凭据、标签、批量命令、安全传输和轻量 Deploy 编排。",
 		Example:       rootExamples(),
 		SilenceErrors: true,
 		SilenceUsage:  true,
@@ -64,7 +64,7 @@ func newRootCommand(app *App) *cobra.Command {
 			return nil
 		},
 	}
-	root.SetVersionTemplate("sshm {{.Version}}\n")
+	root.SetVersionTemplate("sshmd {{.Version}}\n")
 	for _, group := range commandGroups {
 		root.AddGroup(&cobra.Group{ID: group.ID, Title: group.Title})
 	}
@@ -119,12 +119,12 @@ func newRootCommand(app *App) *cobra.Command {
 
 func rootExamples() string {
 	return strings.TrimSpace(`
-sshm init
-sshm add web01 root@10.0.0.11
-sshm passwd web01
-sshm ping web01
-sshm web01
-sshm exec-tag prod "uptime" --yes`)
+sshmd init
+sshmd add web01 root@10.0.0.11
+sshmd passwd web01
+sshmd ping web01
+sshmd web01
+sshmd exec-tag prod "uptime" --yes`)
 }
 
 func dispatchHelp(root *cobra.Command, args []string) (bool, error) {
@@ -226,133 +226,133 @@ var legacyHelp = map[string]commandHelp{
 		use:  "add <别名> <用户@主机[:端口]> [选项]",
 		long: "添加一台主机。默认认证策略为 auto，可以之后用 passwd 保存密码，或用 key setup 绑定托管密钥。",
 		example: strings.TrimSpace(`
-sshm add web01 root@10.0.0.11
-sshm add web01 deploy@10.0.0.11:2222 --tags prod,web
-sshm passwd web01`),
+sshmd add web01 root@10.0.0.11
+sshmd add web01 deploy@10.0.0.11:2222 --tags prod,web
+sshmd passwd web01`),
 	},
 	"connect": {
 		use:  "connect <别名|ID>",
-		long: "连接到一台已保存主机。也可以直接运行 sshm <别名|ID> 快速连接。",
+		long: "连接到一台已保存主机。也可以直接运行 sshmd <别名|ID> 快速连接。",
 		example: strings.TrimSpace(`
-sshm web01
-sshm connect web01`),
+sshmd web01
+sshmd connect web01`),
 	},
 	"exec": {
 		use:  "exec [--yes] [--quiet] [--no-log] <别名|ID> [--] <命令>",
 		long: "在单台主机上执行远程命令。复杂命令建议使用 -- 标记命令起点。默认会在交互终端确认并写入操作日志；脚本或 CI 中请显式传入 --yes。",
 		example: strings.TrimSpace(`
-sshm exec web01 "uptime"
-sshm exec --yes web01 "systemctl status app"
-sshm exec --yes --quiet --no-log web01 "hostname"`),
+sshmd exec web01 "uptime"
+sshmd exec --yes web01 "systemctl status app"
+sshmd exec --yes --quiet --no-log web01 "hostname"`),
 	},
 	"exec-tag": {
 		use:  "exec-tag [批量选项] <标签|all> [--] <命令>",
 		long: "按标签批量执行远程命令。复杂命令建议使用 -- 标记命令起点。使用虚拟标签 all 可选择全部主机；批量操作默认需要确认。",
 		example: strings.TrimSpace(`
-sshm exec-tag prod "uptime" --yes
-sshm exec-tag all "hostname" --parallel 8 --connect-timeout 5s --yes
-sshm exec-tag web "systemctl restart app" --serial 2 --max-fail 1 --yes`),
+sshmd exec-tag prod "uptime" --yes
+sshmd exec-tag all "hostname" --parallel 8 --connect-timeout 5s --yes
+sshmd exec-tag web "systemctl restart app" --serial 2 --max-fail 1 --yes`),
 	},
 	"ping": {
 		use:  "ping [--yes] [--quiet] [别名|ID]",
 		long: "测试主机 SSH 连接。不给目标时会测试全部主机；多主机模式默认需要确认。",
 		example: strings.TrimSpace(`
-sshm ping web01
-sshm ping --yes --quiet`),
+sshmd ping web01
+sshmd ping --yes --quiet`),
 	},
 	"push": {
 		use:  "push [选项] <别名|ID> <本地路径> <远程路径>",
 		long: "向单台主机推送文件或目录。默认拒绝覆盖不同内容；需要覆盖时显式使用 --overwrite 或 --backup。",
 		example: strings.TrimSpace(`
-sshm push web01 ./dist/app.tar.gz /opt/app/app.tar.gz --yes
-sshm push web01 ./dist /opt/app --backup --yes
-sshm push web01 ./dist /opt/app --method rsync --yes`),
+sshmd push web01 ./dist/app.tar.gz /opt/app/app.tar.gz --yes
+sshmd push web01 ./dist /opt/app --backup --yes
+sshmd push web01 ./dist /opt/app --method rsync --yes`),
 	},
 	"pull": {
 		use:  "pull [选项] <别名|ID> <远程路径> <本地路径>",
 		long: "从单台主机拉取文件或目录。默认拒绝覆盖不同内容；需要覆盖时显式使用 --overwrite 或 --backup。",
 		example: strings.TrimSpace(`
-sshm pull web01 /etc/nginx/nginx.conf ./nginx.web01.conf --yes
-sshm pull web01 /var/log/app ./logs/web01 --backup --yes`),
+sshmd pull web01 /etc/nginx/nginx.conf ./nginx.web01.conf --yes
+sshmd pull web01 /var/log/app ./logs/web01 --backup --yes`),
 	},
 	"push-tag": {
 		use:  "push-tag [批量选项] <标签|all> <本地路径> <远程路径>",
 		long: "按标签批量推送文件或目录。批量操作默认需要确认，并会写入操作日志。",
 		example: strings.TrimSpace(`
-sshm push-tag prod ./dist/app.tar.gz /opt/app/app.tar.gz --backup --yes
-sshm push-tag all ./script.sh /tmp/script.sh --parallel 8 --yes`),
+sshmd push-tag prod ./dist/app.tar.gz /opt/app/app.tar.gz --backup --yes
+sshmd push-tag all ./script.sh /tmp/script.sh --parallel 8 --yes`),
 	},
 	"pull-tag": {
 		use:  "pull-tag [批量选项] <标签|all> <远程路径> <本地路径>",
 		long: "按标签批量拉取文件或目录。默认按主机别名分目录保存；需要平铺时使用 --flat。",
 		example: strings.TrimSpace(`
-sshm pull-tag prod /etc/hosts ./backup --yes
-sshm pull-tag all /etc/nginx ./backup --flat --yes`),
+sshmd pull-tag prod /etc/hosts ./backup --yes
+sshmd pull-tag all /etc/nginx ./backup --flat --yes`),
 	},
 	"key": {
 		use:  "key <命令> [参数]",
-		long: "管理 sshm 托管密钥。常用流程是 create/import 创建本地托管密钥，再用 setup 推送、验证并绑定主机。",
+		long: "管理 sshmd 托管密钥。常用流程是 create/import 创建本地托管密钥，再用 setup 推送、验证并绑定主机。",
 		example: strings.TrimSpace(`
-sshm key list
-sshm key create personal --default
-sshm key import personal ~/.ssh/id_ed25519 --default
-sshm key setup personal web01 --yes`),
+sshmd key list
+sshmd key create personal --default
+sshmd key import personal ~/.ssh/id_ed25519 --default
+sshmd key setup personal web01 --yes`),
 	},
 	"host": {
 		use:  "host <命令> [参数]",
 		long: "管理 SSH 主机。可以列出、添加、批量添加、编辑、删除主机，也可以导入 OpenSSH 配置。",
 		example: strings.TrimSpace(`
-sshm host list
-sshm host add web01 root@10.0.0.11
-sshm host delete web01 --yes
-sshm host import-ssh-config ~/.ssh/config`),
+sshmd host list
+sshmd host add web01 root@10.0.0.11
+sshmd host delete web01 --yes
+sshmd host import-ssh-config ~/.ssh/config`),
 	},
 	"tag": {
 		use:  "tag <命令> [参数]",
 		long: "管理主机标签。标签用于搜索、分组和批量执行；虚拟标签 all 表示全部主机。",
 		example: strings.TrimSpace(`
-sshm tag list
-sshm tag create prod --note 生产环境
-sshm tag add prod web01 web02
-sshm exec-tag prod "uptime" --yes`),
+sshmd tag list
+sshmd tag create prod --note 生产环境
+sshmd tag add prod web01 web02
+sshmd exec-tag prod "uptime" --yes`),
 	},
 	"passwd": {
 		use:  "passwd <目标...|--tag 标签|--all> [--yes]",
-		long: "为一台或多台主机保存同一个 SSH 密码。密码会写入 sshm.yaml 内的加密 vault，需要主密码解锁。",
+		long: "为一台或多台主机保存同一个 SSH 密码。密码会写入 sshmd.yaml 内的加密 vault，需要主密码解锁。",
 		example: strings.TrimSpace(`
-sshm passwd web01
-sshm passwd web01 web02
-sshm passwd --tag prod
-sshm ping web01`),
+sshmd passwd web01
+sshmd passwd web01 web02
+sshmd passwd --tag prod
+sshmd ping web01`),
 	},
 	"forget-pass": {
 		use:  "forget-pass <目标...|--tag 标签|--all> [--yes]",
 		long: "删除一台或多台主机保存的 SSH 密码。删除前默认需要确认；脚本或 CI 中请显式传入 --yes。",
 		example: strings.TrimSpace(`
-sshm forget-pass web01
-sshm forget-pass --tag prod
-sshm forget-pass --all --yes`),
+sshmd forget-pass web01
+sshmd forget-pass --tag prod
+sshmd forget-pass --all --yes`),
 	},
 	"logs": {
 		use:  "logs [clean --yes]",
 		long: "查看或清理本地操作日志。日志可能包含敏感远程输出，清理前默认需要确认。",
 		example: strings.TrimSpace(`
-sshm logs
-sshm logs clean --yes`),
+sshmd logs
+sshmd logs clean --yes`),
 	},
 	"completion": {
 		use:  "completion <bash|zsh|fish>",
-		long: "生成 Shell 自动补全脚本。该命令不需要先运行 sshm init。",
+		long: "生成 Shell 自动补全脚本。该命令不需要先运行 sshmd init。",
 		example: strings.TrimSpace(`
-sshm completion zsh > ~/.zsh/completions/_sshm
-sshm completion bash > ~/.local/share/bash-completion/completions/sshm`),
+sshmd completion zsh > ~/.zsh/completions/_sshm
+sshmd completion bash > ~/.local/share/bash-completion/completions/sshmd`),
 	},
 	"forward": {
 		use:  "forward <别名|ID> <本地监听地址> <远程目标>",
 		long: "建立本地端口转发。适合临时访问远端内网服务。",
 		example: strings.TrimSpace(`
-sshm forward prod 127.0.0.1:8080 127.0.0.1:80
-sshm forward prod 127.0.0.1:15432 127.0.0.1:5432`),
+sshmd forward prod 127.0.0.1:8080 127.0.0.1:80
+sshmd forward prod 127.0.0.1:15432 127.0.0.1:5432`),
 	},
 }
 
@@ -404,9 +404,9 @@ func unknownCommandOrHostError(root *cobra.Command, input string, cause error) e
 		}
 	}
 	if best != "" {
-		return fmt.Errorf("未知命令或主机 %q；你是否想使用 %q？（使用 sshm --help 查看可用命令）: %w", input, best, cause)
+		return fmt.Errorf("未知命令或主机 %q；你是否想使用 %q？（使用 sshmd --help 查看可用命令）: %w", input, best, cause)
 	}
-	return fmt.Errorf("未知命令或主机 %q；使用 sshm --help 查看可用命令: %w", input, cause)
+	return fmt.Errorf("未知命令或主机 %q；使用 sshmd --help 查看可用命令: %w", input, cause)
 }
 
 func dispatchLegacyRootOption(app *App, args []string) (bool, error) {

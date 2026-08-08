@@ -9,12 +9,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/deploy"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/operation"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/shellquote"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/sshx"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/ui"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/deploy"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/operation"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/shellquote"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/sshx"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/ui"
 )
 
 func (app *App) cmdKeyUse(args []string) error {
@@ -78,7 +78,7 @@ func (app *App) cmdKeyRemote(args []string, revoke bool) error {
 		}
 	}
 
-	return app.runKeyRemoteBatch(action, hosts, command, fmt.Sprintf("sshm key %s %s", subcommand, key.Name), quiet)
+	return app.runKeyRemoteBatch(action, hosts, command, fmt.Sprintf("sshmd key %s %s", subcommand, key.Name), quiet)
 }
 
 func (app *App) cmdKeySetup(args []string) error {
@@ -108,7 +108,7 @@ func (app *App) cmdKeySetup(args []string) error {
 			return nil
 		}
 	}
-	if err := app.runKeyRemoteBatch("推送", hosts, installPublicKeyCommand(key.PublicKey), fmt.Sprintf("sshm key push %s", key.Name), quiet); err != nil {
+	if err := app.runKeyRemoteBatch("推送", hosts, installPublicKeyCommand(key.PublicKey), fmt.Sprintf("sshmd key push %s", key.Name), quiet); err != nil {
 		return err
 	}
 	failed := 0
@@ -122,7 +122,7 @@ func (app *App) cmdKeySetup(args []string) error {
 		output, verifyErr := sshx.CheckPingContext(ctx, testHost, fs)
 		cancel()
 		result := newOperationResult(host, output, verifyErr, operation.StageExecute,
-			fmt.Sprintf("sshm key setup %s %s --yes", key.Name, host.Alias), time.Since(start))
+			fmt.Sprintf("sshmd key setup %s %s --yes", key.Name, host.Alias), time.Since(start))
 		verifyResults = append(verifyResults, result)
 		if verifyErr != nil {
 			failed++
@@ -290,10 +290,10 @@ func selectHostsFromRaw(hosts []config.Host, selector hostSelector) ([]config.Ho
 		if len(missing) == 1 {
 			return nil, missingHostSelectionError(missing[0], hosts)
 		}
-		return nil, fmt.Errorf("未找到主机: %s；使用 sshm list 查看全部主机", strings.Join(missing, ", "))
+		return nil, fmt.Errorf("未找到主机: %s；使用 sshmd list 查看全部主机", strings.Join(missing, ", "))
 	}
 	if len(selected) == 0 {
-		return nil, fmt.Errorf("目标选择结果为空；使用 sshm list 或 sshm tag list 查看可用目标")
+		return nil, fmt.Errorf("目标选择结果为空；使用 sshmd list 或 sshmd tag list 查看可用目标")
 	}
 	return selected, nil
 }
@@ -362,7 +362,7 @@ func installPublicKeyCommand(publicKey string) string {
 
 func revokePublicKeyCommand(publicKey string) string {
 	key := shellquote.Single(strings.TrimSpace(publicKey))
-	return "if [ -f ~/.ssh/authorized_keys ]; then umask 077; tmp=$(mktemp ~/.ssh/authorized_keys.sshm.XXXXXX) || exit 1; " +
+	return "if [ -f ~/.ssh/authorized_keys ]; then umask 077; tmp=$(mktemp ~/.ssh/authorized_keys.sshmd.XXXXXX) || exit 1; " +
 		"if grep -Fvx -- " + key + " ~/.ssh/authorized_keys > \"$tmp\"; then chmod 600 \"$tmp\" && mv \"$tmp\" ~/.ssh/authorized_keys; " +
 		"else rc=$?; if [ \"$rc\" -eq 1 ]; then chmod 600 \"$tmp\" && mv \"$tmp\" ~/.ssh/authorized_keys; else rm -f \"$tmp\"; exit \"$rc\"; fi; fi; fi"
 }

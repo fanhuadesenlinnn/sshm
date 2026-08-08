@@ -8,13 +8,13 @@ import (
 	"unicode/utf8"
 )
 
-// Tag describes a named host classification stored in sshm.yaml.
+// Tag describes a named host classification stored in sshmd.yaml.
 type Tag struct {
 	Name string `yaml:"name"`
 	Note string `yaml:"note,omitempty"`
 }
 
-// TagsFile is the tag section of sshm.yaml.
+// TagsFile is the tag section of sshmd.yaml.
 type TagsFile struct {
 	Items []Tag `yaml:"items"`
 }

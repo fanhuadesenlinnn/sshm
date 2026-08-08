@@ -5,8 +5,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/ui"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/ui"
 )
 
 func (app *App) cmdTag(args []string) error {
@@ -46,7 +46,7 @@ func (app *App) cmdTag(args []string) error {
 		app.printTagHelp()
 		return nil
 	default:
-		return fmt.Errorf("未知 tag 命令 %q；使用 sshm tag help 查看帮助", args[0])
+		return fmt.Errorf("未知 tag 命令 %q；使用 sshmd tag help 查看帮助", args[0])
 	}
 }
 
@@ -95,7 +95,7 @@ func printTagCenterHelp() {
 
 func (app *App) cmdTagList(args []string) error {
 	if len(args) != 0 {
-		return fmt.Errorf("用法: sshm tag list")
+		return fmt.Errorf("用法: sshmd tag list")
 	}
 	doc, err := app.Store.Repository().Load()
 	if err != nil {
@@ -111,8 +111,8 @@ func (app *App) cmdTagList(args []string) error {
 	ui.RenderTagsTable(doc.Tags.Items, doc.Hosts)
 	if len(doc.Tags.Items) == 0 {
 		fmt.Println("  下一步:")
-		fmt.Println("    sshm tag create prod --note 生产环境")
-		fmt.Println("    sshm add web01 root@10.0.0.11 --tags prod")
+		fmt.Println("    sshmd tag create prod --note 生产环境")
+		fmt.Println("    sshmd add web01 root@10.0.0.11 --tags prod")
 		fmt.Println()
 	}
 	return nil
@@ -120,7 +120,7 @@ func (app *App) cmdTagList(args []string) error {
 
 func (app *App) cmdTagShow(args []string) error {
 	if len(args) != 1 {
-		return fmt.Errorf("用法: sshm tag show <标签|--untagged>")
+		return fmt.Errorf("用法: sshmd tag show <标签|--untagged>")
 	}
 	doc, err := app.Store.Repository().Load()
 	if err != nil {
@@ -212,7 +212,7 @@ func (app *App) cmdTagEdit(args []string) error {
 
 func (app *App) cmdTagRename(args []string) error {
 	if len(args) != 2 {
-		return fmt.Errorf("用法: sshm tag rename <旧标签> <新标签>")
+		return fmt.Errorf("用法: sshmd tag rename <旧标签> <新标签>")
 	}
 	oldName, newName := args[0], args[1]
 	if err := config.ValidateTagName(newName); err != nil {
@@ -244,7 +244,7 @@ func (app *App) cmdTagRename(args []string) error {
 func (app *App) cmdTagDelete(args []string) error {
 	yes, names := removeFlag(args, "--yes")
 	if len(names) == 0 {
-		return fmt.Errorf("用法: sshm tag delete <标签...> [--yes]")
+		return fmt.Errorf("用法: sshmd tag delete <标签...> [--yes]")
 	}
 	remove := map[string]bool{}
 	for _, name := range names {
@@ -310,7 +310,7 @@ func (app *App) cmdTagDelete(args []string) error {
 
 func (app *App) cmdTagAdd(args []string) error {
 	if len(args) < 2 {
-		return fmt.Errorf("用法: sshm tag add <标签> <目标...>")
+		return fmt.Errorf("用法: sshmd tag add <标签> <目标...>")
 	}
 	name := args[0]
 	if err := config.ValidateTagName(name); err != nil {
@@ -335,7 +335,7 @@ func (app *App) cmdTagAdd(args []string) error {
 
 func (app *App) cmdTagRemove(args []string) error {
 	if len(args) < 2 {
-		return fmt.Errorf("用法: sshm tag remove <标签> <目标...>")
+		return fmt.Errorf("用法: sshmd tag remove <标签> <目标...>")
 	}
 	name := args[0]
 	if err := config.ValidateTagName(name); err != nil {
@@ -433,7 +433,7 @@ func (app *App) updateSelectedHosts(
 
 func parseTagNameAndNote(args []string) (name, note string, err error) {
 	if len(args) == 0 {
-		return "", "", fmt.Errorf("用法: sshm tag create <标签> [--note 备注]")
+		return "", "", fmt.Errorf("用法: sshmd tag create <标签> [--note 备注]")
 	}
 	name = args[0]
 	if err := config.ValidateTagName(name); err != nil {
@@ -441,7 +441,7 @@ func parseTagNameAndNote(args []string) (name, note string, err error) {
 	}
 	for i := 1; i < len(args); i++ {
 		if args[i] != "--note" || i+1 >= len(args) {
-			return "", "", fmt.Errorf("用法: sshm tag create <标签> [--note 备注]")
+			return "", "", fmt.Errorf("用法: sshmd tag create <标签> [--note 备注]")
 		}
 		note = args[i+1]
 		i++
@@ -451,7 +451,7 @@ func parseTagNameAndNote(args []string) (name, note string, err error) {
 
 func parseTagEditArgs(args []string) (name, note string, hasNote bool, err error) {
 	if len(args) == 0 {
-		return "", "", false, fmt.Errorf("用法: sshm tag edit <标签> [--note 备注]")
+		return "", "", false, fmt.Errorf("用法: sshmd tag edit <标签> [--note 备注]")
 	}
 	name = args[0]
 	if err := config.ValidateTagName(name); err != nil {
@@ -461,7 +461,7 @@ func parseTagEditArgs(args []string) (name, note string, hasNote bool, err error
 		return name, "", false, nil
 	}
 	if len(args) != 3 || args[1] != "--note" {
-		return "", "", false, fmt.Errorf("用法: sshm tag edit <标签> [--note 备注]")
+		return "", "", false, fmt.Errorf("用法: sshmd tag edit <标签> [--note 备注]")
 	}
 	return name, args[2], true, nil
 }
@@ -476,14 +476,14 @@ func parseTagSetArgs(args []string) ([]string, []string, error) {
 			continue
 		}
 		if found || i+1 >= len(args) {
-			return nil, nil, fmt.Errorf("用法: sshm tag set <目标...> --tags <标签>")
+			return nil, nil, fmt.Errorf("用法: sshmd tag set <目标...> --tags <标签>")
 		}
 		found = true
 		i++
 		tags = config.ParseTags(args[i])
 	}
 	if len(targets) == 0 || !found || len(tags) == 0 {
-		return nil, nil, fmt.Errorf("用法: sshm tag set <目标...> --tags <标签>")
+		return nil, nil, fmt.Errorf("用法: sshmd tag set <目标...> --tags <标签>")
 	}
 	for _, tag := range tags {
 		if err := config.ValidateTagName(tag); err != nil {

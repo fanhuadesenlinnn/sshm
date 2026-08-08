@@ -7,10 +7,10 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/safefile"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/safefile"
 )
 
-// Initialize creates the v2 sshm home and configuration. Existing
+// Initialize creates the v2 sshmd home and configuration. Existing
 // configuration is preserved unless force is true.
 func Initialize(force bool) (Paths, string, error) {
 	paths, err := ResolvePaths()
@@ -27,7 +27,7 @@ func Initialize(force bool) (Paths, string, error) {
 	case readErr == nil && !force:
 		return Paths{}, "", fmt.Errorf("配置文件已存在: %s；使用 --force 明确覆盖", paths.Config)
 	case readErr == nil:
-		backupPath = filepath.Join(paths.Backups, "sshm.yaml.bak."+time.Now().Format("20060102-150405"))
+		backupPath = filepath.Join(paths.Backups, "sshmd.yaml.bak."+time.Now().Format("20060102-150405"))
 		if err := safefile.Write(backupPath, data, 0600); err != nil {
 			return Paths{}, "", fmt.Errorf("备份原配置失败: %w", err)
 		}
@@ -57,7 +57,7 @@ func Initialize(force bool) (Paths, string, error) {
 
 // writeDeployConfigIfMissing creates the safe, commented starter manifest.
 // An existing Deploy file is user-authored input and is never overwritten by
-// the global initializer, including when `sshm init --force` is used.
+// the global initializer, including when `sshmd init --force` is used.
 func writeDeployConfigIfMissing(path string) error {
 	return writeIfMissing(path, SampleDeployV3, 0600)
 }

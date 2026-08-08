@@ -133,7 +133,7 @@ func (h *Host) Validate() []string {
 	}
 	if h.Identity != "" {
 		if _, managed := ManagedKeyName(h.Identity); !managed {
-			errs = append(errs, "identity 仅支持 sshm 托管密钥")
+			errs = append(errs, "identity 仅支持 sshmd 托管密钥")
 		}
 	}
 	if h.Password != "" && h.PasswordRef != "" {

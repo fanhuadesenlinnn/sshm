@@ -8,14 +8,14 @@ import (
 	"os"
 	"strings"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/batch"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/deploy"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/operation"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/ops"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/secret"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/shellquote"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/ui"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/batch"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/deploy"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/operation"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/ops"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/secret"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/shellquote"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/ui"
 )
 
 func (app *App) cmdExec(args []string) error {
@@ -50,7 +50,7 @@ func (app *App) cmdExec(args []string) error {
 	opResult := executor.Exec(context.Background(), *h, ops.ExecOptions{Command: command, Stdout: stdout, Stderr: stderr})
 	err = opResult.Err
 	result := newOperationResult(*h, opResult.Output, err, operation.StageExecute,
-		fmt.Sprintf("sshm exec --yes %s %s", shellquote.Single(h.Alias), shellquote.Single(command)), opResult.Duration)
+		fmt.Sprintf("sshmd exec --yes %s %s", shellquote.Single(h.Alias), shellquote.Single(command)), opResult.Duration)
 	if err != nil {
 		printOperationFailure(result)
 	}
@@ -68,7 +68,7 @@ func (app *App) cmdExecTag(args []string) error {
 		return err
 	}
 	if len(positionals) < 2 {
-		return fmt.Errorf("用法: sshm exec-tag [批量选项] <标签> [--] <命令>")
+		return fmt.Errorf("用法: sshmd exec-tag [批量选项] <标签> [--] <命令>")
 	}
 
 	tagName := positionals[0]
@@ -86,7 +86,7 @@ func (app *App) cmdExecTag(args []string) error {
 		}
 	}
 	if len(hosts) == 0 {
-		return fmt.Errorf("没有匹配标签 %q 的主机；使用 sshm tag list 查看标签，或 sshm tag add %s <主机> 绑定主机", tagName, tagName)
+		return fmt.Errorf("没有匹配标签 %q 的主机；使用 sshmd tag list 查看标签，或 sshmd tag add %s <主机> 绑定主机", tagName, tagName)
 	}
 	hosts, err = deploy.ApplyExcludes(hosts, hf.Hosts, options.Exclude, options.ExcludeTags)
 	if err != nil {
@@ -142,7 +142,7 @@ func (app *App) executeBatch(hosts []config.Host, command string, options batchC
 				fmt.Print(opResult.Output)
 			}
 			logResult := newOperationResult(item.Host, opResult.Output, opResult.Err, operation.StageExecute,
-				fmt.Sprintf("sshm exec --yes %s %s", shellquote.Single(item.Host.Alias), shellquote.Single(command)), opResult.Duration)
+				fmt.Sprintf("sshmd exec --yes %s %s", shellquote.Single(item.Host.Alias), shellquote.Single(command)), opResult.Duration)
 			logResults = append(logResults, logResult)
 			if opResult.Err != nil {
 				printOperationFailure(logResult)
@@ -200,14 +200,14 @@ func parseOperationFlags(args []string) (yes, quiet, noLog bool, rest []string) 
 func parseExecArgs(args []string) (yes, quiet, noLog bool, aliasOrID, command string, err error) {
 	yes, quiet, noLog, args = parseOperationFlags(args)
 	if len(args) < 2 {
-		return false, false, false, "", "", fmt.Errorf("用法: sshm exec [--yes] [--quiet] [--no-log] <别名|ID> [--] <命令>")
+		return false, false, false, "", "", fmt.Errorf("用法: sshmd exec [--yes] [--quiet] [--no-log] <别名|ID> [--] <命令>")
 	}
 	aliasOrID = args[0]
 	commandArgs := append([]string(nil), args[1:]...)
 	if len(commandArgs) > 0 && commandArgs[0] == "--" {
 		commandArgs = commandArgs[1:]
 		if len(commandArgs) == 0 {
-			return false, false, false, "", "", fmt.Errorf("用法: sshm exec [--yes] [--quiet] [--no-log] <别名|ID> [--] <命令>")
+			return false, false, false, "", "", fmt.Errorf("用法: sshmd exec [--yes] [--quiet] [--no-log] <别名|ID> [--] <命令>")
 		}
 		return yes, quiet, noLog, aliasOrID, strings.Join(commandArgs, " "), nil
 	}
@@ -225,7 +225,7 @@ func parseExecArgs(args []string) (yes, quiet, noLog bool, aliasOrID, command st
 		}
 		commandArgs = commandArgs[:len(commandArgs)-1]
 	}
-	return false, false, false, "", "", fmt.Errorf("用法: sshm exec [--yes] [--quiet] [--no-log] <别名|ID> [--] <命令>")
+	return false, false, false, "", "", fmt.Errorf("用法: sshmd exec [--yes] [--quiet] [--no-log] <别名|ID> [--] <命令>")
 }
 
 // tryGetSecretStore attempts to create a secret store, prompting for master password.
@@ -253,7 +253,7 @@ func (app *App) tryGetSecretStore() *secret.FileStore {
 	}
 
 	for attempt := 1; attempt <= 3; attempt++ {
-		pass, err := ui.ReadPassword("请输入 sshm 主密码: ")
+		pass, err := ui.ReadPassword("请输入 sshmd 主密码: ")
 		if err != nil {
 			fmt.Fprintln(os.Stderr, ui.Warn("读取主密码失败，跳过密码认证"))
 			return nil

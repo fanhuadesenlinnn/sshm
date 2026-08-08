@@ -1,4 +1,4 @@
-# sshm Roadmap
+# sshmd Roadmap
 
 本文档只记录 v6.0.0 之后的候选能力，不是当前版本承诺。
 

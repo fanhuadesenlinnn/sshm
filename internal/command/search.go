@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/ui"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/ui"
 )
 
 func (app *App) cmdSearch(args []string) error {
@@ -13,7 +13,7 @@ func (app *App) cmdSearch(args []string) error {
 	if len(args) > 0 {
 		query = strings.Join(args, " ")
 	} else if !ui.IsTerminal() {
-		return fmt.Errorf("用法: sshm search <关键词>")
+		return fmt.Errorf("用法: sshmd search <关键词>")
 	} else {
 		query = ui.ReadLine("请输入搜索关键词: ")
 	}

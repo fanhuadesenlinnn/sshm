@@ -11,15 +11,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/batch"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/deploy"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/operation"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/ops"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/secret"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/shellquote"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/sshx"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/ui"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/batch"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/deploy"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/operation"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/ops"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/secret"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/shellquote"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/sshx"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/ui"
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
 )
@@ -123,9 +123,9 @@ func parseTransferOptions(args []string, direction string, tag bool) (transferOp
 			command += "-tag"
 		}
 		if direction == "push" {
-			return options, fmt.Errorf("用法: sshm %s %s <local> <remote> [选项]", command, target)
+			return options, fmt.Errorf("用法: sshmd %s %s <local> <remote> [选项]", command, target)
 		}
-		return options, fmt.Errorf("用法: sshm %s %s <remote> <local> [选项]", command, target)
+		return options, fmt.Errorf("用法: sshmd %s %s <remote> <local> [选项]", command, target)
 	}
 	if tag {
 		if positionals[0] == "all" {
@@ -268,7 +268,7 @@ func (app *App) cmdTransfer(options transferOptions) error {
 }
 
 func transferRetryCommand(options transferOptions, alias string) string {
-	command := fmt.Sprintf("sshm %s %s %s %s --yes",
+	command := fmt.Sprintf("sshmd %s %s %s %s --yes",
 		options.direction,
 		shellquote.Single(alias),
 		shellquote.Single(transferSource(options)),
@@ -459,7 +459,7 @@ func pushSFTP(client *sftp.Client, localPath, remotePath string, options transfe
 	if options.check {
 		return true, nil
 	}
-	temp := remotePath + fmt.Sprintf(".sshm-tmp-%d", time.Now().UnixNano())
+	temp := remotePath + fmt.Sprintf(".sshmd-tmp-%d", time.Now().UnixNano())
 	_ = client.RemoveAll(temp)
 	defer client.RemoveAll(temp)
 	if err := copyLocalToRemote(client, localPath, temp, info); err != nil {
@@ -520,7 +520,7 @@ func pullSFTP(client *sftp.Client, remotePath, destination string, options trans
 	if err := os.MkdirAll(filepath.Dir(destination), 0700); err != nil {
 		return false, err
 	}
-	temp := filepath.Join(filepath.Dir(destination), "."+filepath.Base(destination)+".sshm-tmp-"+fmt.Sprint(time.Now().UnixNano()))
+	temp := filepath.Join(filepath.Dir(destination), "."+filepath.Base(destination)+".sshmd-tmp-"+fmt.Sprint(time.Now().UnixNano()))
 	_ = os.RemoveAll(temp)
 	defer os.RemoveAll(temp)
 	if err := copyRemoteToLocal(client, remotePath, temp, info); err != nil {
@@ -687,7 +687,7 @@ func activateRemoteTemp(client *sftp.Client, temp, destination string, exists, o
 	if err := client.PosixRename(temp, destination); err == nil {
 		return nil
 	}
-	restore := destination + fmt.Sprintf(".sshm-restore-%d", time.Now().UnixNano())
+	restore := destination + fmt.Sprintf(".sshmd-restore-%d", time.Now().UnixNano())
 	if err := client.Rename(destination, restore); err != nil {
 		return fmt.Errorf("准备远程目标替换失败: %w", err)
 	}
@@ -719,7 +719,7 @@ func activateLocalTemp(temp, destination string, exists, overwrite, backup bool)
 	if !overwrite {
 		return fmt.Errorf("本地目标已存在")
 	}
-	restore := destination + fmt.Sprintf(".sshm-restore-%d", time.Now().UnixNano())
+	restore := destination + fmt.Sprintf(".sshmd-restore-%d", time.Now().UnixNano())
 	if err := os.Rename(destination, restore); err != nil {
 		return fmt.Errorf("准备本地目标替换失败: %w", err)
 	}

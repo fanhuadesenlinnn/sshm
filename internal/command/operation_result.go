@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/operation"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/ui"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/operation"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/ui"
 )
 
 func newOperationResult(host config.Host, output string, err error, fallback operation.FailureStage, retry string, duration time.Duration) operation.Result {
@@ -30,14 +30,14 @@ func nextCommandForFailure(host config.Host, stage operation.FailureStage, retry
 	switch stage {
 	case operation.StageCredential:
 		if name, ok := config.ManagedKeyName(host.Identity); ok {
-			return fmt.Sprintf("sshm key setup %s %s --yes", name, alias)
+			return fmt.Sprintf("sshmd key setup %s %s --yes", name, alias)
 		}
 		if host.Auth == "key" {
-			return fmt.Sprintf("sshm key setup <密钥名> %s --yes", alias)
+			return fmt.Sprintf("sshmd key setup <密钥名> %s --yes", alias)
 		}
-		return fmt.Sprintf("sshm passwd %s", alias)
+		return fmt.Sprintf("sshmd passwd %s", alias)
 	case operation.StageVault:
-		return "在交互终端重试以解锁 vault，或运行 sshm doctor 检查凭据环境"
+		return "在交互终端重试以解锁 vault，或运行 sshmd doctor 检查凭据环境"
 	default:
 		return retry
 	}

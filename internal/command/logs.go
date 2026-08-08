@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/operation"
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/ui"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/operation"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/ui"
 )
 
 func (app *App) cmdLogs(args []string) error {
@@ -20,7 +20,7 @@ func (app *App) cmdLogs(args []string) error {
 	if len(args) > 0 && args[0] == "clean" {
 		yes, rest := removeFlag(args[1:], "--yes")
 		if len(rest) != 0 {
-			return fmt.Errorf("用法: sshm logs clean [--yes]")
+			return fmt.Errorf("用法: sshmd logs clean [--yes]")
 		}
 		logsDir, err := safeLogsDirForClean()
 		if err != nil {
@@ -58,7 +58,7 @@ func (app *App) cmdLogs(args []string) error {
 			i++
 			actionFilter = args[i]
 		default:
-			return fmt.Errorf("未知 logs 命令 %q；使用 sshm logs help 查看帮助", args[i])
+			return fmt.Errorf("未知 logs 命令 %q；使用 sshmd logs help 查看帮助", args[i])
 		}
 	}
 	retention := 30 * 24 * time.Hour
@@ -141,14 +141,14 @@ func safeLogsDirForClean() (string, error) {
 	home := filepath.Clean(paths.Home)
 	logsDir := filepath.Clean(paths.Logs)
 	if home == "" || logsDir == "" || filepath.Dir(home) == home {
-		return "", fmt.Errorf("拒绝清理日志：SSHM_HOME 不能是文件系统根目录")
+		return "", fmt.Errorf("拒绝清理日志：SSHMD_HOME 不能是文件系统根目录")
 	}
 	if filepath.Base(logsDir) != "logs" {
 		return "", fmt.Errorf("拒绝清理日志：日志目录必须以 logs 结尾: %s", logsDir)
 	}
 	rel, err := filepath.Rel(home, logsDir)
 	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
-		return "", fmt.Errorf("拒绝清理日志：日志目录不在 SSHM_HOME 内: %s", logsDir)
+		return "", fmt.Errorf("拒绝清理日志：日志目录不在 SSHMD_HOME 内: %s", logsDir)
 	}
 	return logsDir, nil
 }
@@ -161,6 +161,6 @@ func printLogsHelp() {
 	fmt.Println("  logs --action <动作>  只看某个动作（exec/exec-batch/deploy/key-*）")
 	fmt.Println("  logs clean [--yes]    清理本地操作日志")
 	fmt.Println()
-	fmt.Println("  日志可能包含敏感远程输出，默认保存在 ~/.sshm/logs。")
+	fmt.Println("  日志可能包含敏感远程输出，默认保存在 ~/.sshmd/logs。")
 	fmt.Println()
 }

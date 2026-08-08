@@ -1,11 +1,11 @@
-# sshm v6 Context
+# sshmd v6 Context
 
-sshm 是一个本地优先、面向个人使用的 SSH 主机管理与轻量运维工具。核心用户独立管理约 5 到 100 台主机，不需要团队权限、集中审计或后台控制平面。
+sshmd 是一个本地优先、面向个人使用的 SSH 主机管理与轻量运维工具。核心用户独立管理约 5 到 100 台主机，不需要团队权限、集中审计或后台控制平面。
 
 ## 版本边界
 
-- 产品发布版本：`v6.1.2`
-- Go module：`github.com/fanhuadesenlinnn/sshm/v6`
+- 产品发布版本：`v6.2.0`
+- Go module：`github.com/fanhuadesenlinnn/sshmd/v6`
 - 主配置 schema：`version: 2`
 - Deploy schema：`version: 3`
 
@@ -14,10 +14,10 @@ sshm 是一个本地优先、面向个人使用的 SSH 主机管理与轻量运�
 ## 核心语言
 
 **数据目录**
-sshm 拥有的全部本地状态根目录。默认是 `~/.sshm`，只允许通过 `SSHM_HOME` 整体覆盖。
+sshmd 拥有的全部本地状态根目录。默认是 `~/.sshmd`，只允许通过 `SSHMD_HOME` 整体覆盖。
 
 **主配置**
-`<SSHM_HOME>/sshm.yaml`。它是唯一权威可变状态，保存 defaults、hosts、tags、managed_keys、host_trust、加密 vault，以及可选的明文密码字段。
+`<SSHMD_HOME>/sshmd.yaml`。它是唯一权威可变状态，保存 defaults、hosts、tags、managed_keys、host_trust、加密 vault，以及可选的明文密码字段。
 
 **主机**
 核心用户通过 SSH 连接和操作的一台远程服务器。主机拥有稳定 ID 和跨平台安全 alias。
@@ -29,13 +29,13 @@ sshm 拥有的全部本地状态根目录。默认是 `~/.sshm`，只允许通�
 一次远程操作解析出的稳定有序主机列表，不持久化。
 
 **主机信任**
-核心用户确认并由 sshm 持续验证的远端主机身份。`--yes` 不会跳过主机信任。
+核心用户确认并由 sshmd 持续验证的远端主机身份。`--yes` 不会跳过主机信任。
 
 **托管密钥**
 导入并保存在加密 vault 中的 SSH 私钥。普通私钥路径只作为导入源。
 
 **主密码会话**
-当前 sshm 进程成功解锁 vault 后，到 `lock` 或进程退出为止的凭据使用时间段。
+当前 sshmd 进程成功解锁 vault 后，到 `lock` 或进程退出为止的凭据使用时间段。
 
 **执行确认**
 用户看到动作和目标集合后，对一次操作的批准。`--yes` 仅跳过这一层确认，不跳过主密码或 host trust。
@@ -50,7 +50,7 @@ sshm 拥有的全部本地状态根目录。默认是 `~/.sshm`，只允许通�
 push/pull 使用 manifest、SHA-256、临时目标和 rename，拒绝符号链接与特殊文件。rsync 只能作为保持相同语义的可选加速路径。
 
 **Deploy 文件**
-用户维护的只读 YAML 输入。默认位置是 `<SSHM_HOME>/deploy.yaml` 和 `<SSHM_HOME>/deploy.d/*.yaml`；项目文件必须通过 `--file` 显式指定。
+用户维护的只读 YAML 输入。默认位置是 `<SSHMD_HOME>/deploy.yaml` 和 `<SSHMD_HOME>/deploy.d/*.yaml`；项目文件必须通过 `--file` 显式指定。
 
 **v3 Playbook**
 Deploy v3 声明文档，包含全局 vars 和多个 plays；文件结构沿用 `deploy.yaml` + `deploy.d/*.yaml`。
@@ -89,7 +89,7 @@ Deploy Profile 静态解析出的来源文件、目标主机、steps、handlers 
 
 ## 不变量
 
-1. sshm 不读取、迁移或删除旧 `~/.config/sshm/sshm.yaml`。
+1. sshmd 不读取、迁移或删除旧 `~/.config/sshmd/sshmd.yaml`。
 2. 除 `init`、`config path` 和 `doctor` 外，缺少主配置时不得静默创建。
 3. 主配置与 Deploy v3 严格拒绝缺失版本和未知字段。
 4. `--yes` 不跳过主密码和 host trust。
@@ -99,7 +99,7 @@ Deploy Profile 静态解析出的来源文件、目标主机、steps、handlers 
 8. 文件传输失败时不得把半成品暴露为最终目标。
 9. Deploy `plan` 不连接远端；`check` 不修改最终目标。
 10. diff 可能包含敏感内容，默认不写入操作日志。
-11. sshm 不提供后台任务、团队空间、完整 Ansible 兼容层或期望状态收敛。
+11. sshmd 不提供后台任务、团队空间、完整 Ansible 兼容层或期望状态收敛。
 12. Deploy v2 已移除；Deploy 文件必须使用 `version: 3`，旧 schema 不再加载。
 13. Deploy v3 的 `when` 引用未定义变量是错误而非静默跳过；可选变量必须显式使用 `is defined`。
 14. v3 不提供 handlers；条件执行必须通过 register + when 表达。
@@ -108,8 +108,8 @@ Deploy Profile 静态解析出的来源文件、目标主机、steps、handlers 
 
 ## 接口
 
-- 无参数 `sshm`：未初始化时显示首次使用引导；初始化后进入轻量工作台。
-- `sshm <alias|ID>`：最快直连路径。
+- 无参数 `sshmd`：未初始化时显示首次使用引导；初始化后进入轻量工作台。
+- `sshmd <alias|ID>`：最快直连路径。
 - Cobra CLI：可重复执行的完整命令接口。
 
 三种接口共享同一主配置、目标模型、安全策略和操作语义。

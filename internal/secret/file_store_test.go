@@ -12,7 +12,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
 )
 
 func TestFileStorePersistsAndVerifiesPassword(t *testing.T) {
@@ -95,7 +95,7 @@ func TestFileStoreWrongPassphraseDoesNotOverwriteExistingFile(t *testing.T) {
 		t.Fatalf("os.ReadFile() error = %v", err)
 	}
 	if string(after) != string(before) {
-		t.Fatal("SetPassword() with a wrong passphrase overwrote sshm.yaml")
+		t.Fatal("SetPassword() with a wrong passphrase overwrote sshmd.yaml")
 	}
 
 	password, err := store.GetPassword("server")
@@ -108,8 +108,8 @@ func TestFileStoreWrongPassphraseDoesNotOverwriteExistingFile(t *testing.T) {
 }
 
 func TestFileStoreCorruptFileDoesNotGetOverwritten(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "sshm.yaml")
-	original := []byte("not a valid sshm config")
+	path := filepath.Join(t.TempDir(), "sshmd.yaml")
+	original := []byte("not a valid sshmd config")
 	if err := os.WriteFile(path, original, 0600); err != nil {
 		t.Fatalf("os.WriteFile() error = %v", err)
 	}
@@ -124,7 +124,7 @@ func TestFileStoreCorruptFileDoesNotGetOverwritten(t *testing.T) {
 		t.Fatalf("os.ReadFile() error = %v", err)
 	}
 	if string(after) != string(original) {
-		t.Fatal("SetPassword() overwrote a corrupt sshm.yaml")
+		t.Fatal("SetPassword() overwrote a corrupt sshmd.yaml")
 	}
 }
 
@@ -239,7 +239,7 @@ func TestUpdateDocumentFailureLeavesHostAndVaultUnchanged(t *testing.T) {
 		t.Fatal(err)
 	}
 	if string(after) != string(before) {
-		t.Fatal("failed transaction changed sshm.yaml")
+		t.Fatal("failed transaction changed sshmd.yaml")
 	}
 	if password, err := store.GetPassword("stable-id"); err != nil || password != "original" {
 		t.Fatalf("password = %q, err = %v", password, err)
@@ -262,7 +262,7 @@ func TestCopiedSingleConfigRetainsHostsAndCredentials(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	destinationPath := filepath.Join(t.TempDir(), "sshm.yaml")
+	destinationPath := filepath.Join(t.TempDir(), "sshmd.yaml")
 	if err := os.WriteFile(destinationPath, data, 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -280,7 +280,7 @@ func TestCopiedSingleConfigRetainsHostsAndCredentials(t *testing.T) {
 }
 
 func TestWriteUpgradesWeakVaultParams(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "sshm.yaml")
+	path := filepath.Join(t.TempDir(), "sshmd.yaml")
 	repo := config.NewRepositoryWithPath(path)
 	doc := config.DefaultDocument()
 
@@ -353,7 +353,7 @@ func TestWriteUpgradesWeakVaultParams(t *testing.T) {
 
 func initializedSecretConfig(t *testing.T) string {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "sshm.yaml")
+	path := filepath.Join(t.TempDir(), "sshmd.yaml")
 	if err := config.NewRepositoryWithPath(path).Replace(config.DefaultDocument()); err != nil {
 		t.Fatal(err)
 	}

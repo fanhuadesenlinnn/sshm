@@ -6,11 +6,11 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
 )
 
 // Discover returns deploy file paths: explicit --file values, or the default
-// deploy.yaml plus deploy.d/*.yaml under SSHM_HOME.
+// deploy.yaml plus deploy.d/*.yaml under SSHMD_HOME.
 func Discover(explicit []string) ([]string, error) {
 	if len(explicit) > 0 {
 		paths := make([]string, 0, len(explicit))
@@ -34,7 +34,7 @@ func Discover(explicit []string) ([]string, error) {
 	sort.Strings(fragments)
 	paths = append(paths, fragments...)
 	if len(paths) == 0 {
-		return nil, fmt.Errorf("未找到 deploy 配置；使用 sshm deploy init 或通过 --file 指定文件")
+		return nil, fmt.Errorf("未找到 deploy 配置；使用 sshmd deploy init 或通过 --file 指定文件")
 	}
 	return paths, nil
 }

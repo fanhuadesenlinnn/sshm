@@ -110,7 +110,7 @@ func TestTransferRetryCommandUsesShellSafeQuotingAndPreservesMethod(t *testing.T
 		method: "rsync", overwrite: true, validateChecksum: false,
 	}, "web'01")
 	for _, want := range []string{
-		"sshm push 'web'\"'\"'01' 'dist/$(uname).tar.gz' '/opt/app it'\"'\"'s.tar.gz' --yes",
+		"sshmd push 'web'\"'\"'01' 'dist/$(uname).tar.gz' '/opt/app it'\"'\"'s.tar.gz' --yes",
 		"--overwrite",
 		"--no-validate-checksum",
 		"--method 'rsync'",

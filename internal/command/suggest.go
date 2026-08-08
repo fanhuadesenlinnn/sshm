@@ -3,7 +3,7 @@ package command
 import (
 	"fmt"
 
-	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
 )
 
 func closestString(input string, candidates []string, maxDistance int) (string, bool) {
@@ -39,9 +39,9 @@ func (app *App) hostLookupError(aliasOrID string, cause error) error {
 		candidates = append(candidates, host.Alias, fmt.Sprintf("%d", i+1))
 	}
 	if best, ok := closestString(aliasOrID, candidates, 3); ok {
-		return fmt.Errorf("未找到主机 %q；你是否想使用 %q？使用 sshm list 查看全部主机: %w", aliasOrID, best, cause)
+		return fmt.Errorf("未找到主机 %q；你是否想使用 %q？使用 sshmd list 查看全部主机: %w", aliasOrID, best, cause)
 	}
-	return fmt.Errorf("未找到主机 %q；使用 sshm list 查看全部主机: %w", aliasOrID, cause)
+	return fmt.Errorf("未找到主机 %q；使用 sshmd list 查看全部主机: %w", aliasOrID, cause)
 }
 
 func missingHostSelectionError(input string, hosts []config.Host) error {
@@ -50,9 +50,9 @@ func missingHostSelectionError(input string, hosts []config.Host) error {
 		candidates = append(candidates, host.Alias, fmt.Sprintf("%d", i+1))
 	}
 	if best, ok := closestString(input, candidates, 3); ok {
-		return fmt.Errorf("未找到主机 %q；你是否想使用 %q？使用 sshm list 查看全部主机", input, best)
+		return fmt.Errorf("未找到主机 %q；你是否想使用 %q？使用 sshmd list 查看全部主机", input, best)
 	}
-	return fmt.Errorf("未找到主机 %q；使用 sshm list 查看全部主机", input)
+	return fmt.Errorf("未找到主机 %q；使用 sshmd list 查看全部主机", input)
 }
 
 func missingTagError(name string, tags []config.Tag) error {
@@ -61,7 +61,7 @@ func missingTagError(name string, tags []config.Tag) error {
 		candidates = append(candidates, tag.Name)
 	}
 	if best, ok := closestString(name, candidates, 3); ok {
-		return fmt.Errorf("未找到标签 %q；你是否想使用 %q？使用 sshm tag list 查看全部标签", name, best)
+		return fmt.Errorf("未找到标签 %q；你是否想使用 %q？使用 sshmd tag list 查看全部标签", name, best)
 	}
-	return fmt.Errorf("未找到标签 %q；使用 sshm tag list 查看全部标签", name)
+	return fmt.Errorf("未找到标签 %q；使用 sshmd tag list 查看全部标签", name)
 }

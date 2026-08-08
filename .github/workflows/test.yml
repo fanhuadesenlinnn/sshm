@@ -26,8 +26,8 @@ jobs:
       - name: Test Unix installer
         run: |
           VERSION="$(git describe --tags --abbrev=0 2>/dev/null || echo latest)"
-          scripts/install.sh --version "$VERSION" --install-dir "$RUNNER_TEMP/sshm-bin"
-          "$RUNNER_TEMP/sshm-bin/sshm" --version | grep -Fx "sshm $VERSION"
+          scripts/install.sh --version "$VERSION" --install-dir "$RUNNER_TEMP/sshmd-bin"
+          "$RUNNER_TEMP/sshmd-bin/sshmd" --version | grep -Fx "sshmd $VERSION"
 
       - name: Setup Go
         uses: actions/setup-go@v6
@@ -69,23 +69,23 @@ jobs:
           CGO_ENABLED: 0
           GOOS: linux
           GOARCH: amd64
-        run: go build -tags "netgo osusergo" -o sshm-linux-static .
+        run: go build -tags "netgo osusergo" -o sshmd-linux-static .
 
       - name: Verify static linking
         run: |
-          file sshm-linux-static | tee file.txt
+          file sshmd-linux-static | tee file.txt
           grep -F "statically linked" file.txt
-          go version -m sshm-linux-static | tee build-info.txt
+          go version -m sshmd-linux-static | tee build-info.txt
           grep -F "CGO_ENABLED=0" build-info.txt
-          if readelf -l sshm-linux-static | grep -F "Requesting program interpreter"; then
+          if readelf -l sshmd-linux-static | grep -F "Requesting program interpreter"; then
             echo "ERROR: Linux binary has a dynamic program interpreter"
             exit 1
           fi
 
       - name: Test glibc and musl environments
         run: |
-          docker run --rm -v "$PWD/sshm-linux-static:/sshm:ro" centos:7 /sshm --version
-          docker run --rm -v "$PWD/sshm-linux-static:/sshm:ro" alpine:3.19 /sshm --version
+          docker run --rm -v "$PWD/sshmd-linux-static:/sshmd:ro" centos:7 /sshmd --version
+          docker run --rm -v "$PWD/sshmd-linux-static:/sshmd:ro" alpine:3.19 /sshmd --version
 
   cross-platform:
     name: Test (${{ matrix.os }})
@@ -124,9 +124,9 @@ jobs:
         run: |
           $Version = git describe --tags --abbrev=0
           if ($LASTEXITCODE -ne 0) { $Version = 'latest' }
-          $InstallDir = Join-Path $env:RUNNER_TEMP 'sshm-bin'
+          $InstallDir = Join-Path $env:RUNNER_TEMP 'sshmd-bin'
           & .\scripts\install.ps1 -Version $Version -InstallDir $InstallDir -NoPathUpdate
-          $Output = & (Join-Path $InstallDir 'sshm.exe') --version
-          if ($Output -ne "sshm $Version") {
+          $Output = & (Join-Path $InstallDir 'sshmd.exe') --version
+          if ($Output -ne "sshmd $Version") {
             throw "Unexpected version output: $Output"
           }
