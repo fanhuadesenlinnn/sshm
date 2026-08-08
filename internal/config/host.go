@@ -23,6 +23,7 @@ type Host struct {
 	Note                  string   `yaml:"note"`
 	Tags                  []string `yaml:"tags"`
 	Auth                  string   `yaml:"auth"`
+	Password              string   `yaml:"password,omitempty"`
 	PasswordRef           string   `yaml:"password_ref"`
 	Pinned                bool     `yaml:"pinned,omitempty"`
 	LastUsedAt            string   `yaml:"last_used_at,omitempty"`
@@ -134,6 +135,9 @@ func (h *Host) Validate() []string {
 		if _, managed := ManagedKeyName(h.Identity); !managed {
 			errs = append(errs, "identity 仅支持 sshm 托管密钥")
 		}
+	}
+	if h.Password != "" && h.PasswordRef != "" {
+		errs = append(errs, "password（明文）与 password_ref（加密）不能同时使用")
 	}
 	if h.HostKeyPolicy != "" && !ValidHostKeyPolicy(h.HostKeyPolicy) {
 		errs = append(errs, fmt.Sprintf("无效的主机信任策略: %s", h.HostKeyPolicy))

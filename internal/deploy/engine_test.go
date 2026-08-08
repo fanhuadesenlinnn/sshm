@@ -35,6 +35,7 @@ func argsNode(values map[string]any) *yaml.Node {
 type fakeExecutor struct {
 	mu       sync.Mutex
 	calls    []string
+	stdins   []string
 	execFail map[string]error
 	execOut  map[string]string
 	statInfo map[string]ops.RemoteFileInfo
@@ -45,6 +46,12 @@ type fakeExecutor struct {
 func (f *fakeExecutor) Exec(_ context.Context, host config.Host, options ops.ExecOptions) ops.Result {
 	f.mu.Lock()
 	f.calls = append(f.calls, host.Alias+":exec:"+options.Command)
+	if options.Stdin != nil {
+		data, _ := io.ReadAll(options.Stdin)
+		f.stdins = append(f.stdins, string(data))
+	} else {
+		f.stdins = append(f.stdins, "")
+	}
 	f.mu.Unlock()
 	out := "ok"
 	if value, ok := f.execOut[options.Command]; ok {
@@ -112,6 +119,12 @@ func (f *fakeExecutor) callLog() []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return append([]string(nil), f.calls...)
+}
+
+func (f *fakeExecutor) stdinLog() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.stdins...)
 }
 
 func planFor(t *testing.T, tasks []Task, hosts []config.Host) *Plan {
@@ -678,6 +691,44 @@ func TestFreeStrategyConfirmsEachMessageOnce(t *testing.T) {
 	}
 }
 
+func TestFreeStrategyConfirmSkipsTasksThatNeverRun(t *testing.T) {
+	executor := &fakeExecutor{}
+	task := commandTask("restart", "echo restart")
+	task.Confirm = "确认重启?"
+	task.When = "1 == 2"
+	plan := planFor(t, []Task{task}, testHosts())
+	plan.Strategy = StrategyFree
+	prompts := 0
+	result := (Runner{Executor: executor, Confirm: func(string) error {
+		prompts++
+		return nil
+	}}).Run(context.Background(), plan)
+	if result.Summary.Skipped != 2 {
+		t.Fatalf("when 不满足的主机应跳过: %+v", result.Summary)
+	}
+	if prompts != 0 {
+		t.Fatalf("不会执行的任务不应触发 confirm，实际 %d 次", prompts)
+	}
+}
+
+func TestFreeStrategyConfirmDeduplicatesMessages(t *testing.T) {
+	executor := &fakeExecutor{}
+	first := commandTask("a", "echo a")
+	first.Confirm = "确认 A?"
+	second := commandTask("b", "echo b")
+	second.Confirm = "确认 B?"
+	plan := planFor(t, []Task{first, second}, testHosts())
+	plan.Strategy = StrategyFree
+	prompts := 0
+	(Runner{Executor: executor, Confirm: func(string) error {
+		prompts++
+		return nil
+	}}).Run(context.Background(), plan)
+	if prompts != 2 {
+		t.Fatalf("两个不同 confirm 消息应各确认一次，实际 %d 次", prompts)
+	}
+}
+
 func TestServiceUnmasksMaskedService(t *testing.T) {
 	command := "systemctl is-enabled -- 'svc'"
 	executor := &fakeExecutor{
@@ -851,6 +902,88 @@ func (e *fakeExitError) Error() string {
 
 func (e *fakeExitError) ExitStatus() int {
 	return e.code
+}
+
+func TestBecomeWithPasswordUsesSudoS(t *testing.T) {
+	executor := &fakeExecutor{}
+	task := commandTask("become", "whoami")
+	task.Become = true
+	task.BecomePassword = "secret"
+	plan := planFor(t, []Task{task}, testHosts())
+	result := (Runner{Executor: executor}).Run(context.Background(), plan)
+	if result.Summary.OK != 2 {
+		t.Fatalf("summary = %+v", result.Summary)
+	}
+	for _, call := range executor.callLog() {
+		if !strings.Contains(call, "sudo -S -p ''") {
+			t.Fatalf("become 密码模式应使用 sudo -S: %s", call)
+		}
+		if strings.Contains(call, "sudo -n") {
+			t.Fatalf("become 密码模式不应使用 sudo -n: %s", call)
+		}
+	}
+	for _, stdin := range executor.stdinLog() {
+		if stdin != "secret\n" {
+			t.Fatalf("sudo 密码应经 stdin 传入: %q", stdin)
+		}
+	}
+}
+
+func TestBecomeWithoutPasswordUsesSudoN(t *testing.T) {
+	executor := &fakeExecutor{}
+	task := commandTask("become", "whoami")
+	task.Become = true
+	plan := planFor(t, []Task{task}, testHosts())
+	(Runner{Executor: executor}).Run(context.Background(), plan)
+	for _, call := range executor.callLog() {
+		if !strings.Contains(call, "sudo -n") {
+			t.Fatalf("无密码时 become 应使用 sudo -n: %s", call)
+		}
+	}
+	for _, stdin := range executor.stdinLog() {
+		if stdin != "" {
+			t.Fatalf("无密码时不应提供 stdin: %q", stdin)
+		}
+	}
+}
+
+func TestBecomePasswordFromRunnerResolver(t *testing.T) {
+	executor := &fakeExecutor{}
+	task := commandTask("become", "whoami")
+	task.Become = true
+	plan := planFor(t, []Task{task}, testHosts())
+	runner := Runner{
+		Executor: executor,
+		BecomePassword: func(host config.Host) (string, bool) {
+			return "vault-pwd", true
+		},
+	}
+	runner.Run(context.Background(), plan)
+	for _, stdin := range executor.stdinLog() {
+		if stdin != "vault-pwd\n" {
+			t.Fatalf("resolver 密码应经 stdin 传入: %q", stdin)
+		}
+	}
+}
+
+func TestTaskBecomePasswordOverridesResolver(t *testing.T) {
+	executor := &fakeExecutor{}
+	task := commandTask("become", "whoami")
+	task.Become = true
+	task.BecomePassword = "task-pwd"
+	plan := planFor(t, []Task{task}, testHosts())
+	runner := Runner{
+		Executor: executor,
+		BecomePassword: func(host config.Host) (string, bool) {
+			return "env-pwd", true
+		},
+	}
+	runner.Run(context.Background(), plan)
+	for _, stdin := range executor.stdinLog() {
+		if stdin != "task-pwd\n" {
+			t.Fatalf("任务级 become_password 应覆盖 resolver: %q", stdin)
+		}
+	}
 }
 
 var _ = batch.StatusOK

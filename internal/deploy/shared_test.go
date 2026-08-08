@@ -3,6 +3,7 @@ package deploy
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/fanhuadesenlinnn/sshm/v6/internal/config"
@@ -122,6 +123,40 @@ func TestApplyExcludesValidation(t *testing.T) {
 	if _, err := ApplyExcludes(inventory, inventory, nil, []string{"web", "db"}); err == nil {
 		t.Fatal("标签全部排除后应报错")
 	}
+}
+
+func TestBuildPlanMergesExcludeOnlyOverrideWithPlayHosts(t *testing.T) {
+	hosts := testHostsFixture()
+	play := Play{
+		Name:  "web",
+		Hosts: TargetSelector{Hosts: []string{"web01", "web02"}},
+		Tasks: []Task{commandTaskFixture("echo ok")},
+	}
+	catalog := &Catalog{ByName: map[string]Play{"web": play}}
+
+	plan, err := BuildPlan(catalog, "web", hosts, Overrides{Targets: &TargetSelector{Exclude: []string{"web02"}}})
+	if err != nil {
+		t.Fatalf("exclude-only 覆盖应保留 play hosts: %v", err)
+	}
+	if len(plan.Hosts) != 1 || plan.Hosts[0].Alias != "web01" {
+		t.Fatalf("排除后主机 = %+v", plan.Hosts)
+	}
+
+	_, err = BuildPlan(catalog, "web", hosts, Overrides{Targets: &TargetSelector{Exclude: []string{"web01", "web02"}}})
+	if err == nil || !strings.Contains(err.Error(), "排除后目标主机为空") {
+		t.Fatalf("排除全部主机应报明确错误: %v", err)
+	}
+}
+
+func testHostsFixture() []config.Host {
+	return []config.Host{
+		{Alias: "web01", ID: "id-1", Host: "10.0.0.1", User: "root", Port: 22, Tags: []string{"web"}},
+		{Alias: "web02", ID: "id-2", Host: "10.0.0.2", User: "root", Port: 22, Tags: []string{"web"}},
+	}
+}
+
+func commandTaskFixture(cmd string) Task {
+	return Task{Module: "command", Args: argsNode(map[string]any{"cmd": cmd})}
 }
 
 func TestDiscoverExplicitDeduplicatesAndAbsolutizes(t *testing.T) {

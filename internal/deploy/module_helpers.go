@@ -32,12 +32,24 @@ func runRemote(tc TaskContext, command string) ModuleResult {
 		command = strings.Join(parts, " ") + " " + command
 	}
 	if tc.Become {
-		command = ops.BecomeCommand(command, tc.BecomeUser)
+		user := tc.BecomeUser
+		if user == "" {
+			user = "root"
+		}
+		if tc.HasBecomePassword {
+			command = "sudo -S -p '' -u " + shellquote.Single(user) + " -- sh -c " + shellquote.Single(command)
+		} else {
+			command = ops.BecomeCommand(command, tc.BecomeUser)
+		}
 	}
-	result := tc.Executor.Exec(tc.Ctx, tc.Host, ops.ExecOptions{
+	options := ops.ExecOptions{
 		Command: command, ConnectTimeout: tc.ConnectTimeout,
 		Stdout: tc.Visible, Stderr: tc.Visible,
-	})
+	}
+	if tc.Become && tc.HasBecomePassword {
+		options.Stdin = strings.NewReader(tc.BecomePassword + "\n")
+	}
+	result := tc.Executor.Exec(tc.Ctx, tc.Host, options)
 	rc, hasRC := remoteExitStatus(result.Err)
 	if result.Err != nil {
 		failed := failedModule(result.Err, result.Stage)

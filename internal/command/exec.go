@@ -85,12 +85,12 @@ func (app *App) cmdExecTag(args []string) error {
 			hosts = append(hosts, h)
 		}
 	}
+	if len(hosts) == 0 {
+		return fmt.Errorf("没有匹配标签 %q 的主机；使用 sshm tag list 查看标签，或 sshm tag add %s <主机> 绑定主机", tagName, tagName)
+	}
 	hosts, err = deploy.ApplyExcludes(hosts, hf.Hosts, options.Exclude, options.ExcludeTags)
 	if err != nil {
 		return err
-	}
-	if len(hosts) == 0 {
-		return fmt.Errorf("没有匹配标签 %q 的主机；使用 sshm tag list 查看标签，或 sshm tag add %s <主机> 绑定主机", tagName, tagName)
 	}
 	return app.executeBatch(hosts, command, options)
 }

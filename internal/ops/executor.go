@@ -22,6 +22,7 @@ import (
 type ExecOptions struct {
 	Command        string
 	ConnectTimeout time.Duration
+	Stdin          io.Reader
 	Stdout         io.Writer
 	Stderr         io.Writer
 }
@@ -88,24 +89,6 @@ type TransferFunc func(context.Context, config.Host, TransferOptions) Result
 // DialFunc establishes a reusable SSH client for a host.
 type DialFunc func(ctx context.Context, host config.Host, connectTimeout time.Duration) (sshx.Client, error)
 
-type NativeExecutor struct {
-	Secrets  *secret.FileStore
-	PushFunc TransferFunc
-	PullFunc TransferFunc
-	DialSFTP DialSFTPFunc
-	DialFunc DialFunc
-
-	mu       sync.Mutex
-	sessions map[string]*hostSession
-}
-
-// hostSession is a reusable SSH connection with an optionally-open SFTP
-// channel. It is never closed by individual operations; CloseSessions owns it.
-type hostSession struct {
-	client sshx.Client
-	sftp   *sftp.Client
-}
-
 // SFTPConn is the subset of the SFTP client used by Stat, so tests can inject
 // a fake instead of dialing a real host.
 type SFTPConn interface {
@@ -114,16 +97,51 @@ type SFTPConn interface {
 	Close() error
 }
 
-// DialSFTPFunc establishes an SFTP session for a host.
-type DialSFTPFunc func(ctx context.Context, host config.Host, connectTimeout time.Duration) (SFTPConn, error)
+// NativeExecutor implements Executor over reusable SSH sessions. Every
+// operation acquires its connection through the session manager, which is the
+// single dial/SFTP path: connection reuse and failure-reconnect are enforced
+// here rather than at individual call sites.
+type NativeExecutor struct {
+	Secrets  *secret.FileStore
+	PushFunc TransferFunc
+	PullFunc TransferFunc
+	DialFunc DialFunc
+	SFTPOpen SFTPOpenFunc
+
+	managerMu sync.Mutex
+	manager   *sessionManager
+}
+
+func (e *NativeExecutor) sessionManager() *sessionManager {
+	e.managerMu.Lock()
+	defer e.managerMu.Unlock()
+	if e.manager == nil {
+		dial := e.DialFunc
+		if dial == nil {
+			dial = func(ctx context.Context, host config.Host, connectTimeout time.Duration) (sshx.Client, error) {
+				client, _, err := sshx.DialContextWithTimeout(ctx, host, e.Secrets, connectTimeout)
+				return client, err
+			}
+		}
+		sftpOpen := e.SFTPOpen
+		if sftpOpen == nil {
+			sftpOpen = defaultSFTPOpen
+		}
+		e.manager = newSessionManager(dial, sftpOpen)
+	}
+	return e.manager
+}
 
 func (e *NativeExecutor) Exec(ctx context.Context, host config.Host, options ExecOptions) Result {
 	start := time.Now()
-	session, err := e.getSession(ctx, host, options.ConnectTimeout)
+	session, err := e.sessionManager().acquire(ctx, host, options.ConnectTimeout)
 	if err != nil {
 		return newResult(host, "", "", "", err, operation.StageExecute, time.Since(start))
 	}
-	output, err := sshx.ExecCommandOnClient(ctx, session.client, options.Command, options.Stdout, options.Stderr)
+	output, err := sshx.ExecCommandOnClientWithStdin(ctx, session.client, options.Command, options.Stdin, options.Stdout, options.Stderr)
+	if err != nil && isBrokenConnection(err) {
+		e.sessionManager().markBroken(host.Alias)
+	}
 	return newResult(host, output, "", "", err, operation.StageExecute, time.Since(start))
 }
 
@@ -131,28 +149,36 @@ func (e *NativeExecutor) Push(ctx context.Context, host config.Host, options Tra
 	if e.PushFunc == nil {
 		return newResult(host, "", "", "", operation.Wrap(operation.StageTransfer, errTransferUnavailable), operation.StageTransfer, 0)
 	}
-	return e.PushFunc(ctx, host, options)
+	result := e.PushFunc(ctx, host, options)
+	if isBrokenStage(result.Stage) {
+		e.sessionManager().markBroken(host.Alias)
+	}
+	return result
 }
 
 func (e *NativeExecutor) Pull(ctx context.Context, host config.Host, options TransferOptions) Result {
 	if e.PullFunc == nil {
 		return newResult(host, "", "", "", operation.Wrap(operation.StageTransfer, errTransferUnavailable), operation.StageTransfer, 0)
 	}
-	return e.PullFunc(ctx, host, options)
+	result := e.PullFunc(ctx, host, options)
+	if isBrokenStage(result.Stage) {
+		e.sessionManager().markBroken(host.Alias)
+	}
+	return result
 }
 
-// Stat returns lstat information for a remote path. A missing path yields an
-// empty RemoteFileInfo with nil error so modules can branch on existence.
+// Stat returns lstat information for a remote path, reusing the cached SSH
+// session and its shared SFTP channel. A missing path yields an empty
+// RemoteFileInfo with nil error so modules can branch on existence.
 func (e *NativeExecutor) Stat(ctx context.Context, host config.Host, path string, connectTimeout time.Duration) (RemoteFileInfo, error) {
-	dial := e.DialSFTP
-	if dial == nil {
-		dial = e.dialSFTP
-	}
-	client, err := dial(ctx, host, connectTimeout)
+	session, err := e.sessionManager().acquire(ctx, host, connectTimeout)
 	if err != nil {
 		return RemoteFileInfo{}, err
 	}
-	defer client.Close()
+	client, err := e.sessionManager().sftpFor(session)
+	if err != nil {
+		return RemoteFileInfo{}, err
+	}
 	info, err := client.Lstat(path)
 	if err != nil {
 		if isNoSuchFile(err) {
@@ -175,76 +201,17 @@ func (e *NativeExecutor) Stat(ctx context.Context, host config.Host, path string
 	return out, nil
 }
 
-func (e *NativeExecutor) dialSFTP(ctx context.Context, host config.Host, connectTimeout time.Duration) (SFTPConn, error) {
-	client, _, err := sshx.DialContextWithTimeout(ctx, host, e.Secrets, connectTimeout)
-	if err != nil {
-		return nil, err
-	}
-	sftpClient, err := sftp.NewClient(client)
-	if err != nil {
-		_ = client.Close()
-		return nil, fmt.Errorf("启动 SFTP 失败: %w", err)
-	}
-	return sftpClient, nil
-}
-
-// getSession returns a reusable SSH session for the host, dialing once per
-// alias. Sessions are closed by CloseSessions; callers that keep an executor
-// alive (for example the interactive workbench) should defer CloseSessions.
-func (e *NativeExecutor) getSession(ctx context.Context, host config.Host, connectTimeout time.Duration) (*hostSession, error) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	return e.getSessionLocked(ctx, host, connectTimeout)
-}
-
-func (e *NativeExecutor) getSessionLocked(ctx context.Context, host config.Host, connectTimeout time.Duration) (*hostSession, error) {
-	if e.sessions == nil {
-		e.sessions = map[string]*hostSession{}
-	}
-	if session, ok := e.sessions[host.Alias]; ok {
-		return session, nil
-	}
-	dial := e.DialFunc
-	if dial == nil {
-		dial = e.defaultDial
-	}
-	client, err := dial(ctx, host, connectTimeout)
-	if err != nil {
-		return nil, err
-	}
-	session := &hostSession{client: client}
-	e.sessions[host.Alias] = session
-	return session, nil
-}
-
-func (e *NativeExecutor) defaultDial(ctx context.Context, host config.Host, connectTimeout time.Duration) (sshx.Client, error) {
-	client, _, err := sshx.DialContextWithTimeout(ctx, host, e.Secrets, connectTimeout)
-	if err != nil {
-		return nil, err
-	}
-	return client, nil
-}
-
-// CloseSessions closes every cached SSH connection.
+// CloseSessions closes every cached SSH connection. Long-lived processes such
+// as the interactive workbench should defer CloseSessions.
 func (e *NativeExecutor) CloseSessions() {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	for alias, session := range e.sessions {
-		if session.sftp != nil {
-			_ = session.sftp.Close()
-		}
-		_ = session.client.Close()
-		delete(e.sessions, alias)
-	}
+	e.sessionManager().closeAll()
 }
 
 // ReusableSession returns the cached SSH and SFTP clients for a host, opening
 // the SFTP channel lazily. Callers must not close the returned clients; they
 // are released by CloseSessions.
 func (e *NativeExecutor) ReusableSession(ctx context.Context, host config.Host, connectTimeout time.Duration) (*ssh.Client, *sftp.Client, error) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	session, err := e.getSessionLocked(ctx, host, connectTimeout)
+	session, err := e.sessionManager().acquire(ctx, host, connectTimeout)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -252,20 +219,21 @@ func (e *NativeExecutor) ReusableSession(ctx context.Context, host config.Host, 
 	if !ok {
 		return nil, nil, fmt.Errorf("会话不支持传输复用")
 	}
-	if session.sftp == nil {
-		sftpClient, openErr := sftp.NewClient(client)
-		if openErr != nil {
-			return nil, nil, fmt.Errorf("启动 SFTP 失败: %w", openErr)
-		}
-		session.sftp = sftpClient
+	conn, err := e.sessionManager().sftpFor(session)
+	if err != nil {
+		return nil, nil, err
 	}
-	return client, session.sftp, nil
+	sftpClient, ok := conn.(*sftp.Client)
+	if !ok {
+		return nil, nil, fmt.Errorf("会话不支持传输复用")
+	}
+	return client, sftpClient, nil
 }
 
 // DialTCP dials address from the target host's side through the cached SSH
 // session, so reachability checks work through jump hosts and private nets.
 func (e *NativeExecutor) DialTCP(ctx context.Context, host config.Host, address string, connectTimeout time.Duration) (net.Conn, error) {
-	session, err := e.getSession(ctx, host, connectTimeout)
+	session, err := e.sessionManager().acquire(ctx, host, connectTimeout)
 	if err != nil {
 		return nil, err
 	}
@@ -282,8 +250,23 @@ func (e *NativeExecutor) DialTCP(ctx context.Context, host config.Host, address 
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case result := <-done:
+		if result.err != nil && isBrokenConnection(result.err) {
+			e.sessionManager().markBroken(host.Alias)
+		}
 		return result.conn, result.err
 	}
+}
+
+// isBrokenConnection reports whether an error means the cached SSH connection
+// itself is unusable (network or session level), so it should be dropped and
+// re-dialed for the next operation.
+func isBrokenConnection(err error) bool {
+	stage := operation.StageOf(err, operation.StageUnknown)
+	return stage == operation.StageNetwork || stage == operation.StageSession
+}
+
+func isBrokenStage(stage operation.FailureStage) bool {
+	return stage == operation.StageNetwork || stage == operation.StageSession
 }
 
 func isNoSuchFile(err error) bool {

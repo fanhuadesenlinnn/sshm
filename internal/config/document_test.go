@@ -159,6 +159,27 @@ hosts:
 	}
 }
 
+func TestHostValidateRejectsDualPasswordSources(t *testing.T) {
+	host := DefaultHost()
+	host.Alias, host.User, host.Host = "web01", "root", "10.0.0.1"
+	host.Password = "plain"
+	host.PasswordRef = "ref"
+	errs := host.Validate()
+	found := false
+	for _, err := range errs {
+		if strings.Contains(err, "不能同时使用") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("password 与 password_ref 并存应报错: %v", errs)
+	}
+	host.PasswordRef = ""
+	if errs := host.Validate(); len(errs) != 0 {
+		t.Fatalf("仅明文密码应通过校验: %v", errs)
+	}
+}
+
 func TestRepositoryDoesNotRewriteInvalidHostWhenIDIsMissing(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sshm.yaml")
 	data := []byte(`version: 2

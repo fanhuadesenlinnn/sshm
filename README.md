@@ -1,8 +1,8 @@
-# sshm v6.1.0
+# sshm v6.1.2
 
 sshm 是一个本地优先、面向个人使用的 SSH 主机管理与轻量运维工具。它使用 Go 原生 SSH 能力管理主机、标签、凭据、批量命令、安全文件传输和 Deploy v3 编排。
 
-> 版本说明：产品发布版本是 `v6.1.0`，Go module 是 `github.com/fanhuadesenlinnn/sshm/v6`，主配置 schema 为 `version: 2`，Deploy 配置 schema 为 `version: 3`。
+> 版本说明：产品发布版本是 `v6.1.2`，Go module 是 `github.com/fanhuadesenlinnn/sshm/v6`，主配置 schema 为 `version: 2`，Deploy 配置 schema 为 `version: 3`。
 
 ## 安装
 
@@ -26,7 +26,7 @@ macOS/Linux 默认安装到 `/usr/local/bin`，权限不足时会请求 `sudo`�
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/fanhuadesenlinnn/sshm/main/scripts/install.sh | \
-  sh -s -- --version v6.1.0 --install-dir "$HOME/.local/bin"
+  sh -s -- --version v6.1.2 --install-dir "$HOME/.local/bin"
 ```
 
 Windows 默认安装到 `%LOCALAPPDATA%\Programs\sshm` 并加入用户 PATH。
@@ -269,7 +269,7 @@ sshm deploy run update-app --check --diff --yes
 - `--all` 不能与具体主机或 `--tag` 混用，避免意外扩大操作范围。
 - `passwd` 和 `forget-pass` 支持多个主机、`--tag` 与 `--all`；批量 `passwd` 会把同一个 SSH 密码保存到全部目标主机。
 - 删除保存密码、删除托管密钥、清理日志和设置 `host-key-policy insecure` 默认需要确认；非交互环境必须显式使用 `--yes`。
-- 密码与托管私钥保存在 `sshm.yaml` 的加密 vault 中。
+- 密码与托管私钥默认保存在 `sshm.yaml` 的加密 vault 中；也支持在主机条目显式写 `password` 明文字段（与 `password_ref` 互斥，受 0600 权限保护，`sshm doctor` 会给出提醒）。Deploy 编排文件始终禁止保存密码或私钥。
 - 主密码只在当前进程内按需解锁，`lock` 或进程退出后失效。
 - host alias 采用跨平台安全字符规则，可直接用于多主机 pull 目录。
 - 主配置和 Deploy 配置均严格拒绝未知字段。

@@ -148,6 +148,20 @@ func (app *App) cmdDeployRun(options deployCLIOptions) error {
 			}
 			return nil
 		},
+		BecomePassword: func(host config.Host) (string, bool) {
+			if envPassword := os.Getenv("SSHM_BECOME_PASSWORD"); envPassword != "" {
+				return envPassword, true
+			}
+			if host.PasswordRef == "" {
+				return "", false
+			}
+			if fs := app.tryGetSecretStore(); fs != nil {
+				if password, err := fs.GetPassword(host.PasswordRef); err == nil {
+					return password, true
+				}
+			}
+			return "", false
+		},
 	}
 	ndjson := options.output == "ndjson"
 	progressEnabled := !ndjson && options.output != "json" && !options.batch.Quiet

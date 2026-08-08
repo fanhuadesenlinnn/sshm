@@ -109,10 +109,13 @@ func (f *fakeSFTP) Close() error {
 func statExecutor(t *testing.T, fake *fakeSFTP, dialErr error) (*NativeExecutor, *fakeSFTP) {
 	t.Helper()
 	return &NativeExecutor{
-		DialSFTP: func(_ context.Context, host config.Host, _ time.Duration) (SFTPConn, error) {
+		DialFunc: func(_ context.Context, host config.Host, _ time.Duration) (sshx.Client, error) {
 			if dialErr != nil {
 				return nil, dialErr
 			}
+			return &fakeSSHClient{}, nil
+		},
+		SFTPOpen: func(sshx.Client) (SFTPConn, error) {
 			return fake, nil
 		},
 	}, fake
@@ -127,8 +130,8 @@ func TestNativeExecutorStatMissingFile(t *testing.T) {
 	if info.Exists {
 		t.Fatalf("缺失文件 Exists 应为 false: %+v", info)
 	}
-	if !fake.closed {
-		t.Fatal("SFTP 连接应当被关闭")
+	if fake.closed {
+		t.Fatal("缓存会话中的 SFTP 不应在单次 Stat 后被关闭")
 	}
 }
 
@@ -251,48 +254,27 @@ func TestNativeExecutorReusesSessionPerHost(t *testing.T) {
 	}
 	one := config.Host{Alias: "one"}
 	two := config.Host{Alias: "two"}
-	first, err := executor.getSession(context.Background(), one, 0)
+	manager := executor.sessionManager()
+	first, err := manager.acquire(context.Background(), one, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := executor.getSession(context.Background(), one, 0)
+	second, err := manager.acquire(context.Background(), one, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if first != second {
 		t.Fatal("同一主机的会话应复用")
 	}
-	if _, err := executor.getSession(context.Background(), two, 0); err != nil {
+	if _, err := manager.acquire(context.Background(), two, 0); err != nil {
 		t.Fatal(err)
 	}
-	if len(executor.sessions) != 2 {
-		t.Fatalf("sessions = %d, want 2", len(executor.sessions))
+	if len(manager.sessions) != 2 {
+		t.Fatalf("sessions = %d, want 2", len(manager.sessions))
 	}
 	executor.CloseSessions()
-	if len(executor.sessions) != 0 || !dialed.closed {
-		t.Fatalf("CloseSessions 应清空并关闭连接: sessions=%d closed=%t", len(executor.sessions), dialed.closed)
-	}
-}
-
-func TestNativeExecutorExecUsesCachedSession(t *testing.T) {
-	dialed := &fakeSSHClient{}
-	executor := &NativeExecutor{
-		DialFunc: func(_ context.Context, host config.Host, _ time.Duration) (sshx.Client, error) {
-			return dialed, nil
-		},
-	}
-	host := config.Host{Alias: "one"}
-	for range 2 {
-		result := executor.Exec(context.Background(), host, ExecOptions{Command: "uptime"})
-		if result.Err == nil || !strings.Contains(result.Err.Error(), "fake session") {
-			t.Fatalf("Exec 应透传 fake session 错误: %v", result.Err)
-		}
-	}
-	if dialed.sessions != 2 {
-		t.Fatalf("两次 Exec 应各建一个 session: %d", dialed.sessions)
-	}
-	if len(executor.sessions) != 1 {
-		t.Fatalf("两次 Exec 应复用同一 SSH 连接: %d", len(executor.sessions))
+	if len(manager.sessions) != 0 || !dialed.closed {
+		t.Fatalf("CloseSessions 应清空并关闭连接: sessions=%d closed=%t", len(manager.sessions), dialed.closed)
 	}
 }
 
@@ -308,8 +290,60 @@ func TestNativeExecutorDialTCPUsesCachedSession(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "fake dial") {
 		t.Fatalf("DialTCP 应透传 fake dial 错误: %v", err)
 	}
-	if dialed.dials != 1 || len(executor.sessions) != 1 {
-		t.Fatalf("DialTCP 应复用缓存会话: dials=%d sessions=%d", dialed.dials, len(executor.sessions))
+	if dialed.dials != 1 || len(executor.sessionManager().sessions) != 1 {
+		t.Fatalf("DialTCP 应复用缓存会话: dials=%d sessions=%d", dialed.dials, len(executor.sessionManager().sessions))
+	}
+}
+
+func TestNativeExecutorStatReusesCachedSession(t *testing.T) {
+	dials := 0
+	fake := &fakeSFTP{stat: map[string]fakeStatResult{
+		"/x": {info: fakeFileInfo{name: "x", size: 1, mode: 0o644}},
+	}}
+	executor := &NativeExecutor{
+		DialFunc: func(_ context.Context, host config.Host, _ time.Duration) (sshx.Client, error) {
+			dials++
+			return &fakeSSHClient{}, nil
+		},
+		SFTPOpen: func(sshx.Client) (SFTPConn, error) {
+			return fake, nil
+		},
+	}
+	host := config.Host{Alias: "one"}
+	for range 2 {
+		if _, err := executor.Stat(context.Background(), host, "/x", 0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if dials != 1 {
+		t.Fatalf("两次 Stat 应复用同一 SSH 连接，实际拨号 %d 次", dials)
+	}
+	executor.CloseSessions()
+	if !fake.closed {
+		t.Fatal("CloseSessions 应关闭缓存的 SFTP 连接")
+	}
+}
+
+func TestNativeExecutorRedialsAfterBrokenSession(t *testing.T) {
+	dials := 0
+	executor := &NativeExecutor{
+		DialFunc: func(_ context.Context, host config.Host, _ time.Duration) (sshx.Client, error) {
+			dials++
+			return &fakeSSHClient{}, nil
+		},
+	}
+	host := config.Host{Alias: "one"}
+	for range 2 {
+		result := executor.Exec(context.Background(), host, ExecOptions{Command: "uptime"})
+		if result.Err == nil || !strings.Contains(result.Err.Error(), "fake session") {
+			t.Fatalf("Exec 应透传 fake session 错误: %v", result.Err)
+		}
+	}
+	if dials != 2 {
+		t.Fatalf("会话断开后应重新拨号，实际拨号 %d 次", dials)
+	}
+	if len(executor.sessionManager().sessions) != 0 {
+		t.Fatalf("连接级错误后应丢弃失效会话: %d", len(executor.sessionManager().sessions))
 	}
 }
 

@@ -92,6 +92,18 @@ func (fs *FileStore) GetPassword(ref string) (string, error) {
 	return pass, nil
 }
 
+// GetPasswordForHost resolves a host's SSH password from either its plaintext
+// config field or the encrypted vault, in that order.
+func (fs *FileStore) GetPasswordForHost(host config.Host) (string, error) {
+	if host.Password != "" {
+		return host.Password, nil
+	}
+	if host.PasswordRef != "" {
+		return fs.GetPassword(host.PasswordRef)
+	}
+	return "", fmt.Errorf("主机 %s 未配置密码", host.Alias)
+}
+
 func (fs *FileStore) SetPassword(ref, password string) error {
 	return fs.writeSecrets(func(entries map[string]string) error {
 		entries[passwordKey(ref)] = password

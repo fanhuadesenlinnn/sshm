@@ -50,7 +50,11 @@ func (m commandModule) DecodeArgs(node *yaml.Node) (any, error) {
 func (m commandModule) Run(tc TaskContext, raw any) ModuleResult {
 	args := raw.(*commandArgs)
 	if tc.Check && !tc.CheckSafe {
-		return ModuleResult{Status: batch.StatusSkipped, Output: "check 模式跳过不安全命令（设置 check_safe: true 以执行）\n"}
+		return ModuleResult{
+			Status:     batch.StatusSkipped,
+			Output:     "check 模式跳过不安全命令（设置 check_safe: true 以执行）\n",
+			SkipReason: "check 模式跳过（可设置 check_safe: true 执行）",
+		}
 	}
 	if args.Creates != "" {
 		exists, err := remoteTest(tc, args.Creates)

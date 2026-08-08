@@ -42,6 +42,8 @@ func (app *App) cmdQuickAdd(args []string) error {
 			h.Tags = config.ParseTags(value)
 		case "--note":
 			h.Note = value
+		case "--password":
+			h.Password = value
 		case "--auth":
 			h.Auth = value
 		case "--host-key-policy":

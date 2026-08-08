@@ -19,26 +19,29 @@ import (
 
 // TaskContext carries per-host runtime state into a module.
 type TaskContext struct {
-	Ctx            context.Context
-	Host           config.Host
-	Vars           Vars
-	Registers      map[string]any
-	Facts          Vars
-	Become         bool
-	BecomeUser     string
-	Env            map[string]string
-	Check          bool
-	Diff           bool
-	CheckSafe      bool
-	Confirm        func(message string) error
-	Timeout        time.Duration
-	ConnectTimeout time.Duration
-	BaseDir        string
-	LoopItem       any
-	LoopIndex      int
-	Executor       ops.Executor
-	Visible        io.Writer
-	PlayState      *PlayState
+	Ctx               context.Context
+	Host              config.Host
+	Vars              Vars
+	Registers         map[string]any
+	Facts             Vars
+	Become            bool
+	BecomeUser        string
+	BecomePassword    string
+	HasBecomePassword bool
+	Env               map[string]string
+	Check             bool
+	Diff              bool
+	CheckSafe         bool
+	Confirm           func(message string) error
+	ConfirmLazy       bool
+	Timeout           time.Duration
+	ConnectTimeout    time.Duration
+	BaseDir           string
+	LoopItem          any
+	LoopIndex         int
+	Executor          ops.Executor
+	Visible           io.Writer
+	PlayState         *PlayState
 }
 
 // PlayState carries mutable state shared by all hosts of one play.
@@ -61,6 +64,23 @@ func (p *PlayState) MarkPrompted(key string) bool {
 	return true
 }
 
+// ConfirmOnce prompts for message at most once per play, deduplicating
+// concurrent hosts under free strategy. A nil confirm means interaction is
+// unavailable, which is reported as an error exactly like linear mode.
+func (p *PlayState) ConfirmOnce(message string, confirm func(string) error) error {
+	if confirm == nil {
+		return fmt.Errorf("deploy confirm 需要交互终端: %s", message)
+	}
+	p.mu.Lock()
+	if p.prompted[message] {
+		p.mu.Unlock()
+		return nil
+	}
+	p.prompted[message] = true
+	p.mu.Unlock()
+	return confirm(message)
+}
+
 // ModuleResult is the normalized outcome of one module execution.
 type ModuleResult struct {
 	Status      batch.Status
@@ -72,6 +92,7 @@ type ModuleResult struct {
 	Changed     bool
 	WouldChange bool
 	Destination string
+	SkipReason  string
 }
 
 // Module is one idempotent operation in the v3 registry.

@@ -67,6 +67,31 @@ func TestDialContextUsesStoredTrustAndPassword(t *testing.T) {
 	}
 }
 
+func TestDialContextUsesPlaintextPasswordWithoutVault(t *testing.T) {
+	addr, closeServer := startTestSSHServer(t, "secret", false)
+	defer closeServer()
+	hostName, port := splitTestAddress(t, addr)
+	host := config.DefaultHost()
+	host.Alias, host.User, host.Host, host.Port = "target", "test", hostName, port
+	host.Password = "secret"
+	host.HostKeyPolicy = config.HostKeyPolicyAcceptNew
+
+	// Plaintext password must work without any vault store.
+	client, _, err := DialContext(context.Background(), host, nil)
+	if err != nil {
+		t.Fatalf("明文密码连接失败: %v", err)
+	}
+	defer client.Close()
+	session, err := client.NewSession()
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, err := session.CombinedOutput("echo ok")
+	if err != nil || string(output) != "ok\n" {
+		t.Fatalf("output = %q, err = %v", output, err)
+	}
+}
+
 func TestClientConfigUsesExplicitConnectionTimeout(t *testing.T) {
 	host := config.DefaultHost()
 	host.Alias, host.User, host.Host = "server", "test", "127.0.0.1"

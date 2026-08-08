@@ -454,7 +454,7 @@ func encodeDocument(doc *Document) ([]byte, error) {
 #
 # 手工新增 hosts 条目时可以省略 id，sshm 校验后会自动生成并写回
 # 已有主机的 id 用于关联凭据，请勿修改
-# 不要在 YAML 中保存明文密码；请使用 sshm passwd
+# 密码两种方式：sshm passwd 加密进 vault（推荐）；或显式写 password 字段（明文，受 0600 保护）
 # managed_keys、host_trust 与 vault 由 sshm 管理，请勿手动编辑
 # sshm 保存时会规范化 YAML；自定义说明请写入主机或标签的 note 字段
 `

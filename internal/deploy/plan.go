@@ -121,7 +121,14 @@ func BuildPlan(catalog *Catalog, name string, hosts []config.Host, overrides Ove
 	}
 	selector := play.Hosts
 	if overrides.Targets != nil {
-		selector = *overrides.Targets
+		// Positive overrides replace the play's hosts; exclude-only overrides
+		// narrow the play's declared targets instead of discarding them.
+		override := *overrides.Targets
+		if !override.Empty() {
+			selector = override
+		}
+		selector.Exclude = append(selector.Exclude, override.Exclude...)
+		selector.ExcludeTags = append(selector.ExcludeTags, override.ExcludeTags...)
 	}
 	if err := validatePlayShape(play, selector); err != nil {
 		return nil, err
@@ -260,6 +267,9 @@ func validateTask(task Task, vars Vars) error {
 		}
 	}
 	if modes != 1 {
+		if modes == 0 && task.Confirm != "" {
+			return fmt.Errorf("confirm 必须与模块/block 任务搭配使用，请为该任务添加模块")
+		}
 		return fmt.Errorf("task 必须且只能包含 module、include 或 block 之一")
 	}
 	if task.When != "" {

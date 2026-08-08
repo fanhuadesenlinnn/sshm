@@ -68,24 +68,13 @@ func (app *App) cmdLogs(args []string) error {
 	if err := operation.CleanExpired(retention); err != nil {
 		return err
 	}
-	entries, err := os.ReadDir(config.LogsDir())
-	if os.IsNotExist(err) {
-		ui.PrintWarn("暂无操作日志")
+	directories := logDirectoriesMatching(actionFilter)
+	if len(directories) == 0 {
+		ui.PrintWarn("暂无匹配的操作日志")
 		return nil
 	}
-	if err != nil {
-		return err
-	}
 	ui.PrintWarn("操作日志可能包含敏感远程输出，请按本地敏感数据保护")
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		name := entry.Name()
-		if actionFilter != "" && !strings.HasSuffix(name, "-"+actionFilter) {
-			continue
-		}
-		dir := filepath.Join(config.LogsDir(), name)
+	for _, dir := range directories {
 		if hostFilter != "" {
 			for _, match := range hostLogFiles(dir, hostFilter) {
 				fmt.Println(match)
@@ -95,6 +84,32 @@ func (app *App) cmdLogs(args []string) error {
 		fmt.Println(dir)
 	}
 	return nil
+}
+
+// logDirectoriesMatching returns run directories whose name matches an action
+// filter. Directory names may end in -<action> (like -exec) or contain
+// -<action>-<suffix> (like -exec-batch, -push-batch, -deploy-publish).
+func logDirectoriesMatching(action string) []string {
+	entries, err := os.ReadDir(config.LogsDir())
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if action != "" && !logNameMatchesAction(name, action) {
+			continue
+		}
+		out = append(out, filepath.Join(config.LogsDir(), name))
+	}
+	return out
+}
+
+func logNameMatchesAction(name, action string) bool {
+	return strings.HasSuffix(name, "-"+action) || strings.Contains(name, "-"+action+"-")
 }
 
 // hostLogFiles returns the per-host log files of a run directory matching the

@@ -49,7 +49,11 @@ func (m *sleepModule) DecodeArgs(node *yaml.Node) (any, error) {
 func (m *sleepModule) Run(tc TaskContext, raw any) ModuleResult {
 	args := raw.(*sleepArgs)
 	if tc.Check {
-		return ModuleResult{Status: batch.StatusSkipped, Output: "check 模式跳过（sleep）\n"}
+		return ModuleResult{
+			Status:     batch.StatusSkipped,
+			Output:     "check 模式跳过（sleep）\n",
+			SkipReason: "check 模式跳过（sleep）",
+		}
 	}
 	wait := time.Duration(args.Seconds) * time.Second
 	if args.Duration.Duration > 0 {

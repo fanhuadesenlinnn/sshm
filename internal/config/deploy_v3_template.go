@@ -75,7 +75,9 @@ plays: []
 #         service:
 #           name: app
 #           state: restarted          # started | stopped | restarted | enabled | disabled
-#         become: true                # 需要 root 时开启（要求目标机配置免密 sudo）
+#         become: true                # 需要 root 时开启；sudo 需要密码时可用：
+#                                     #   become_password 字段 / 环境变量 SSHM_BECOME_PASSWORD
+#                                     #   或自动复用该主机保存在 vault 中的 SSH 密码（推荐）
 #       - name: 等待端口就绪
 #         wait_for:
 #           port: 8080

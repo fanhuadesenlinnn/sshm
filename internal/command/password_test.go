@@ -69,6 +69,37 @@ func TestSavePasswordsForHostsUpdatesSelectedTargetsAtomically(t *testing.T) {
 	}
 }
 
+func TestEncryptPlaintextPasswordsMovesToVault(t *testing.T) {
+	store := config.NewStoreWithPath(filepath.Join(t.TempDir(), "sshm.yaml"))
+	initCommandTestStore(t, store)
+	host := config.DefaultHost()
+	host.Alias, host.User, host.Host = "one", "root", "one"
+	host.Password = "plain-secret"
+	if err := store.Add(host); err != nil {
+		t.Fatal(err)
+	}
+	app := &App{Store: store, ConfigPath: store.Path()}
+	selected, err := app.selectHosts([]string{"one"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	vault := secret.NewFileStore(store.Path(), "master")
+	if err := encryptPlaintextPasswords(vault, selected); err != nil {
+		t.Fatal(err)
+	}
+	loaded, _, _, err := store.FindHost("one")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Password != "" || loaded.PasswordRef == "" {
+		t.Fatalf("升级后应为 vault 引用且清明文: %+v", loaded)
+	}
+	password, err := vault.GetPassword(loaded.PasswordRef)
+	if err != nil || password != "plain-secret" {
+		t.Fatalf("vault 密码 = %q, err = %v", password, err)
+	}
+}
+
 func TestSavePasswordsForHostsRollsBackWhenTargetDisappears(t *testing.T) {
 	store := config.NewStoreWithPath(filepath.Join(t.TempDir(), "sshm.yaml"))
 	initCommandTestStore(t, store)

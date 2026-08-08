@@ -188,8 +188,8 @@ func clientConfigWithTimeout(h config.Host, store *secret.FileStore, timeout tim
 			return nil, "", operation.Wrap(operation.StageOf(err, operation.StageCredential), err)
 		}
 	}
-	if strategy != AuthKey && h.PasswordRef != "" && store != nil {
-		password, err := store.GetPassword(h.PasswordRef)
+	if strategy != AuthKey && (h.Password != "" || h.PasswordRef != "") {
+		password, err := resolvePassword(h, store)
 		if err == nil {
 			methods = append(methods, ssh.Password(password))
 			labels = append(labels, "密码")
@@ -266,11 +266,20 @@ type Client interface {
 // ExecCommandOnClient runs a command over an already-established SSH client.
 // It never closes the client, so the caller may reuse the connection.
 func ExecCommandOnClient(ctx context.Context, client Client, command string, stdout, stderr io.Writer) (string, error) {
+	return ExecCommandOnClientWithStdin(ctx, client, command, nil, stdout, stderr)
+}
+
+// ExecCommandOnClientWithStdin runs a command over an established SSH client,
+// optionally feeding stdin (for example sudo -S). It never closes the client.
+func ExecCommandOnClientWithStdin(ctx context.Context, client Client, command string, stdin io.Reader, stdout, stderr io.Writer) (string, error) {
 	session, err := client.NewSession()
 	if err != nil {
 		return "", operation.Wrap(operation.StageSession, fmt.Errorf("创建会话失败: %w", err))
 	}
 	defer session.Close()
+	if stdin != nil {
+		session.Stdin = stdin
+	}
 	var output synchronizedBuffer
 	if stdout == nil {
 		stdout = io.Discard
@@ -294,6 +303,18 @@ func ExecCommandOnClient(ctx context.Context, client Client, command string, std
 	case result := <-done:
 		return output.String(), operation.Wrap(operation.StageExecute, result.err)
 	}
+}
+
+// resolvePassword returns a host's plaintext config password, falling back to
+// the encrypted vault when only password_ref is set.
+func resolvePassword(h config.Host, store *secret.FileStore) (string, error) {
+	if h.Password != "" {
+		return h.Password, nil
+	}
+	if store == nil {
+		return "", fmt.Errorf("缺少密码存储")
+	}
+	return store.GetPasswordForHost(h)
 }
 
 type synchronizedBuffer struct {

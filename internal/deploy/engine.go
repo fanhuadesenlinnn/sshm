@@ -16,10 +16,11 @@ import (
 
 // Runner executes a resolved v3 plan.
 type Runner struct {
-	Executor ops.Executor
-	Visible  io.Writer
-	Confirm  func(message string) error
-	Event    func(PlayEvent)
+	Executor       ops.Executor
+	Visible        io.Writer
+	Confirm        func(message string) error
+	BecomePassword func(host config.Host) (string, bool)
+	Event          func(PlayEvent)
 }
 
 // RunResult aggregates the outcome of a whole play.
@@ -264,14 +265,14 @@ func (r Runner) runFree(ctx context.Context, plan *Plan, states map[string]*host
 		runOnceFlags[index] = newRunOnceTracker()
 	}
 	batchResult, err := (batch.Runner{
-		Options:     plan.Batch,
-		BeforeBatch: freeConfirmHook(r, plan),
+		Options: plan.Batch,
 		Progress: func(done, total int, item batch.Result) {
 			r.emitFree(plan, item)
 		},
 	}).Run(ctx, plan.Hosts, func(ctx context.Context, host config.Host) batch.Result {
 		state := states[host.Alias]
 		tc := r.taskContext(ctx, plan, state, playState)
+		tc.ConfirmLazy = true
 		for taskIndex, task := range plan.Tasks {
 			if state.failed {
 				state.tasks = append(state.tasks, TaskResult{
@@ -336,38 +337,8 @@ func linearConfirmHook(r Runner, plan *Plan, task Task) func(start, end, total i
 	}
 }
 
-// freeConfirmHook confirms each distinct confirm message once before the whole
-// free-strategy run, since free has a single host batch.
-func freeConfirmHook(r Runner, plan *Plan) func(start, end, total int) error {
-	if plan.Check {
-		return nil
-	}
-	seen := map[string]bool{}
-	var messages []string
-	for _, task := range plan.Tasks {
-		if task.Confirm != "" && !seen[task.Confirm] {
-			seen[task.Confirm] = true
-			messages = append(messages, task.Confirm)
-		}
-	}
-	if len(messages) == 0 {
-		return nil
-	}
-	return func(start, end, total int) error {
-		for _, message := range messages {
-			if r.Confirm == nil {
-				return fmt.Errorf("deploy confirm 需要交互终端: %s", message)
-			}
-			if err := r.Confirm(message); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-}
-
 func (r Runner) taskContext(ctx context.Context, plan *Plan, state *hostState, playState *PlayState) TaskContext {
-	return TaskContext{
+	tc := TaskContext{
 		Ctx:            ctx,
 		Host:           state.host,
 		Vars:           cloneVars(plan.Vars),
@@ -382,6 +353,13 @@ func (r Runner) taskContext(ctx context.Context, plan *Plan, state *hostState, p
 		Visible:        r.Visible,
 		PlayState:      playState,
 	}
+	if r.BecomePassword != nil {
+		if password, ok := r.BecomePassword(state.host); ok {
+			tc.BecomePassword = password
+			tc.HasBecomePassword = true
+		}
+	}
+	return tc
 }
 
 func (r Runner) runTaskForHost(tc TaskContext, task Task, index int) TaskResult {
@@ -412,6 +390,11 @@ func (r Runner) executeTask(tc TaskContext, task Task) ModuleResult {
 		}
 		if !matched {
 			return ModuleResult{Status: batch.StatusSkipped}
+		}
+	}
+	if task.Confirm != "" && tc.ConfirmLazy && !tc.Check {
+		if err := tc.PlayState.ConfirmOnce(task.Confirm, tc.Confirm); err != nil {
+			return failedModule(err, operation.StageConfig)
 		}
 	}
 	if len(task.Block) > 0 {
@@ -472,6 +455,14 @@ func (r Runner) executeOnce(tc TaskContext, task Task, module Module, loopItem a
 	if task.Become {
 		runCtx.Become = true
 		runCtx.BecomeUser = task.BecomeUser
+	}
+	if task.BecomePassword != "" {
+		rendered, err := RenderString(task.BecomePassword, vars)
+		if err != nil {
+			return failedModule(err, operation.StageConfig)
+		}
+		runCtx.BecomePassword = rendered
+		runCtx.HasBecomePassword = true
 	}
 	if len(task.Env) > 0 {
 		runCtx.Env = task.Env
@@ -711,8 +702,8 @@ func hostResultError(state *hostState) error {
 func resultReason(result ModuleResult) string {
 	switch result.Status {
 	case batch.StatusSkipped:
-		if strings.Contains(result.Output, "check 模式跳过") {
-			return "check 模式跳过（可设置 check_safe: true 执行）"
+		if result.SkipReason != "" {
+			return result.SkipReason
 		}
 		return "when 条件不满足"
 	case batch.StatusFailed, batch.StatusUnreachable:

@@ -32,6 +32,13 @@ func (app *App) cmdPasswd(args []string) error {
 	if fs == nil {
 		return fmt.Errorf("无法访问密码存储")
 	}
+	if allPlaintext(hosts) {
+		if err := encryptPlaintextPasswords(fs, hosts); err != nil {
+			return fmt.Errorf("加密明文密码失败: %w", err)
+		}
+		ui.PrintSuccess("已将 %d 台主机的明文密码加密保存（明文字段已清除）", len(hosts))
+		return nil
+	}
 	password, err := readConfirmedSSHPassword()
 	if err != nil {
 		return err
@@ -66,6 +73,7 @@ func savePasswordsForHosts(fs *secret.FileStore, hosts []config.Host, password s
 			}
 			entries["password:"+host.ID] = password
 			host.PasswordRef = host.ID
+			host.Password = ""
 			if host.Auth == "" {
 				host.Auth = "auto"
 			}
@@ -86,7 +94,7 @@ func (app *App) cmdForgetPass(args []string) error {
 	}
 	withPassword := make([]config.Host, 0, len(hosts))
 	for _, host := range hosts {
-		if host.PasswordRef != "" {
+		if host.PasswordRef != "" || host.Password != "" {
 			withPassword = append(withPassword, host)
 		}
 	}
@@ -146,6 +154,7 @@ func removePasswordsForHosts(fs *secret.FileStore, hosts []config.Host) error {
 			delete(entries, "password:"+host.ID)
 			delete(entries, "password:"+host.PasswordRef)
 			host.PasswordRef = ""
+			host.Password = ""
 			if host.Auth == "password" {
 				host.Auth = "auto"
 			}
@@ -153,6 +162,45 @@ func removePasswordsForHosts(fs *secret.FileStore, hosts []config.Host) error {
 		}
 		if updated != len(selected) {
 			return fmt.Errorf("目标主机在更新期间发生变化，期望 %d 台，找到 %d 台", len(selected), updated)
+		}
+		return nil
+	})
+}
+
+func allPlaintext(hosts []config.Host) bool {
+	if len(hosts) == 0 {
+		return false
+	}
+	for _, host := range hosts {
+		if host.Password == "" {
+			return false
+		}
+	}
+	return true
+}
+
+// encryptPlaintextPasswords moves each host's plaintext password into the
+// encrypted vault and clears the plaintext field.
+func encryptPlaintextPasswords(fs *secret.FileStore, hosts []config.Host) error {
+	selected := make(map[string]bool, len(hosts))
+	for _, host := range hosts {
+		selected[host.ID] = true
+	}
+	return fs.UpdateDocument(func(doc *config.Document, entries map[string]string) error {
+		for i := range doc.Hosts {
+			host := &doc.Hosts[i]
+			if !selected[host.ID] {
+				continue
+			}
+			delete(entries, "password:"+host.Alias)
+			delete(entries, "password:"+host.ID)
+			delete(entries, "password:"+host.PasswordRef)
+			entries["password:"+host.ID] = host.Password
+			host.PasswordRef = host.ID
+			host.Password = ""
+			if host.Auth == "" {
+				host.Auth = "auto"
+			}
 		}
 		return nil
 	})

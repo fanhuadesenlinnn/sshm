@@ -1,6 +1,6 @@
-# sshm v6.1.0 产品设计
+# sshm v6.1.2 产品设计
 
-状态：v6.1.0 当前设计
+状态：v6.1.2 当前设计
 
 ## 产品定位
 
@@ -15,7 +15,7 @@ sshm 是供个人开发者和个人运维使用者管理约 5 到 100 台 SSH �
 
 ## 当前产品事实
 
-- 产品版本为 `v6.1.0`，Go module 为 `/v6`。
+- 产品版本为 `v6.1.2`，Go module 为 `/v6`。
 - 主配置为严格 YAML schema `version: 2`；Deploy 配置为严格 YAML schema `version: 3`。
 - 默认数据目录只使用 `~/.sshm`，仅支持 `SSHM_HOME` 整体覆盖。
 - Cobra 提供 CLI 命令树，同时保留无参数工作台和 alias/ID 直连。
@@ -36,7 +36,7 @@ sshm 是供个人开发者和个人运维使用者管理约 5 到 100 台 SSH �
 
 ### 安全认证
 
-主机默认使用 strict host trust。密码和托管密钥由主密码保护并保存在主配置的加密 vault 中。主密码只在当前进程按需解锁。
+主机默认使用 strict host trust。密码和托管密钥默认由主密码保护并保存在主配置的加密 vault 中；密码也可显式写为主配置的明文 `password` 字段（与 `password_ref` 互斥，受 0600 权限保护，`doctor` 会提醒）。`sshm passwd` 可将明文一键升级为 vault 加密并清掉明文字段。主密码只在当前进程按需解锁。
 
 主机既可以通过菜单/命令添加，也可以手工写入主配置。手工新增主机时允许省略内部稳定 ID，配置校验通过后由 sshm 自动生成并写回；已有主机的稳定 ID 保持不变，菜单中的数字 ID 继续表示当前列表位置。
 
@@ -74,6 +74,7 @@ Deploy v3 是声明式模块模型，借鉴 Ansible 的执行语义但不引入�
 - task 调用一个模块（command/shell、file、copy、template、service、wait_for、sleep、unarchive、fetch、pause、fail、debug），模块内置幂等与 check/diff 语义。
 - register + when 取代 handlers 表达条件执行；v3 明确移除 notify/handlers。
 - block/rescue/always 提供同主机失败回滚结构。
+- become 支持密码提权：sudo 需要密码时，密码可来自任务级 `become_password`、环境变量 `SSHM_BECOME_PASSWORD`，或自动复用该主机 vault 中的 SSH 密码；密码始终经 stdin 传入 `sudo -S`，不出现在命令行或日志中。
 - `confirm` 字段提供 linear 策略下的 serial 批次人工门禁；`sleep` 提供 check 模式自动跳过的定时延时。
 - 变量支持文件级、play 级、vars_files 与 CLI `--extra-var` 覆盖；`{{ }}` 插值用于参数与模板。
 - include 支持任务片段与 vars_files 的静态展开，带循环检测。
@@ -84,6 +85,7 @@ Deploy v3 是声明式模块模型，借鉴 Ansible 的执行语义但不引入�
 ## 安全原则
 
 1. 默认严格，便捷选项必须显式。
+2. 凭据默认进加密 vault；主配置明文密码是显式支持的可选方式，依赖 0600 文件权限并由使用者承担风险，Deploy 文件始终禁止凭据。
 2. 失败不能静默降低 host trust、凭据保护、覆盖策略或路径安全。
 3. 批量写入和命令执行默认展示具体目标并确认。
 4. 配置、传输和 Deploy 在执行前尽可能完成静态校验。

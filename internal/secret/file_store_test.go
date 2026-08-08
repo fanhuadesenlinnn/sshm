@@ -36,6 +36,27 @@ func TestFileStorePersistsAndVerifiesPassword(t *testing.T) {
 	}
 }
 
+func TestGetPasswordForHostPrefersPlaintextThenVault(t *testing.T) {
+	path := initializedSecretConfig(t)
+	store := NewFileStore(path, "master-password")
+	if err := store.SetPassword("ref-one", "vault-secret"); err != nil {
+		t.Fatal(err)
+	}
+	plainHost := config.Host{Alias: "plain", Password: "plain-secret"}
+	got, err := store.GetPasswordForHost(plainHost)
+	if err != nil || got != "plain-secret" {
+		t.Fatalf("明文密码解析 = %q, err = %v", got, err)
+	}
+	vaultHost := config.Host{Alias: "vault", PasswordRef: "ref-one"}
+	got, err = store.GetPasswordForHost(vaultHost)
+	if err != nil || got != "vault-secret" {
+		t.Fatalf("vault 密码解析 = %q, err = %v", got, err)
+	}
+	if _, err := store.GetPasswordForHost(config.Host{Alias: "none"}); err == nil {
+		t.Fatal("无密码主机应报错")
+	}
+}
+
 func TestFileStorePreservesArbitraryPasswordCharacters(t *testing.T) {
 	path := initializedSecretConfig(t)
 	store := NewFileStore(path, "master-password")

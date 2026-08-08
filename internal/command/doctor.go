@@ -86,6 +86,15 @@ func (app *App) cmdDoctor(_ []string) error {
 			}
 		}
 	}
+	plaintext := 0
+	for _, host := range hf.Hosts {
+		if host.Password != "" {
+			plaintext++
+		}
+	}
+	if plaintext > 0 {
+		ui.PrintWarn("%d 台主机使用主配置明文密码；建议用 sshm passwd 加密到 vault", plaintext)
+	}
 	if missingKeys == 0 && credentialIssues == 0 {
 		ui.PrintSuccess("环境检查完成（%d 台使用托管密钥，%d 台跳过身份验证）", managedKeys, insecureHosts)
 	} else {

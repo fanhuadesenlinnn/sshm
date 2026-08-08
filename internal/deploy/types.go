@@ -55,20 +55,21 @@ const StrategyFree = "free"
 
 // Task is a unit of execution. Exactly one of Module/Include/Block is set.
 type Task struct {
-	Name         string            `yaml:"name" json:"name"`
-	Include      string            `yaml:"include,omitempty" json:"include,omitempty"`
-	When         string            `yaml:"when,omitempty" json:"when,omitempty"`
-	Register     string            `yaml:"register,omitempty" json:"register,omitempty"`
-	Become       bool              `yaml:"become,omitempty" json:"become,omitempty"`
-	BecomeUser   string            `yaml:"become_user,omitempty" json:"become_user,omitempty"`
-	IgnoreErrors bool              `yaml:"ignore_errors,omitempty" json:"ignore_errors,omitempty"`
-	Env          map[string]string `yaml:"env,omitempty" json:"env,omitempty"`
-	FailedWhen   *Condition        `yaml:"failed_when,omitempty" json:"failed_when,omitempty"`
-	ChangedWhen  *Condition        `yaml:"changed_when,omitempty" json:"changed_when,omitempty"`
-	CheckSafe    bool              `yaml:"check_safe,omitempty" json:"check_safe,omitempty"`
-	RunOnce      bool              `yaml:"run_once,omitempty" json:"run_once,omitempty"`
-	Loop         []string          `yaml:"loop,omitempty" json:"loop,omitempty"`
-	Confirm      string            `yaml:"confirm,omitempty" json:"confirm,omitempty"`
+	Name           string            `yaml:"name" json:"name"`
+	Include        string            `yaml:"include,omitempty" json:"include,omitempty"`
+	When           string            `yaml:"when,omitempty" json:"when,omitempty"`
+	Register       string            `yaml:"register,omitempty" json:"register,omitempty"`
+	Become         bool              `yaml:"become,omitempty" json:"become,omitempty"`
+	BecomeUser     string            `yaml:"become_user,omitempty" json:"become_user,omitempty"`
+	BecomePassword string            `yaml:"become_password,omitempty" json:"become_password,omitempty"`
+	IgnoreErrors   bool              `yaml:"ignore_errors,omitempty" json:"ignore_errors,omitempty"`
+	Env            map[string]string `yaml:"env,omitempty" json:"env,omitempty"`
+	FailedWhen     *Condition        `yaml:"failed_when,omitempty" json:"failed_when,omitempty"`
+	ChangedWhen    *Condition        `yaml:"changed_when,omitempty" json:"changed_when,omitempty"`
+	CheckSafe      bool              `yaml:"check_safe,omitempty" json:"check_safe,omitempty"`
+	RunOnce        bool              `yaml:"run_once,omitempty" json:"run_once,omitempty"`
+	Loop           []string          `yaml:"loop,omitempty" json:"loop,omitempty"`
+	Confirm        string            `yaml:"confirm,omitempty" json:"confirm,omitempty"`
 
 	Module string     `yaml:"-" json:"module,omitempty"`
 	Args   *yaml.Node `yaml:"-" json:"-"`
@@ -121,6 +122,9 @@ func (t *Task) UnmarshalYAML(node *yaml.Node) error {
 	}
 	if err := decodeString("become_user", &t.BecomeUser); err != nil {
 		return fieldError("become_user", err)
+	}
+	if err := decodeString("become_password", &t.BecomePassword); err != nil {
+		return fieldError("become_password", err)
 	}
 	if err := decodeBool("become", &t.Become); err != nil {
 		return fieldError("become", err)
@@ -178,7 +182,7 @@ func (t *Task) UnmarshalYAML(node *yaml.Node) error {
 	}
 	for key, value := range raw {
 		switch key {
-		case "name", "include", "when", "register", "become_user", "become",
+		case "name", "include", "when", "register", "confirm", "become_user", "become_password", "become",
 			"ignore_errors", "check_safe", "run_once", "loop", "env",
 			"failed_when", "changed_when", "block", "rescue", "always", "notify":
 			continue

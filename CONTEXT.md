@@ -4,7 +4,7 @@ sshm 是一个本地优先、面向个人使用的 SSH 主机管理与轻量运�
 
 ## 版本边界
 
-- 产品发布版本：`v6.1.0`
+- 产品发布版本：`v6.1.2`
 - Go module：`github.com/fanhuadesenlinnn/sshm/v6`
 - 主配置 schema：`version: 2`
 - Deploy schema：`version: 3`
@@ -17,7 +17,7 @@ sshm 是一个本地优先、面向个人使用的 SSH 主机管理与轻量运�
 sshm 拥有的全部本地状态根目录。默认是 `~/.sshm`，只允许通过 `SSHM_HOME` 整体覆盖。
 
 **主配置**
-`<SSHM_HOME>/sshm.yaml`。它是唯一权威可变状态，保存 defaults、hosts、tags、managed_keys、host_trust 和加密 vault。
+`<SSHM_HOME>/sshm.yaml`。它是唯一权威可变状态，保存 defaults、hosts、tags、managed_keys、host_trust、加密 vault，以及可选的明文密码字段。
 
 **主机**
 核心用户通过 SSH 连接和操作的一台远程服务器。主机拥有稳定 ID 和跨平台安全 alias。
@@ -78,6 +78,7 @@ Deploy Profile 静态解析出的来源文件、目标主机、steps、handlers 
 - 一个核心用户拥有一个数据目录。
 - 一个主配置包含多个主机、标签、托管密钥、主机信任条目和一个可为空的 vault。
 - 一台主机可拥有多个标签并引用一个托管密钥、密码引用和单级跳板机。
+- 一台主机要么引用加密 vault 凭据（`password_ref`），要么显式写明文 `password` 字段，两者互斥。
 - 一个目标集合包含一个或多个稳定有序主机。
 - 一个批量操作为目标集合中的每台主机产生一个逐主机结果。
 - 一个 Deploy Profile 解析为一个执行计划，并通过共享 BatchRunner 运行。
@@ -103,6 +104,7 @@ Deploy Profile 静态解析出的来源文件、目标主机、steps、handlers 
 13. Deploy v3 的 `when` 引用未定义变量是错误而非静默跳过；可选变量必须显式使用 `is defined`。
 14. v3 不提供 handlers；条件执行必须通过 register + when 表达。
 15. v3 include 在 plan 阶段静态展开，不提供运行时动态 include。
+16. 明文密码是主配置显式支持的可选方式（受 0600 权限保护）；Deploy 编排文件始终禁止保存密码或私钥。
 
 ## 接口
 
