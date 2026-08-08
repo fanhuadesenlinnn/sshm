@@ -37,11 +37,12 @@ sshmd deploy run webapp --tag prod --check --yes`),
 		run                       func([]string) error
 	}{
 		{
-			use: "init [-f 文件] [--stdout] [--overwrite]", short: "生成中文 Deploy v3 示例",
-			long: "生成 Deploy v3 示例配置。默认写入 ~/.sshmd/deploy.yaml；使用 --stdout 可只打印不写文件。",
+			use: "init [-f 文件 | --dir 目录] [--stdout] [--overwrite]", short: "生成 Deploy v3 示例",
+			long: "生成 Deploy v3 示例配置。默认写入 ~/.sshmd/deploy.yaml；--dir 生成整套可校验的 demo 目录（含 templates/tasks/vars/README）；--stdout 只打印不写文件。",
 			example: strings.TrimSpace(`
 sshmd deploy init
 sshmd deploy init -f ./deploy.yaml
+sshmd deploy init --dir ./my-deploy
 sshmd deploy init --stdout`),
 			run: app.cmdDeployInit,
 		},
@@ -163,7 +164,7 @@ func (app *App) deployRun(args []string) error {
 func (app *App) printDeployHelp() {
 	ui.PrintHeader("Deploy v3 轻量编排")
 	fmt.Println()
-	fmt.Println("  deploy init [-f 文件] [--stdout] [--overwrite]")
+	fmt.Println("  deploy init [-f 文件 | --dir 目录] [--stdout] [--overwrite]")
 	fmt.Println("  deploy validate [-f 文件...] [--output text|json]")
 	fmt.Println("  deploy list [-f 文件...] [--output text|json]")
 	fmt.Println("  deploy show <play> [-f 文件...] [目标覆盖]")
@@ -191,6 +192,7 @@ type deployCLIOptions struct {
 	check       bool
 	diff        bool
 	extraVars   deploy.Vars
+	dir         string
 }
 
 func parseDeployCLIOptions(args []string) (deployCLIOptions, error) {
@@ -323,6 +325,12 @@ func parseDeployCLIOptions(args []string) (deployCLIOptions, error) {
 			options.extraVars[key] = val
 		case "--stdout":
 			options.stdout = true
+		case "--dir":
+			item, err := value(&i, args[i])
+			if err != nil {
+				return options, err
+			}
+			options.dir = item
 		case "--overwrite":
 			options.overwrite = true
 		default:
@@ -347,10 +355,16 @@ func (app *App) cmdDeployInit(args []string) error {
 		return err
 	}
 	if len(options.positionals) != 0 || options.output != "text" || options.hasSelector || hasDeployRunOptions(options) {
-		return fmt.Errorf("deploy init 仅支持 -f、--stdout 和 --overwrite")
+		return fmt.Errorf("deploy init 仅支持 -f、--dir、--stdout 和 --overwrite")
 	}
 	if len(options.files) > 1 {
 		return fmt.Errorf("deploy init 只能指定一个 -f")
+	}
+	if options.dir != "" && (len(options.files) > 0 || options.stdout) {
+		return fmt.Errorf("--dir 不能与 -f 或 --stdout 混用")
+	}
+	if options.dir != "" {
+		return app.deployInitDir(options.dir, options.overwrite)
 	}
 	sample := config.SampleDeployV3
 	if options.stdout {
@@ -384,6 +398,53 @@ func (app *App) cmdDeployInit(args []string) error {
 		fmt.Println("  sshmd add web01 root@10.0.0.11 --tags prod")
 	}
 	fmt.Printf("  sshmd deploy plan update-app%s\n", fileArg)
+	return nil
+}
+
+// deployInitDir scaffolds a self-contained Deploy demo directory whose
+// relative paths (templates/tasks/vars) are consistent with the sample.
+func (app *App) deployInitDir(dir string, overwrite bool) error {
+	root := config.ExpandPath(dir)
+	files := []struct {
+		path    string
+		content string
+	}{
+		{filepath.Join(root, "deploy.yaml"), config.SampleDeployV3},
+		{filepath.Join(root, "templates", "app.conf.tmpl"), config.ExampleTemplateFile},
+		{filepath.Join(root, "tasks", "prepare.yaml"), config.DemoTasksFile},
+		{filepath.Join(root, "vars", "versions.yaml"), config.DemoVarsFile},
+		{filepath.Join(root, "README.md"), config.DemoReadme},
+	}
+	if err := os.MkdirAll(root, 0700); err != nil {
+		return fmt.Errorf("创建目录失败: %w", err)
+	}
+	written := 0
+	skipped := 0
+	for _, file := range files {
+		if err := os.MkdirAll(filepath.Dir(file.path), 0700); err != nil {
+			return err
+		}
+		if _, err := os.Stat(file.path); err == nil && !overwrite {
+			skipped++
+			continue
+		} else if err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		if err := safefile.Write(file.path, []byte(file.content), 0600); err != nil {
+			return fmt.Errorf("写入 %s 失败: %w", file.path, err)
+		}
+		written++
+	}
+	fmt.Printf("已生成 Deploy demo 目录: %s（%d 个文件）\n", root, written)
+	if skipped > 0 {
+		ui.PrintWarn("%d 个文件已存在并跳过；使用 --overwrite 覆盖", skipped)
+	}
+	fmt.Println()
+	fmt.Println("下一步:")
+	fileArg := " -f " + shellquote.Single(filepath.Join(root, "deploy.yaml"))
+	fmt.Printf("  sshmd deploy validate%s\n", fileArg)
+	fmt.Printf("  sshmd deploy plan update-app%s\n", fileArg)
+	fmt.Printf("  sshmd deploy run update-app --check --diff%s --yes\n", fileArg)
 	return nil
 }
 

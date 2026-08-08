@@ -115,6 +115,63 @@ func TestDeployValidateAllowsInitializedSampleBeforeHosts(t *testing.T) {
 	}
 }
 
+func TestDeployInitDirScaffoldsCompleteDemo(t *testing.T) {
+	dir := t.TempDir()
+	store := config.NewStoreWithPath(filepath.Join(t.TempDir(), "sshmd.yaml"))
+	if err := store.Repository().Replace(config.DefaultDocument()); err != nil {
+		t.Fatal(err)
+	}
+	app := &App{Store: store, ConfigPath: store.Path()}
+	if err := app.deployInitDir(dir, false); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"deploy.yaml",
+		"templates/app.conf.tmpl",
+		"tasks/prepare.yaml",
+		"vars/versions.yaml",
+		"README.md",
+	}
+	for _, relative := range want {
+		if _, err := os.Stat(filepath.Join(dir, filepath.FromSlash(relative))); err != nil {
+			t.Fatalf("缺少 demo 文件 %s: %v", relative, err)
+		}
+	}
+	if err := app.deployValidate([]string{"-f", filepath.Join(dir, "deploy.yaml")}); err != nil {
+		t.Fatalf("生成 demo 应通过 validate: %v", err)
+	}
+}
+
+func TestDeployInitDirSkipsExistingUnlessOverwrite(t *testing.T) {
+	dir := t.TempDir()
+	store := config.NewStoreWithPath(filepath.Join(t.TempDir(), "sshmd.yaml"))
+	if err := store.Repository().Replace(config.DefaultDocument()); err != nil {
+		t.Fatal(err)
+	}
+	app := &App{Store: store, ConfigPath: store.Path()}
+	if err := app.deployInitDir(dir, false); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "deploy.yaml")
+	original, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := app.deployInitDir(dir, false); err != nil {
+		t.Fatal(err)
+	}
+	again, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(again) != string(original) {
+		t.Fatal("未指定 --overwrite 时不应覆盖已存在文件")
+	}
+	if err := app.deployInitDir(dir, true); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestDeployFailureHint(t *testing.T) {
 	result := deploy.RunResult{
 		Hosts: []deploy.HostResult{

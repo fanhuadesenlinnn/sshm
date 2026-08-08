@@ -1,8 +1,8 @@
-# sshmd v6.2.1
+# sshmd v6.2.2
 
 sshmd 是一个本地优先、面向个人使用的 SSH 主机管理与轻量运维工具。它使用 Go 原生 SSH 能力管理主机、标签、凭据、批量命令、安全文件传输和 Deploy v3 编排。
 
-> 版本说明：产品发布版本是 `v6.2.1`，Go module 是 `github.com/fanhuadesenlinnn/sshmd/v6`，主配置 schema 为 `version: 2`，Deploy 配置 schema 为 `version: 3`。
+> 版本说明：产品发布版本是 `v6.2.2`，Go module 是 `github.com/fanhuadesenlinnn/sshmd/v6`，主配置 schema 为 `version: 2`，Deploy 配置 schema 为 `version: 3`。
 
 ## 安装
 
@@ -26,7 +26,7 @@ macOS/Linux 默认安装到 `/usr/local/bin`，权限不足时会请求 `sudo`�
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/fanhuadesenlinnn/sshmd/main/scripts/install.sh | \
-  sh -s -- --version v6.2.1 --install-dir "$HOME/.local/bin"
+  sh -s -- --version v6.2.2 --install-dir "$HOME/.local/bin"
 ```
 
 Windows 默认安装到 `%LOCALAPPDATA%\Programs\sshmd` 并加入用户 PATH。
