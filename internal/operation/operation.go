@@ -26,6 +26,7 @@ const (
 	StageTransfer   FailureStage = "transfer"
 	StageTimeout    FailureStage = "timeout"
 	StageConfig     FailureStage = "config"
+	StageConfirm    FailureStage = "confirmation"
 	StageVault      FailureStage = "vault"
 	StageUnknown    FailureStage = "unknown"
 )
@@ -113,6 +114,8 @@ func Suggestion(stage FailureStage) string {
 		return "检查超时设置、网络状态和远端命令耗时"
 	case StageConfig:
 		return "检查 deploy 配置并先运行 sshmd deploy validate"
+	case StageConfirm:
+		return "操作未获确认；核对目标和影响后再重试"
 	case StageVault:
 		return "解锁 sshmd 密码库并检查凭据"
 	default:

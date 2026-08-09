@@ -122,15 +122,11 @@ func (m *fileModule) directory(tc TaskContext, args *fileArgs, info ops.RemoteFi
 		changed = true
 	}
 	if args.Owner != "" || args.Group != "" {
-		if tc.Check {
-			return ModuleResult{Status: batch.StatusWouldChange, Changed: true, WouldChange: true, Output: "修改属主 " + args.Path + "\n"}
+		ownershipChanged, result := ensureOwnership(tc, args)
+		if result != nil {
+			return *result
 		}
-		owner := ownerSpec(args.Owner, args.Group)
-		result := runRemote(tc, "chown "+shellquote.Single(owner)+" -- "+shellquote.Single(args.Path))
-		if result.Status != batch.StatusOK {
-			return result
-		}
-		changed = true
+		changed = changed || ownershipChanged
 	}
 	return statusFor(changed, tc.Check)
 }
@@ -161,14 +157,11 @@ func (m *fileModule) regularFile(tc TaskContext, args *fileArgs, info ops.Remote
 		changed = true
 	}
 	if args.Owner != "" || args.Group != "" {
-		if tc.Check {
-			return ModuleResult{Status: batch.StatusWouldChange, Changed: true, WouldChange: true, Output: "修改属主 " + args.Path + "\n"}
+		ownershipChanged, result := ensureOwnership(tc, args)
+		if result != nil {
+			return *result
 		}
-		result := runRemote(tc, "chown "+shellquote.Single(ownerSpec(args.Owner, args.Group))+" -- "+shellquote.Single(args.Path))
-		if result.Status != batch.StatusOK {
-			return result
-		}
-		changed = true
+		changed = changed || ownershipChanged
 	}
 	return statusFor(changed, tc.Check)
 }
@@ -201,6 +194,37 @@ func ownerSpec(owner, group string) string {
 	default:
 		return owner
 	}
+}
+
+func ensureOwnership(tc TaskContext, args *fileArgs) (bool, *ModuleResult) {
+	probe := runRemoteQuiet(tc, ownershipProbeCommand(args.Path))
+	if probe.Status != batch.StatusOK {
+		return false, &probe
+	}
+	fields := strings.Split(strings.TrimSpace(probe.Output), ":")
+	if len(fields) != 4 {
+		failed := failedModule(fmt.Errorf("无法解析 %s 的远程属主信息", args.Path), operation.StageExecute)
+		return false, &failed
+	}
+	ownerMatches := args.Owner == "" || args.Owner == fields[0] || args.Owner == fields[2]
+	groupMatches := args.Group == "" || args.Group == fields[1] || args.Group == fields[3]
+	if ownerMatches && groupMatches {
+		return false, nil
+	}
+	if tc.Check {
+		result := ModuleResult{Status: batch.StatusWouldChange, Changed: true, WouldChange: true, Output: "修改属主 " + args.Path + "\n"}
+		return true, &result
+	}
+	result := runRemote(tc, "chown "+shellquote.Single(ownerSpec(args.Owner, args.Group))+" -- "+shellquote.Single(args.Path))
+	if result.Status != batch.StatusOK {
+		return false, &result
+	}
+	return true, nil
+}
+
+func ownershipProbeCommand(remotePath string) string {
+	quoted := shellquote.Single(remotePath)
+	return "stat -c '%U:%G:%u:%g' -- " + quoted + " 2>/dev/null || stat -f '%Su:%Sg:%u:%g' -- " + quoted
 }
 
 func parseMode(mode string) uint32 {

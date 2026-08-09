@@ -129,5 +129,10 @@ func (m commandModule) Run(tc TaskContext, raw any) ModuleResult {
 	if args.Chdir != "" {
 		command = "cd " + shellquote.Single(args.Chdir) + " && " + command
 	}
-	return runRemote(tc, command)
+	result := runRemote(tc, command)
+	if result.Status == batch.StatusOK && !tc.Check {
+		result.Status = batch.StatusChanged
+		result.Changed = true
+	}
+	return result
 }

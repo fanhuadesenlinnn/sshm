@@ -1416,12 +1416,15 @@ Steps:
 ```bash
 go run . export-ssh-config /tmp/sshmd-ai-ssh-config
 cat /tmp/sshmd-ai-ssh-config
+go run . export-ssh-config /tmp/sshmd-ai-ssh-config
+go run . export-ssh-config --force /tmp/sshmd-ai-ssh-config
 ```
 
 Expected:
 
 - File is written.
 - Output contains `Host web01`, `HostName`, `User`, and `Port`.
+- The second export refuses to overwrite the existing file; the explicit `--force` export succeeds.
 
 ### F131: Import OpenSSH config
 
@@ -1452,7 +1455,7 @@ Expected:
 - Host is imported.
 - Re-import skips duplicate alias.
 
-### F132: Import skips IdentityFile entries
+### F132: Import keeps host metadata and gives IdentityFile follow-up
 
 Type: local
 
@@ -1473,13 +1476,71 @@ Steps:
 
 ```bash
 go run . import-ssh-config /tmp/sshmd-ai-import-key-config
-go run . list
+go run . show keyhost
 ```
 
 Expected:
 
-- Host with IdentityFile is skipped.
-- Output tells user to import private key explicitly.
+- Host metadata is imported and its `identity` remains empty.
+- Output gives directly executable `sshmd key import` and `sshmd key use` follow-up commands.
+
+### F133: Export and import preserve a single-level ProxyJump
+
+Type: local
+
+Setup:
+
+```bash
+export SSHMD_HOME="$(mktemp -d)"
+go run . init
+go run . add bastion root@127.0.0.1:2222
+go run . add inner deploy@10.0.0.11:22 --jump-host bastion
+```
+
+Steps:
+
+```bash
+go run . export-ssh-config /tmp/sshmd-ai-jump-config
+export SSHMD_HOME="$(mktemp -d)"
+go run . init
+go run . import-ssh-config /tmp/sshmd-ai-jump-config
+go run . show inner
+```
+
+Expected:
+
+- `inner` still uses `bastion` as its jump host after the round trip.
+- Unsupported OpenSSH multi-hop or `user@host:port` ProxyJump forms are imported with a warning and the unsupported value cleared instead of being silently discarded.
+
+### F134: Import applies OpenSSH wildcard defaults
+
+Type: local
+
+Setup:
+
+```bash
+export SSHMD_HOME="$(mktemp -d)"
+go run . init
+cat >/tmp/sshmd-ai-default-config <<'EOF'
+Host imported
+    HostName 127.0.0.1
+Host *
+    User deploy
+    Port 2222
+EOF
+```
+
+Steps:
+
+```bash
+go run . import-ssh-config /tmp/sshmd-ai-default-config
+go run . show imported
+```
+
+Expected:
+
+- The literal alias is imported with `User deploy` and `Port 2222` from `Host *`.
+- The wildcard itself is not imported as a host.
 
 ## Logs Flows
 

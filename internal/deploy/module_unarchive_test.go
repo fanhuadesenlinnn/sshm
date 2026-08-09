@@ -83,6 +83,25 @@ func TestUnarchiveNormalizesDestinationBeforeStaging(t *testing.T) {
 	}
 }
 
+func TestParseRemoteTreeManifestPreservesTypesModesAndUnusualNames(t *testing.T) {
+	fields := []string{
+		"empty dir", "dir", "755", "-",
+		"nested/file name", "file", "640", "abc123",
+		"line\nbreak", "link", "777", "-",
+	}
+	manifest, err := parseRemoteTreeManifest(strings.Join(fields, "\x00") + "\x00")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(manifest) != 3 || manifest["empty dir"].Type != "dir" ||
+		manifest["nested/file name"].Mode != "640" || manifest["line\nbreak"].Type != "link" {
+		t.Fatalf("manifest = %+v", manifest)
+	}
+	if _, err := parseRemoteTreeManifest("truncated"); err == nil {
+		t.Fatal("truncated manifest should fail closed")
+	}
+}
+
 func TestValidateLocalArchiveAcceptsRegularTar(t *testing.T) {
 	file := writeTarGz(t, "app/config.txt", tar.TypeReg, "")
 	if err := validateLocalArchive(file, archiveKind(file)); err != nil {

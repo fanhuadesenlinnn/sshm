@@ -192,7 +192,7 @@ func (m *unarchiveModule) cleanup(tc TaskContext, tempDir string) {
 	runRemote(tc, "rm -rf -- "+shellquote.Single(tempDir))
 }
 
-// treeEqual compares the sha256 of every file under two remote directories.
+// treeEqual compares paths, entry types, modes and file hashes for two trees.
 func (m *unarchiveModule) treeEqual(tc TaskContext, left, right string) (bool, error) {
 	leftInfo, err := statResult(tc, left)
 	if err != nil {
@@ -205,53 +205,84 @@ func (m *unarchiveModule) treeEqual(tc TaskContext, left, right string) (bool, e
 	if !leftInfo.Exists || !rightInfo.Exists {
 		return false, nil
 	}
-	leftHashes, err := remoteTreeHashes(tc, left)
+	leftManifest, err := remoteTreeManifest(tc, left)
 	if err != nil {
 		return false, err
 	}
-	rightHashes, err := remoteTreeHashes(tc, right)
+	rightManifest, err := remoteTreeManifest(tc, right)
 	if err != nil {
 		return false, err
 	}
-	if len(leftHashes) != len(rightHashes) {
+	if len(leftManifest) != len(rightManifest) {
 		return false, nil
 	}
-	for path, hash := range leftHashes {
-		if rightHashes[path] != hash {
+	for path, entry := range leftManifest {
+		if rightManifest[path] != entry {
 			return false, nil
 		}
 	}
 	return true, nil
 }
 
-func remoteTreeHashes(tc TaskContext, dir string) (map[string]string, error) {
-	bin := runRemote(tc, "(command -v sha256sum || command -v shasum) 2>/dev/null | head -1")
+type remoteTreeEntry struct {
+	Type string
+	Mode string
+	Hash string
+}
+
+func remoteTreeManifest(tc TaskContext, dir string) (map[string]remoteTreeEntry, error) {
+	bin := runRemoteQuiet(tc, "(command -v sha256sum || command -v shasum) 2>/dev/null | head -1")
 	if bin.Status != batch.StatusOK {
 		return nil, fmt.Errorf("远端缺少 sha256sum/shasum")
 	}
 	name := strings.TrimSpace(bin.Output)
-	flag := ""
+	hashCommand := shellquote.Single(name) + " -- \"$item\""
 	if strings.HasSuffix(name, "shasum") {
-		flag = "-a 256"
+		hashCommand = shellquote.Single(name) + " -a 256 \"$item\""
 	}
-	result := runRemote(tc, "cd "+shellquote.Single(dir)+" && find . -type f -print0 | sort -z | xargs -0 "+name+" "+flag)
+	script := "for item; do " +
+		"if [ -L \"$item\" ]; then kind=link; hash=-; " +
+		"elif [ -f \"$item\" ]; then kind=file; hash_output=$(" + hashCommand + ") || exit 1; set -- $hash_output; hash=$1; " +
+		"elif [ -d \"$item\" ]; then kind=dir; hash=-; " +
+		"else kind=special; hash=-; fi; " +
+		"mode=$(stat -c '%a' -- \"$item\" 2>/dev/null) || mode=$(stat -f '%Lp' -- \"$item\") || exit 1; relative=${item#./}; " +
+		"printf '%s\\0%s\\0%s\\0%s\\0' \"$relative\" \"$kind\" \"$mode\" \"$hash\"; done"
+	command := "cd " + shellquote.Single(dir) + " && find . -mindepth 1 -exec sh -c " + shellquote.Single(script) + " sh {} +"
+	result := runRemoteQuiet(tc, command)
 	if result.Status != batch.StatusOK {
 		reason := result.Output
 		if result.Err != nil {
 			reason = result.Err.Error()
 		}
-		return nil, fmt.Errorf("计算远端校验和失败: %s", reason)
+		return nil, fmt.Errorf("生成远端目录清单失败: %s", reason)
 	}
-	hashes := map[string]string{}
-	for _, line := range strings.Split(result.Output, "\n") {
-		fields := strings.Fields(line)
-		if len(fields) < 2 {
-			continue
+	return parseRemoteTreeManifest(result.Output)
+}
+
+func parseRemoteTreeManifest(output string) (map[string]remoteTreeEntry, error) {
+	if output == "" {
+		return map[string]remoteTreeEntry{}, nil
+	}
+	fields := strings.Split(output, "\x00")
+	if fields[len(fields)-1] != "" {
+		return nil, fmt.Errorf("远端目录清单被截断或格式无效")
+	}
+	fields = fields[:len(fields)-1]
+	if len(fields)%4 != 0 {
+		return nil, fmt.Errorf("远端目录清单字段不完整")
+	}
+	manifest := make(map[string]remoteTreeEntry, len(fields)/4)
+	for index := 0; index < len(fields); index += 4 {
+		relative := fields[index]
+		if relative == "" {
+			return nil, fmt.Errorf("远端目录清单包含空路径")
 		}
-		relative := strings.TrimPrefix(strings.TrimPrefix(fields[len(fields)-1], "./"), "./")
-		hashes[relative] = fields[0]
+		if _, duplicate := manifest[relative]; duplicate {
+			return nil, fmt.Errorf("远端目录清单包含重复路径: %s", relative)
+		}
+		manifest[relative] = remoteTreeEntry{Type: fields[index+1], Mode: fields[index+2], Hash: fields[index+3]}
 	}
-	return hashes, nil
+	return manifest, nil
 }
 
 type archiveKindInfo struct {

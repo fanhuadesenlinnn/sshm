@@ -76,7 +76,7 @@ func TestTransferOnePushesAndPullsDirectoryOverSFTP(t *testing.T) {
 
 	localDestination := t.TempDir()
 	method, destination, changed, err = transferOne(context.Background(), *loaded, vault, transferOptions{
-		direction: "pull", remotePath: remotePath, localPath: localDestination, validateChecksum: true,
+		direction: "pull", remotePath: remotePath, localPath: localDestination + string(os.PathSeparator), validateChecksum: true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -110,7 +110,7 @@ func TestTransferOnePushesAndPullsDirectoryOverSFTP(t *testing.T) {
 	}
 	assertCommandTestFile(t, filepath.Join(remoteRoot, remotePath, "nested", "it's ready.txt"), "updated")
 	if _, _, _, err := transferOne(context.Background(), *loaded, vault, transferOptions{
-		direction: "pull", remotePath: remotePath, localPath: localDestination, overwrite: true, validateChecksum: true,
+		direction: "pull", remotePath: remotePath, localPath: localDestination + string(os.PathSeparator), overwrite: true, validateChecksum: true,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +130,7 @@ func TestTransferOnePushesAndPullsDirectoryOverSFTP(t *testing.T) {
 	}
 	assertCommandTestFile(t, filepath.Join(remoteBackups[0], "nested", "it's ready.txt"), "updated")
 	if _, _, _, err := transferOne(context.Background(), *loaded, vault, transferOptions{
-		direction: "pull", remotePath: remotePath, localPath: localDestination, backup: true, validateChecksum: true,
+		direction: "pull", remotePath: remotePath, localPath: localDestination + string(os.PathSeparator), backup: true, validateChecksum: true,
 	}); err != nil {
 		t.Fatal(err)
 	}

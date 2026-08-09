@@ -24,6 +24,14 @@ func remoteExitStatus(err error) (int, bool) {
 
 // runRemote executes a command on the target host applying become and env.
 func runRemote(tc TaskContext, command string) ModuleResult {
+	return runRemoteWithVisibility(tc, command, true)
+}
+
+func runRemoteQuiet(tc TaskContext, command string) ModuleResult {
+	return runRemoteWithVisibility(tc, command, false)
+}
+
+func runRemoteWithVisibility(tc TaskContext, command string, visible bool) ModuleResult {
 	if len(tc.Env) > 0 {
 		parts := make([]string, 0, len(tc.Env))
 		for key, value := range tc.Env {
@@ -47,7 +55,10 @@ func runRemote(tc TaskContext, command string) ModuleResult {
 	}
 	options := ops.ExecOptions{
 		Command: command, ConnectTimeout: tc.ConnectTimeout,
-		Stdout: tc.Visible, Stderr: tc.Visible,
+	}
+	if visible {
+		options.Stdout = tc.Visible
+		options.Stderr = tc.Visible
 	}
 	if tc.Become && tc.HasBecomePassword {
 		options.Stdin = strings.NewReader(tc.BecomePassword + "\n")

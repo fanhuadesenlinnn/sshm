@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/pem"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -29,6 +30,26 @@ func TestRsyncRemoteKeepsSpecialPathForProtectArgs(t *testing.T) {
 	got := rsyncRemote(commandTestHost(), "folder with space/it's-ready")
 	if got != "user@example.test:folder with space/it's-ready" {
 		t.Fatalf("remote = %q", got)
+	}
+}
+
+func TestRsyncDirectorySourcesUseContentSemantics(t *testing.T) {
+	directory := []manifestEntry{{Path: ".", Type: "dir"}, {Path: "file", Type: "file"}}
+	file := []manifestEntry{{Path: ".", Type: "file"}}
+	if !manifestRootIsDirectory(directory) || manifestRootIsDirectory(file) {
+		t.Fatal("manifest root type was not detected")
+	}
+
+	local := rsyncDirectorySource(filepath.Clean("folder"), string(os.PathSeparator), directory)
+	if local != filepath.Clean("folder")+string(os.PathSeparator) {
+		t.Fatalf("local directory source = %q", local)
+	}
+	remote := rsyncDirectorySource("folder", "/", directory)
+	if got := rsyncRemote(commandTestHost(), remote); got != "user@example.test:folder/" {
+		t.Fatalf("remote directory source = %q", got)
+	}
+	if got := rsyncDirectorySource("file", "/", file); got != "file" {
+		t.Fatalf("file source = %q", got)
 	}
 }
 

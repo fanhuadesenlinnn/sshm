@@ -108,6 +108,7 @@ func TestCoreCommandHelpIncludesRunnableExamples(t *testing.T) {
 		{[]string{"exec"}, "exec [--yes] [--quiet] [--no-log] <别名|ID> [--] <命令>", "sshmd exec --yes web01"},
 		{[]string{"exec-tag"}, "exec-tag [批量选项] <标签|all> [--] <命令>", "sshmd exec-tag all"},
 		{[]string{"push"}, "push [选项] <别名|ID> <本地路径> <远程路径>", "sshmd push web01"},
+		{[]string{"export-ssh-config"}, "export-ssh-config [--force] <输出文件>", "sshmd export-ssh-config --force"},
 		{[]string{"key"}, "key <命令> [参数]", "sshmd key setup personal web01 --yes"},
 		{[]string{"tag"}, "tag <命令> [参数]", "sshmd tag add prod"},
 		{[]string{"deploy", "run"}, "run <play>", "sshmd deploy run webapp --tag prod"},

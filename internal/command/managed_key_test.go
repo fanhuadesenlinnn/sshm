@@ -92,6 +92,57 @@ func TestInstallAndRevokeCommandsQuotePublicKey(t *testing.T) {
 	}
 }
 
+func TestClearRevokedKeyBindingsOnlyChangesSuccessfulBoundHosts(t *testing.T) {
+	dir := t.TempDir()
+	store := config.NewStoreWithPath(filepath.Join(dir, "sshmd.yaml"))
+	initCommandTestStore(t, store)
+	bound := config.DefaultHost()
+	bound.Alias, bound.User, bound.Host, bound.Auth = "bound", "root", "bound.test", "key"
+	bound.Identity = config.ManagedIdentity("old")
+	failed := config.DefaultHost()
+	failed.Alias, failed.User, failed.Host = "failed", "root", "failed.test"
+	failed.Identity = config.ManagedIdentity("old")
+	other := config.DefaultHost()
+	other.Alias, other.User, other.Host = "other", "root", "other.test"
+	other.Identity = config.ManagedIdentity("new")
+	if err := store.Repository().Update(func(doc *config.Document) error {
+		doc.ManagedKeys.Keys = []config.ManagedKey{{Name: "old"}, {Name: "new"}}
+		doc.Hosts = []config.Host{bound, failed, other}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	app := &App{Store: store}
+	unbound, err := app.clearRevokedKeyBindings("old", []config.Host{bound, other})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unbound != 1 {
+		t.Fatalf("unbound = %d, want 1", unbound)
+	}
+	gotBound, _, _, err := store.FindHost("bound")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotBound.Identity != "" || gotBound.Auth != "auto" {
+		t.Fatalf("successful revoked host = %+v", gotBound)
+	}
+	gotFailed, _, _, err := store.FindHost("failed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotFailed.Identity != config.ManagedIdentity("old") {
+		t.Fatalf("failed host binding changed: %+v", gotFailed)
+	}
+	gotOther, _, _, err := store.FindHost("other")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotOther.Identity != config.ManagedIdentity("new") {
+		t.Fatalf("other key binding changed: %+v", gotOther)
+	}
+}
+
 func TestSelectHostsSupportsExcludes(t *testing.T) {
 	dir := t.TempDir()
 	store := config.NewStoreWithPath(filepath.Join(dir, "sshmd.yaml"))

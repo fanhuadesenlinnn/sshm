@@ -179,7 +179,7 @@ func TestLinearStrategyRunsTaskMajor(t *testing.T) {
 		commandTask("second", "echo two"),
 	}, testHosts())
 	result := (Runner{Executor: executor}).Run(context.Background(), plan)
-	if result.Summary.OK != 2 {
+	if result.Summary.Changed != 2 {
 		t.Fatalf("summary = %+v", result.Summary)
 	}
 	calls := executor.callLog()
@@ -228,6 +228,7 @@ func TestWhenFalseSkipsTask(t *testing.T) {
 	executor := &fakeExecutor{}
 	first := commandTask("upload", "echo upload")
 	first.Register = "upload"
+	first.ChangedWhen = &Condition{RCIn: []int{99}}
 	second := commandTask("restart", "echo restart")
 	second.When = "upload.changed"
 	plan := planFor(t, []Task{first, second}, testHosts())
@@ -240,6 +241,81 @@ func TestWhenFalseSkipsTask(t *testing.T) {
 	}
 	if result.Summary.OK != 2 {
 		t.Fatalf("summary = %+v", result.Summary)
+	}
+}
+
+func TestCommandExecutionReportsChangedAndCreatesSkipReportsOK(t *testing.T) {
+	executor := &fakeExecutor{}
+	executed := commandTask("execute", "echo changed")
+	skipped := Task{
+		Name: "skip-existing", Module: "command",
+		Args: argsNode(map[string]any{"cmd": "echo skipped", "creates": "/tmp/already-there"}),
+	}
+	result := (Runner{Executor: executor}).Run(context.Background(), planFor(t, []Task{executed, skipped}, testHosts()))
+	if result.Summary.Changed != 2 {
+		t.Fatalf("executed command should keep each host changed: %+v", result.Summary)
+	}
+	for _, host := range result.Hosts {
+		if len(host.Tasks) != 2 || host.Tasks[0].Status != batch.StatusChanged || host.Tasks[1].Status != batch.StatusOK {
+			t.Fatalf("command statuses = %+v", host.Tasks)
+		}
+		if host.Suggestion != "" {
+			t.Fatalf("successful host should not carry failure suggestion: %+v", host)
+		}
+	}
+	for _, call := range executor.callLog() {
+		if strings.Contains(call, "echo skipped") {
+			t.Fatalf("creates guard should skip command execution: %v", executor.callLog())
+		}
+	}
+}
+
+func TestChangedWhenFalseOverridesCommandDefault(t *testing.T) {
+	executor := &fakeExecutor{}
+	task := commandTask("probe", "echo probe")
+	task.ChangedWhen = &Condition{RCIn: []int{99}}
+	result := (Runner{Executor: executor}).Run(context.Background(), planFor(t, []Task{task}, testHosts()))
+	if result.Summary.OK != 2 || result.Summary.Changed != 0 {
+		t.Fatalf("changed_when=false should report OK: %+v", result.Summary)
+	}
+}
+
+func TestIgnoreErrorsIsPreservedInTaskResult(t *testing.T) {
+	executor := &fakeExecutor{execFail: map[string]error{"/bin/false": &fakeExitError{code: 7}}}
+	task := commandTask("optional", "/bin/false")
+	task.IgnoreErrors = true
+	result := (Runner{Executor: executor}).Run(context.Background(), planFor(t, []Task{task}, testHosts()))
+	if result.Summary.OK != 2 || result.ExitCode() != 0 {
+		t.Fatalf("ignored failure should continue successfully: %+v", result)
+	}
+	for _, host := range result.Hosts {
+		if len(host.Tasks) != 1 || !host.Tasks[0].Ignored || host.Tasks[0].RC != 7 {
+			t.Fatalf("ignored result metadata lost: %+v", host.Tasks)
+		}
+		if host.Suggestion != "" {
+			t.Fatalf("ignored failure should not add a host failure suggestion: %+v", host)
+		}
+	}
+}
+
+func TestLocalModuleConfigFailureKeepsStageAndExitCode(t *testing.T) {
+	executor := &fakeExecutor{}
+	base := t.TempDir()
+	task := Task{
+		Name: "missing-local-source", Module: "copy", BaseDir: base,
+		Args: argsNode(map[string]any{"src": "missing.txt", "dest": "/tmp/missing.txt"}),
+	}
+	result := (Runner{Executor: executor}).Run(context.Background(), planFor(t, []Task{task}, testHosts()))
+	if result.Summary.Failed != 2 || result.ExitCode() != 3 {
+		t.Fatalf("local config failure should exit 3: %+v", result)
+	}
+	for _, host := range result.Hosts {
+		if host.Stage != operation.StageConfig || len(host.Tasks) != 1 || host.Tasks[0].Stage != operation.StageConfig {
+			t.Fatalf("config stage should survive module/host aggregation: %+v", host)
+		}
+	}
+	if len(executor.callLog()) != 0 {
+		t.Fatalf("missing local source should fail before remote access: %v", executor.callLog())
 	}
 }
 
@@ -262,7 +338,7 @@ func TestBlockRescueAlways(t *testing.T) {
 	}
 	plan := planFor(t, []Task{blockTask}, testHosts())
 	result := (Runner{Executor: executor}).Run(context.Background(), plan)
-	if result.Summary.Failed != 0 || result.Summary.OK != 2 {
+	if result.Summary.Failed != 0 || result.Summary.Changed != 2 {
 		t.Fatalf("rescue 应使主机恢复: %+v", result.Summary)
 	}
 	calls := executor.callLog()
@@ -329,7 +405,7 @@ func TestLoopWhenFiltersItems(t *testing.T) {
 	task.When = "item != 'skip'"
 	plan := planFor(t, []Task{task}, testHosts())
 	result := (Runner{Executor: executor}).Run(context.Background(), plan)
-	if result.Summary.OK != 2 {
+	if result.Summary.Changed != 2 {
 		t.Fatalf("summary = %+v", result.Summary)
 	}
 	calls := executor.callLog()
@@ -380,6 +456,12 @@ func TestLoopWhenRegisterOnlyMatchedItems(t *testing.T) {
 			}
 			if len(register) != 2 {
 				t.Fatalf("被过滤的 item 不应进入 register: %+v", register)
+			}
+			for _, item := range register {
+				entry, ok := item.(map[string]any)
+				if !ok || entry["status"] != string(batch.StatusChanged) || entry["output"] != "ok" || entry["changed"] != true {
+					t.Fatalf("loop register 应保留每次执行结果: %+v", register)
+				}
 			}
 		}
 	}
@@ -479,6 +561,56 @@ func TestFileStateFileRejectsRemoteSymlink(t *testing.T) {
 	}
 }
 
+func TestFileOwnershipIsIdempotentWhenNameOrIDMatches(t *testing.T) {
+	probe := ownershipProbeCommand("/tmp/app.conf")
+	executor := &fakeExecutor{
+		statInfo: map[string]ops.RemoteFileInfo{
+			"/tmp/app.conf": {Exists: true, Mode: 0o640},
+		},
+		execOut: map[string]string{probe: "root:app:0:1000\n"},
+	}
+	task := Task{
+		Name: "file", Module: "file",
+		Args: argsNode(map[string]any{"path": "/tmp/app.conf", "state": "file", "owner": "0", "group": "app"}),
+	}
+	result := (Runner{Executor: executor}).Run(context.Background(), planFor(t, []Task{task}, testHosts()))
+	if result.Summary.OK != 2 || result.Summary.Changed != 0 {
+		t.Fatalf("matching ownership should be idempotent: %+v", result.Summary)
+	}
+	for _, call := range executor.callLog() {
+		if strings.Contains(call, "chown") {
+			t.Fatalf("matching ownership should not run chown: %v", executor.callLog())
+		}
+	}
+}
+
+func TestFileOwnershipChangesOnlyWhenDifferent(t *testing.T) {
+	probe := ownershipProbeCommand("/tmp/app.conf")
+	executor := &fakeExecutor{
+		statInfo: map[string]ops.RemoteFileInfo{
+			"/tmp/app.conf": {Exists: true, Mode: 0o640},
+		},
+		execOut: map[string]string{probe: "deploy:deploy:1000:1000\n"},
+	}
+	task := Task{
+		Name: "file", Module: "file",
+		Args: argsNode(map[string]any{"path": "/tmp/app.conf", "state": "file", "owner": "root", "group": "root"}),
+	}
+	result := (Runner{Executor: executor}).Run(context.Background(), planFor(t, []Task{task}, testHosts()))
+	if result.Summary.Changed != 2 {
+		t.Fatalf("different ownership should change: %+v", result.Summary)
+	}
+	chowns := 0
+	for _, call := range executor.callLog() {
+		if strings.Contains(call, "chown") {
+			chowns++
+		}
+	}
+	if chowns != 2 {
+		t.Fatalf("chown calls = %d, want 2: %v", chowns, executor.callLog())
+	}
+}
+
 func TestFileAbsentRejectsBroadDestructivePaths(t *testing.T) {
 	module := &fileModule{}
 	for _, target := range []string{"/", ".", "..", "~", "~/"} {
@@ -524,6 +656,18 @@ func TestCopyRejectsInvalidMode(t *testing.T) {
 	}
 }
 
+func TestCopyAcceptsExplicitEmptyContent(t *testing.T) {
+	module := &copyModule{}
+	raw, err := module.DecodeArgs(argsNode(map[string]any{"content": "", "dest": "/tmp/empty"}))
+	if err != nil {
+		t.Fatalf("explicit empty content should be valid: %v", err)
+	}
+	args := raw.(*copyArgs)
+	if args.Content == nil || *args.Content != "" || args.Src != "" {
+		t.Fatalf("decoded empty content = %+v", args)
+	}
+}
+
 func TestBlockRetainsChildOutput(t *testing.T) {
 	executor := &fakeExecutor{}
 	blockTask := Task{
@@ -535,13 +679,55 @@ func TestBlockRetainsChildOutput(t *testing.T) {
 	}
 	plan := planFor(t, []Task{blockTask}, testHosts())
 	result := (Runner{Executor: executor}).Run(context.Background(), plan)
-	if result.Summary.OK != 2 {
+	if result.Summary.Changed != 2 {
 		t.Fatalf("summary = %+v", result.Summary)
 	}
 	for _, host := range result.Hosts {
 		if len(host.Tasks) != 1 || host.Tasks[0].Output != "okok" {
 			t.Fatalf("block 子任务输出未聚合: %+v", host.Tasks)
 		}
+	}
+}
+
+func TestBlockAggregatesChangedStatusFromAlways(t *testing.T) {
+	executor := &fakeExecutor{
+		pushFunc: func(options ops.TransferOptions) ops.Result {
+			return ops.Result{OK: true, Changed: true, WouldChange: options.Check, Destination: options.Dest}
+		},
+	}
+	blockTask := Task{
+		Name:  "publish",
+		Block: []Task{{Name: "main", Module: "debug", Args: argsNode(map[string]any{"msg": "main"})}},
+		Always: []Task{{
+			Name: "always-write", Module: "copy",
+			Args: argsNode(map[string]any{"content": "written", "dest": "/tmp/always.txt"}),
+		}},
+	}
+	result := (Runner{Executor: executor}).Run(context.Background(), planFor(t, []Task{blockTask}, testHosts()))
+	if result.Summary.Changed != 2 || result.Summary.OK != 0 {
+		t.Fatalf("always change should propagate to block: %+v", result.Summary)
+	}
+}
+
+func TestBlockAggregatesWouldChangeStatusFromAlwaysInCheckMode(t *testing.T) {
+	executor := &fakeExecutor{
+		pushFunc: func(options ops.TransferOptions) ops.Result {
+			return ops.Result{OK: true, Changed: true, WouldChange: options.Check, Destination: options.Dest}
+		},
+	}
+	blockTask := Task{
+		Name:  "publish",
+		Block: []Task{{Name: "main", Module: "debug", Args: argsNode(map[string]any{"msg": "main"})}},
+		Always: []Task{{
+			Name: "always-write", Module: "copy",
+			Args: argsNode(map[string]any{"content": "written", "dest": "/tmp/always.txt"}),
+		}},
+	}
+	plan := planFor(t, []Task{blockTask}, testHosts())
+	plan.Check = true
+	result := (Runner{Executor: executor}).Run(context.Background(), plan)
+	if result.Summary.WouldChange != 2 || result.Summary.Changed != 0 {
+		t.Fatalf("always check change should propagate as would-change: %+v", result.Summary)
 	}
 }
 
@@ -613,7 +799,7 @@ func TestFreeStrategyEmitsPerTaskEvents(t *testing.T) {
 	result := (Runner{Executor: executor, Event: func(event PlayEvent) {
 		events = append(events, event)
 	}}).Run(context.Background(), plan)
-	if result.Summary.OK != 2 {
+	if result.Summary.Changed != 2 {
 		t.Fatalf("summary = %+v", result.Summary)
 	}
 	taskEvents := 0
@@ -689,6 +875,34 @@ func TestCheckModeCommandRunsExitZero(t *testing.T) {
 	}
 }
 
+func TestCheckSafeCommandRunsWithoutReportingChange(t *testing.T) {
+	executor := &fakeExecutor{}
+	task := commandTask("probe", "hostname")
+	task.CheckSafe = true
+	plan := planFor(t, []Task{task}, testHosts())
+	plan.Check = true
+	result := (Runner{Executor: executor}).Run(context.Background(), plan)
+	if result.Summary.OK != 2 || result.Summary.Changed != 0 || result.Summary.WouldChange != 0 {
+		t.Fatalf("check_safe probe should stay read-only: %+v", result.Summary)
+	}
+	if len(executor.callLog()) != 2 {
+		t.Fatalf("check_safe command should execute once per host: %v", executor.callLog())
+	}
+}
+
+func TestCheckSafeChangedWhenCanExplicitlyReportWouldChange(t *testing.T) {
+	executor := &fakeExecutor{}
+	task := commandTask("probe", "hostname")
+	task.CheckSafe = true
+	task.ChangedWhen = &Condition{RCIn: []int{0}}
+	plan := planFor(t, []Task{task}, testHosts())
+	plan.Check = true
+	result := (Runner{Executor: executor}).Run(context.Background(), plan)
+	if result.Summary.WouldChange != 2 || result.Summary.Changed != 0 {
+		t.Fatalf("explicit changed_when should report would-change in check mode: %+v", result.Summary)
+	}
+}
+
 func TestConfirmGatesEachSerialBatch(t *testing.T) {
 	executor := &fakeExecutor{}
 	task := commandTask("restart", "echo restart")
@@ -703,7 +917,7 @@ func TestConfirmGatesEachSerialBatch(t *testing.T) {
 		prompts++
 		return nil
 	}}).Run(context.Background(), plan)
-	if result.Summary.OK != 2 {
+	if result.Summary.Changed != 2 {
 		t.Fatalf("summary = %+v", result.Summary)
 	}
 	if prompts != 2 {
@@ -754,11 +968,35 @@ func TestFreeStrategyConfirmsEachMessageOnce(t *testing.T) {
 		prompts++
 		return nil
 	}}).Run(context.Background(), plan)
-	if result.Summary.OK != 2 {
+	if result.Summary.Changed != 2 {
 		t.Fatalf("summary = %+v", result.Summary)
 	}
 	if prompts != 1 {
 		t.Fatalf("free 策略应只确认一次，实际 %d 次", prompts)
+	}
+}
+
+func TestFreeStrategyConfirmationRejectionStopsEveryHost(t *testing.T) {
+	executor := &fakeExecutor{}
+	task := commandTask("restart", "echo restart")
+	task.Confirm = "确认重启?"
+	plan := planFor(t, []Task{task}, testHosts())
+	plan.Strategy = StrategyFree
+	prompts := 0
+	result := (Runner{Executor: executor, Confirm: func(string) error {
+		prompts++
+		return errors.New("用户拒绝")
+	}}).Run(context.Background(), plan)
+	if prompts != 1 || result.Summary.Failed != 2 || result.ExitCode() != 1 {
+		t.Fatalf("rejected confirmation should fail every host once: prompts=%d result=%+v", prompts, result)
+	}
+	if len(executor.callLog()) != 0 {
+		t.Fatalf("no host may execute after shared confirmation rejection: %v", executor.callLog())
+	}
+	for _, host := range result.Hosts {
+		if host.Stage != operation.StageConfirm || host.Suggestion != operation.Suggestion(operation.StageConfirm) {
+			t.Fatalf("confirmation failure metadata = %+v", host)
+		}
 	}
 }
 
@@ -800,6 +1038,58 @@ func TestFreeStrategyConfirmDeduplicatesMessages(t *testing.T) {
 	}
 }
 
+func TestFreeStrategyDoesNotDeduplicateDifferentTasksWithSameMessage(t *testing.T) {
+	executor := &fakeExecutor{}
+	first := commandTask("a", "echo a")
+	first.Confirm = "确认继续?"
+	second := commandTask("b", "echo b")
+	second.Confirm = "确认继续?"
+	plan := planFor(t, []Task{first, second}, testHosts())
+	plan.Strategy = StrategyFree
+	prompts := 0
+	(Runner{Executor: executor, Confirm: func(string) error {
+		prompts++
+		return nil
+	}}).Run(context.Background(), plan)
+	if prompts != 2 {
+		t.Fatalf("相同文案的两个不同任务应分别确认，实际 %d 次", prompts)
+	}
+}
+
+func TestPauseSameMessagePromptsOncePerTask(t *testing.T) {
+	executor := &fakeExecutor{}
+	tasks := []Task{
+		{Name: "gate-a", Module: "pause", Args: argsNode(map[string]any{"message": "gate"})},
+		{Name: "gate-b", Module: "pause", Args: argsNode(map[string]any{"message": "gate"})},
+	}
+	plan := planFor(t, tasks, testHosts())
+	plan.Strategy = StrategyFree
+	prompts := 0
+	result := (Runner{Executor: executor, Confirm: func(string) error {
+		prompts++
+		return nil
+	}}).Run(context.Background(), plan)
+	if result.Summary.Failed != 0 || prompts != 2 {
+		t.Fatalf("pause prompts=%d summary=%+v", prompts, result.Summary)
+	}
+}
+
+func TestPauseRejectionUsesConfirmationStage(t *testing.T) {
+	executor := &fakeExecutor{}
+	task := Task{Name: "gate", Module: "pause", Args: argsNode(map[string]any{"message": "gate"})}
+	result := (Runner{Executor: executor, Confirm: func(string) error {
+		return errors.New("用户拒绝")
+	}}).Run(context.Background(), planFor(t, []Task{task}, testHosts()))
+	if result.Summary.Failed != 2 || result.ExitCode() != 1 {
+		t.Fatalf("pause rejection should be an operational failure: %+v", result)
+	}
+	for _, host := range result.Hosts {
+		if host.Stage != operation.StageConfirm {
+			t.Fatalf("pause rejection stage = %+v", host)
+		}
+	}
+}
+
 func TestPlayStateSerializesDifferentConfirmPrompts(t *testing.T) {
 	state := NewPlayState()
 	entered := make(chan string, 2)
@@ -811,13 +1101,13 @@ func TestPlayStateSerializesDifferentConfirmPrompts(t *testing.T) {
 		return nil
 	}
 
-	go func() { done <- state.ConfirmOnce("确认 A?", confirm) }()
+	go func() { done <- state.ConfirmOnce("task-a", "确认 A?", confirm) }()
 	select {
 	case <-entered:
 	case <-time.After(time.Second):
 		t.Fatal("first confirmation did not start")
 	}
-	go func() { done <- state.ConfirmOnce("确认 B?", confirm) }()
+	go func() { done <- state.ConfirmOnce("task-b", "确认 B?", confirm) }()
 	select {
 	case message := <-entered:
 		t.Fatalf("confirm callbacks overlapped: %s", message)
@@ -1029,7 +1319,7 @@ func TestBecomeWithPasswordUsesSudoS(t *testing.T) {
 			return "secret", true
 		},
 	}).Run(context.Background(), plan)
-	if result.Summary.OK != 2 {
+	if result.Summary.Changed != 2 {
 		t.Fatalf("summary = %+v", result.Summary)
 	}
 	for _, call := range executor.callLog() {

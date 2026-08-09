@@ -29,6 +29,24 @@ func TestHostLogFiles(t *testing.T) {
 	}
 }
 
+func TestHostLogFilesIncludesMatchingDeployRun(t *testing.T) {
+	dir := t.TempDir()
+	plan := `{"targets":["vm-strict sshmdtest@192.0.2.1:22","other root@192.0.2.2:22"]}`
+	if err := os.WriteFile(filepath.Join(dir, "plan.json"), []byte(plan), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "run.json"), []byte(`{"hosts":[{"host":"vm-strict"}]}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	matches := hostLogFiles(dir, "vm-strict")
+	if len(matches) != 1 || filepath.Base(matches[0]) != "run.json" {
+		t.Fatalf("deploy matches = %v", matches)
+	}
+	if matches := hostLogFiles(dir, "missing"); len(matches) != 0 {
+		t.Fatalf("unexpected deploy matches = %v", matches)
+	}
+}
+
 func TestLogActionFilterMatchesSuffixedRunDirectories(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("SSHMD_HOME", dir)

@@ -232,7 +232,8 @@ func pushRsync(ctx context.Context, rsyncPath, sshCommand string, client *sftp.C
 	temp := remotePath + fmt.Sprintf(".sshmd-rsync-tmp-%d-%d", os.Getpid(), time.Now().UnixNano())
 	_ = client.RemoveAll(temp)
 	defer client.RemoveAll(temp)
-	if err := runRsync(ctx, rsyncPath, sshCommand, filepath.Clean(options.localPath), rsyncRemote(host, temp)); err != nil {
+	source := rsyncDirectorySource(filepath.Clean(options.localPath), string(os.PathSeparator), sourceManifest)
+	if err := runRsync(ctx, rsyncPath, sshCommand, source, rsyncRemote(host, temp)); err != nil {
 		return remotePath, false, &rsyncFallbackError{err: fmt.Errorf("rsync 推送失败: %w", err)}
 	}
 	if options.validateChecksum {
@@ -289,7 +290,8 @@ func pullRsync(ctx context.Context, rsyncPath, sshCommand string, client *sftp.C
 	temp := filepath.Join(filepath.Dir(destination), "."+filepath.Base(destination)+fmt.Sprintf(".sshmd-rsync-tmp-%d-%d", os.Getpid(), time.Now().UnixNano()))
 	_ = os.RemoveAll(temp)
 	defer os.RemoveAll(temp)
-	if err := runRsync(ctx, rsyncPath, sshCommand, rsyncRemote(host, remotePath), temp); err != nil {
+	remoteSource := rsyncDirectorySource(remotePath, "/", sourceManifest)
+	if err := runRsync(ctx, rsyncPath, sshCommand, rsyncRemote(host, remoteSource), temp); err != nil {
 		return destination, false, &rsyncFallbackError{err: fmt.Errorf("rsync 拉取失败: %w", err)}
 	}
 	if options.validateChecksum {
@@ -302,6 +304,22 @@ func pullRsync(ctx context.Context, rsyncPath, sshCommand string, client *sftp.C
 		}
 	}
 	return destination, true, activateLocalTemp(temp, destination, exists, options.overwrite, options.backup)
+}
+
+func manifestRootIsDirectory(manifest []manifestEntry) bool {
+	for _, entry := range manifest {
+		if entry.Path == "." {
+			return entry.Type == "dir"
+		}
+	}
+	return false
+}
+
+func rsyncDirectorySource(source, separator string, manifest []manifestEntry) string {
+	if manifestRootIsDirectory(manifest) && !strings.HasSuffix(source, separator) {
+		return source + separator
+	}
+	return source
 }
 
 type rsyncFallbackError struct {

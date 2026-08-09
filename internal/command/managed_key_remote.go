@@ -78,7 +78,45 @@ func (app *App) cmdKeyRemote(args []string, revoke bool) error {
 		}
 	}
 
-	return app.runKeyRemoteBatch(action, hosts, command, fmt.Sprintf("sshmd key %s %s", subcommand, key.Name), quiet)
+	succeeded, runErr := app.runKeyRemoteBatch(action, hosts, command, fmt.Sprintf("sshmd key %s %s", subcommand, key.Name), quiet)
+	if !revoke || len(succeeded) == 0 {
+		return runErr
+	}
+	unbound, unbindErr := app.clearRevokedKeyBindings(key.Name, succeeded)
+	if unbound > 0 {
+		ui.PrintWarn("已解除 %d 台成功撤销主机对密钥 %s 的绑定；再次连接前，请绑定仍存在于远程的密钥或配置密码", unbound, key.Name)
+	}
+	if unbindErr != nil {
+		if runErr != nil {
+			return fmt.Errorf("%v；另外解除本地密钥绑定失败: %w", runErr, unbindErr)
+		}
+		return fmt.Errorf("远程公钥已撤销，但解除本地密钥绑定失败: %w", unbindErr)
+	}
+	return runErr
+}
+
+func (app *App) clearRevokedKeyBindings(keyName string, succeeded []config.Host) (int, error) {
+	succeededIDs := make(map[string]bool, len(succeeded))
+	for _, host := range succeeded {
+		succeededIDs[host.ID] = true
+	}
+	unbound := 0
+	err := app.Store.Repository().Update(func(doc *config.Document) error {
+		for i := range doc.Hosts {
+			host := &doc.Hosts[i]
+			boundKey, managed := config.ManagedKeyName(host.Identity)
+			if !succeededIDs[host.ID] || !managed || boundKey != keyName {
+				continue
+			}
+			host.Identity = ""
+			if host.Auth == "key" {
+				host.Auth = "auto"
+			}
+			unbound++
+		}
+		return nil
+	})
+	return unbound, err
 }
 
 func (app *App) cmdKeySetup(args []string) error {
@@ -108,7 +146,7 @@ func (app *App) cmdKeySetup(args []string) error {
 			return nil
 		}
 	}
-	if err := app.runKeyRemoteBatch("推送", hosts, installPublicKeyCommand(key.PublicKey), fmt.Sprintf("sshmd key push %s", key.Name), quiet); err != nil {
+	if _, err := app.runKeyRemoteBatch("推送", hosts, installPublicKeyCommand(key.PublicKey), fmt.Sprintf("sshmd key push %s", key.Name), quiet); err != nil {
 		return err
 	}
 	failed := 0
@@ -308,7 +346,7 @@ type keyRemoteResult struct {
 	duration time.Duration
 }
 
-func (app *App) runKeyRemoteBatch(action string, hosts []config.Host, command, retryPrefix string, quiet bool) error {
+func (app *App) runKeyRemoteBatch(action string, hosts []config.Host, command, retryPrefix string, quiet bool) ([]config.Host, error) {
 	fs := app.tryGetSecretStore()
 	results := make([]keyRemoteResult, len(hosts))
 	jobs := make(chan int)
@@ -333,6 +371,7 @@ func (app *App) runKeyRemoteBatch(action string, hosts []config.Host, command, r
 	wg.Wait()
 
 	failed := 0
+	succeeded := make([]config.Host, 0, len(results))
 	logResults := make([]operation.Result, 0, len(results))
 	for _, result := range results {
 		opResult := newOperationResult(result.host, result.output, result.err, operation.StageExecute,
@@ -342,19 +381,21 @@ func (app *App) runKeyRemoteBatch(action string, hosts []config.Host, command, r
 			failed++
 			printOperationFailure(opResult)
 		} else if quiet {
+			succeeded = append(succeeded, result.host)
 			fmt.Printf("%s (%s) ok\n", result.host.Alias, result.host.Host)
 		} else {
+			succeeded = append(succeeded, result.host)
 			ui.PrintSuccess("%s: %s成功", result.host.Alias, action)
 		}
 	}
 	fmt.Printf("%s完成：成功 %d，失败 %d\n", action, len(results)-failed, failed)
 	if err := writeOperationLog("key-"+action, action+"远端公钥", logResults); err != nil {
-		return err
+		return succeeded, err
 	}
 	if failed > 0 {
-		return fmt.Errorf("%s有 %d 台主机失败；请先保存可用密码或配置现有认证", action, failed)
+		return succeeded, fmt.Errorf("%s有 %d 台主机失败；请先保存可用密码或配置现有认证", action, failed)
 	}
-	return nil
+	return succeeded, nil
 }
 
 func installPublicKeyCommand(publicKey string) string {

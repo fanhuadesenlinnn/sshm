@@ -4,7 +4,7 @@ sshmd 是一个本地优先、面向个人使用的 SSH 主机管理与轻量运
 
 ## 版本边界
 
-- 产品发布版本：`v6.2.3`
+- 产品发布版本：`v6.2.4`
 - Go module：`github.com/fanhuadesenlinnn/sshmd/v6`
 - 主配置 schema：`version: 2`
 - Deploy schema：`version: 3`

@@ -65,7 +65,7 @@ var commandCatalog = []commandCatalogEntry{
 	{Name: "config", Group: commandGroupConfig, Short: "查看和编辑主配置", HelpUsage: "config path/edit", HelpSummary: "查看路径或校验后编辑 sshmd.yaml"},
 	{Name: "doctor", Group: commandGroupConfig, Short: "检查配置与凭据环境", HelpUsage: "doctor", HelpSummary: "检查配置与凭据环境"},
 	{Name: "logs", Group: commandGroupConfig, Short: "查看或清理操作日志", HelpUsage: "logs [clean --yes]", HelpSummary: "查看或清理操作日志"},
-	{Name: "export-ssh-config", Group: commandGroupConfig, Short: "导出 OpenSSH 配置", HelpUsage: "export-ssh-config <文件>", HelpSummary: "导出 SSH 配置", LegacyOptions: []string{"--export-ssh-config"}},
+	{Name: "export-ssh-config", Group: commandGroupConfig, Short: "导出 OpenSSH 配置", HelpUsage: "export-ssh-config [--force] <文件>", HelpSummary: "导出 SSH 配置", LegacyOptions: []string{"--export-ssh-config"}},
 	{Name: "import-ssh-config", Group: commandGroupConfig, Short: "导入 OpenSSH 配置", HelpUsage: "import-ssh-config [文件]", HelpSummary: "导入 SSH 配置", LegacyOptions: []string{"--import-ssh-config"}},
 	{Name: "completion", Group: commandGroupConfig, Short: "生成 Shell 自动补全脚本", HelpUsage: "completion <bash|zsh|fish>", HelpSummary: "生成 Shell 自动补全脚本"},
 }

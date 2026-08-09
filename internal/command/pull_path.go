@@ -158,6 +158,64 @@ func localPathComparisonCaseInsensitive() bool {
 	return runtime.GOOS == "windows" || runtime.GOOS == "darwin"
 }
 
+// protectedLocalDirectory reports whether replacing localPath would move or
+// delete a broad user/process-owned directory. Such paths retain conventional
+// container semantics for directory pulls, and activation checks this again as
+// defense in depth before any rename.
+func protectedLocalDirectory(localPath string) (bool, error) {
+	absolute, err := filepath.Abs(localPath)
+	if err != nil {
+		return false, fmt.Errorf("解析本地目标失败: %w", err)
+	}
+	info, err := os.Stat(absolute)
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("检查本地目标失败: %w", err)
+	}
+	if !info.IsDir() {
+		return false, nil
+	}
+	comparisonPath := resolvedExistingPath(absolute)
+	if filepath.Dir(comparisonPath) == comparisonPath {
+		return true, nil
+	}
+	candidates := []string{config.SSHMDHome()}
+	if cwd, cwdErr := os.Getwd(); cwdErr == nil {
+		candidates = append(candidates, cwd)
+	}
+	if userHome, homeErr := os.UserHomeDir(); homeErr == nil {
+		candidates = append(candidates, userHome)
+	}
+	for _, candidate := range candidates {
+		if pathContains(comparisonPath, resolvedExistingPath(candidate)) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func resolvedExistingPath(value string) string {
+	absolute, err := filepath.Abs(value)
+	if err != nil {
+		return filepath.Clean(value)
+	}
+	resolved, err := filepath.EvalSymlinks(absolute)
+	if err == nil {
+		return filepath.Clean(resolved)
+	}
+	return filepath.Clean(absolute)
+}
+
+func pathContains(parent, child string) bool {
+	relative, err := filepath.Rel(parent, child)
+	if err != nil {
+		return false
+	}
+	return relative == "." || (relative != ".." && !strings.HasPrefix(relative, ".."+string(os.PathSeparator)))
+}
+
 func validateRemoteManifestDestinations(destination string, manifest []manifestEntry, windows, caseInsensitive bool) error {
 	var destinations []string
 	for _, entry := range manifest {

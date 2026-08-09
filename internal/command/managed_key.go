@@ -100,7 +100,7 @@ func printKeyCenterHelp() {
 	fmt.Println("  use <密钥> <目标...>           将主机绑定到密钥")
 	fmt.Println("  push <密钥> <目标...> [--yes] [--quiet]   推送公钥到远端")
 	fmt.Println("  setup <密钥> <目标...> [--yes] [--quiet]  推送、验证并绑定")
-	fmt.Println("  revoke <密钥> <目标...> [--yes] [--quiet] 从远端撤销公钥")
+	fmt.Println("  revoke <密钥> <目标...> [--yes] [--quiet] 撤销远端公钥并解除成功主机的绑定")
 	fmt.Println("  status [密钥]                  显示主机绑定状态")
 	fmt.Println("  delete <名称...> [--yes]       删除本地托管密钥")
 	fmt.Println("  delete-unused [--yes]          删除未绑定且非默认的密钥")

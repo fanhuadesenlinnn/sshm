@@ -40,6 +40,7 @@ type TaskContext struct {
 	ProjectRoot       string
 	LoopItem          any
 	LoopIndex         int
+	PromptKey         string
 	Executor          ops.Executor
 	Visible           io.Writer
 	PlayState         *PlayState
@@ -49,40 +50,32 @@ type TaskContext struct {
 type PlayState struct {
 	mu       sync.Mutex
 	promptMu sync.Mutex
-	prompted map[string]bool
+	prompted map[string]error
 }
 
 func NewPlayState() *PlayState {
-	return &PlayState{prompted: map[string]bool{}}
+	return &PlayState{prompted: map[string]error{}}
 }
 
-func (p *PlayState) MarkPrompted(key string) bool {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.prompted[key] {
-		return false
-	}
-	p.prompted[key] = true
-	return true
-}
-
-// ConfirmOnce prompts for message at most once per play, deduplicating
-// concurrent hosts under free strategy. A nil confirm means interaction is
-// unavailable, which is reported as an error exactly like linear mode.
-func (p *PlayState) ConfirmOnce(message string, confirm func(string) error) error {
+// ConfirmOnce prompts for one task key at most once per play, deduplicating
+// concurrent hosts without conflating separate tasks that share a message.
+func (p *PlayState) ConfirmOnce(key, message string, confirm func(string) error) error {
 	if confirm == nil {
 		return fmt.Errorf("deploy confirm 需要交互终端: %s", message)
 	}
 	p.promptMu.Lock()
 	defer p.promptMu.Unlock()
 	p.mu.Lock()
-	if p.prompted[message] {
+	if result, ok := p.prompted[key]; ok {
 		p.mu.Unlock()
-		return nil
+		return result
 	}
-	p.prompted[message] = true
 	p.mu.Unlock()
-	return confirm(message)
+	result := confirm(message)
+	p.mu.Lock()
+	p.prompted[key] = result
+	p.mu.Unlock()
+	return result
 }
 
 // ModuleResult is the normalized outcome of one module execution.
@@ -93,6 +86,7 @@ type ModuleResult struct {
 	Register    any
 	Err         error
 	Stage       operation.FailureStage
+	Ignored     bool
 	Changed     bool
 	WouldChange bool
 	Destination string

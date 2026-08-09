@@ -1,7 +1,9 @@
 package command
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -73,15 +75,21 @@ func (app *App) cmdLogs(args []string) error {
 		ui.PrintWarn("暂无匹配的操作日志")
 		return nil
 	}
-	ui.PrintWarn("操作日志可能包含敏感远程输出，请按本地敏感数据保护")
+	var matches []string
 	for _, dir := range directories {
 		if hostFilter != "" {
-			for _, match := range hostLogFiles(dir, hostFilter) {
-				fmt.Println(match)
-			}
+			matches = append(matches, hostLogFiles(dir, hostFilter)...)
 			continue
 		}
-		fmt.Println(dir)
+		matches = append(matches, dir)
+	}
+	if len(matches) == 0 {
+		ui.PrintWarn("暂无匹配的操作日志")
+		return nil
+	}
+	ui.PrintWarn("操作日志可能包含敏感远程输出，请按本地敏感数据保护")
+	for _, match := range matches {
+		fmt.Println(match)
 	}
 	return nil
 }
@@ -130,7 +138,34 @@ func hostLogFiles(dir, alias string) []string {
 			matches = append(matches, filepath.Join(dir, entry.Name()))
 		}
 	}
+	if deployPlanIncludesHost(filepath.Join(dir, "plan.json"), alias) {
+		runPath := filepath.Join(dir, "run.json")
+		if info, err := os.Stat(runPath); err == nil && !info.IsDir() {
+			matches = append(matches, runPath)
+		}
+	}
 	return matches
+}
+
+func deployPlanIncludesHost(planPath, alias string) bool {
+	file, err := os.Open(planPath)
+	if err != nil {
+		return false
+	}
+	defer file.Close()
+	var plan struct {
+		Targets []string `json:"targets"`
+	}
+	if err := json.NewDecoder(io.LimitReader(file, 4<<20)).Decode(&plan); err != nil {
+		return false
+	}
+	for _, target := range plan.Targets {
+		fields := strings.Fields(target)
+		if len(fields) > 0 && fields[0] == alias {
+			return true
+		}
+	}
+	return false
 }
 
 func safeLogsDirForClean() (string, error) {

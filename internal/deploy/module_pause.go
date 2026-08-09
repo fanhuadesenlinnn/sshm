@@ -37,14 +37,15 @@ func (m *pauseModule) Run(tc TaskContext, raw any) ModuleResult {
 	if message == "" {
 		message = "确认继续?"
 	}
-	if !tc.PlayState.MarkPrompted(message) {
-		return ModuleResult{Status: batch.StatusOK, Output: "已确认: " + message + "\n"}
-	}
 	if tc.Confirm == nil {
 		return failedModule(fmt.Errorf("pause 步骤需要交互确认: %s", message), operation.StageConfig)
 	}
-	if err := tc.Confirm(message); err != nil {
-		return failedModule(fmt.Errorf("用户拒绝 pause: %s（%v）", message, err), operation.StageConfig)
+	key := tc.PromptKey
+	if key == "" {
+		key = message
+	}
+	if err := tc.PlayState.ConfirmOnce("pause:"+key, message, tc.Confirm); err != nil {
+		return failedModule(fmt.Errorf("用户拒绝 pause: %s（%v）", message, err), operation.StageConfirm)
 	}
 	return ModuleResult{Status: batch.StatusOK, Output: "已确认: " + message + "\n"}
 }

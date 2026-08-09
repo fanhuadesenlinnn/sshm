@@ -54,21 +54,24 @@ type HostResult struct {
 
 // TaskResult is the per-host outcome of one task.
 type TaskResult struct {
-	Name       string       `json:"name"`
-	Module     string       `json:"module,omitempty"`
-	Status     batch.Status `json:"status"`
-	Ignored    bool         `json:"ignored,omitempty"`
-	Reason     string       `json:"reason,omitempty"`
-	Output     string       `json:"output,omitempty"`
-	RC         int          `json:"rc"`
-	DurationMS int64        `json:"duration_ms"`
-	Register   any          `json:"register,omitempty"`
+	Name       string                 `json:"name"`
+	Module     string                 `json:"module,omitempty"`
+	Status     batch.Status           `json:"status"`
+	Stage      operation.FailureStage `json:"stage,omitempty"`
+	Ignored    bool                   `json:"ignored,omitempty"`
+	Reason     string                 `json:"reason,omitempty"`
+	Output     string                 `json:"output,omitempty"`
+	RC         int                    `json:"rc"`
+	DurationMS int64                  `json:"duration_ms"`
+	Register   any                    `json:"register,omitempty"`
 }
 
 func (r RunResult) ExitCode() int {
 	switch {
 	case r.Cancelled:
 		return 130
+	case hasHostFailureStage(r.Hosts, operation.StageConfig):
+		return 3
 	case r.Summary.Failed > 0 || (r.Summary.Skipped > 0 && !r.Check):
 		return 1
 	case r.Summary.Unreachable > 0:
@@ -76,6 +79,15 @@ func (r RunResult) ExitCode() int {
 	default:
 		return 0
 	}
+}
+
+func hasHostFailureStage(hosts []HostResult, stage operation.FailureStage) bool {
+	for _, host := range hosts {
+		if host.Status == batch.StatusFailed && host.Stage == stage {
+			return true
+		}
+	}
+	return false
 }
 
 type hostState struct {
@@ -101,6 +113,7 @@ func newHostState(host config.Host) *hostState {
 
 // Run executes the plan and returns the aggregated result.
 func (r Runner) Run(ctx context.Context, plan *Plan) RunResult {
+	assignPromptKeys(plan.Tasks, "task")
 	emitPlayStart(r, plan)
 	result := RunResult{
 		Play: plan.Name, Config: plan.Config, Targets: len(plan.Hosts),
@@ -131,11 +144,14 @@ func (r Runner) Run(ctx context.Context, plan *Plan) RunResult {
 			HostAlias: host.Alias, HostAddress: hostAddress(host),
 			Status: state.status, FailedTask: state.failedTask,
 			Stage: state.stage, Reason: state.reason,
-			Suggestion: operation.Suggestion(state.stage),
-			StartedAt:  now, EndedAt: now, Tasks: state.tasks,
+			StartedAt: now, EndedAt: now, Tasks: state.tasks,
 		}
-		if state.failed && hostResult.Suggestion == "" {
-			hostResult.Suggestion = operation.Suggestion(operation.StageExecute)
+		if state.failed || state.status == batch.StatusFailed || state.status == batch.StatusUnreachable {
+			stage := state.stage
+			if stage == "" {
+				stage = operation.StageExecute
+			}
+			hostResult.Suggestion = operation.Suggestion(stage)
 		}
 		result.Hosts[index] = hostResult
 	}
@@ -145,6 +161,16 @@ func (r Runner) Run(ctx context.Context, plan *Plan) RunResult {
 	result.EndedAt = time.Now()
 	emitPlayDone(r, plan, result)
 	return result
+}
+
+func assignPromptKeys(tasks []Task, prefix string) {
+	for index := range tasks {
+		key := fmt.Sprintf("%s.%d", prefix, index)
+		tasks[index].promptKey = key
+		assignPromptKeys(tasks[index].Block, key+".block")
+		assignPromptKeys(tasks[index].Rescue, key+".rescue")
+		assignPromptKeys(tasks[index].Always, key+".always")
+	}
 }
 
 // gatherFactsForPlan collects facts across hosts concurrently, bounded by the
@@ -369,7 +395,8 @@ func (r Runner) runTaskForHost(tc TaskContext, task Task, index int) TaskResult 
 		Name:       task.DisplayName(index),
 		Module:     task.Module,
 		Status:     result.Status,
-		Ignored:    task.IgnoreErrors && isModuleFailure(result),
+		Stage:      result.Stage,
+		Ignored:    result.Ignored,
 		Reason:     resultReason(result),
 		Output:     result.Output,
 		RC:         result.RC,
@@ -379,6 +406,7 @@ func (r Runner) runTaskForHost(tc TaskContext, task Task, index int) TaskResult 
 }
 
 func (r Runner) executeTask(tc TaskContext, task Task) ModuleResult {
+	tc.PromptKey = task.promptKey
 	if task.BaseDir != "" {
 		tc.BaseDir = task.BaseDir
 	}
@@ -396,8 +424,8 @@ func (r Runner) executeTask(tc TaskContext, task Task) ModuleResult {
 		}
 	}
 	if task.Confirm != "" && tc.ConfirmLazy && !tc.Check {
-		if err := tc.PlayState.ConfirmOnce(task.Confirm, tc.Confirm); err != nil {
-			return failedModule(err, operation.StageConfig)
+		if err := tc.PlayState.ConfirmOnce("confirm:"+tc.PromptKey, task.Confirm, tc.Confirm); err != nil {
+			return failedModule(err, operation.StageConfirm)
 		}
 	}
 	if len(task.Block) > 0 {
@@ -498,7 +526,7 @@ func (r Runner) executeLoop(tc TaskContext, task Task, module Module) ModuleResu
 		}
 		executed = true
 		result := r.executeOnce(tc, task, module, item, index)
-		registers = append(registers, result.Register)
+		registers = append(registers, registerValue(result))
 		overall.Output += result.Output
 		if result.Status == batch.StatusFailed || result.Status == batch.StatusUnreachable {
 			overall = result
@@ -538,11 +566,10 @@ func (r Runner) executeBlock(tc TaskContext, task Task) ModuleResult {
 			if result.Status == batch.StatusFailed || result.Status == batch.StatusUnreachable {
 				return result, result.Status
 			}
-			if result.Changed {
-				changed = true
-			}
 			if result.WouldChange {
 				wouldChange = true
+			} else if result.Changed {
+				changed = true
 			}
 		}
 		if changed {
@@ -558,18 +585,35 @@ func (r Runner) executeBlock(tc TaskContext, task Task) ModuleResult {
 		last, blockStatus = runChildren(task.Rescue)
 	}
 	if len(task.Always) > 0 {
+		alwaysChanged := false
+		alwaysWouldChange := false
 		for _, child := range task.Always {
 			result := r.executeTask(tc, child)
 			if result.Status == batch.StatusSkipped {
 				continue
 			}
-			last = result
 			if result.Output != "" {
 				outputs.WriteString(result.Output)
 			}
 			if result.Status == batch.StatusFailed || result.Status == batch.StatusUnreachable {
+				last = result
 				blockStatus = result.Status
 				break
+			}
+			if blockStatus != batch.StatusFailed && blockStatus != batch.StatusUnreachable {
+				last = result
+			}
+			if result.WouldChange {
+				alwaysWouldChange = true
+			} else if result.Changed {
+				alwaysChanged = true
+			}
+		}
+		if blockStatus != batch.StatusFailed && blockStatus != batch.StatusUnreachable {
+			if blockStatus == batch.StatusChanged || alwaysChanged {
+				blockStatus = batch.StatusChanged
+			} else if blockStatus == batch.StatusWouldChange || alwaysWouldChange {
+				blockStatus = batch.StatusWouldChange
 			}
 		}
 	}
@@ -596,11 +640,20 @@ func (r Runner) applyOverrides(tc TaskContext, task Task, result ModuleResult) M
 			result.Err = nil
 		}
 	}
-	if task.ChangedWhen != nil && task.ChangedWhen.Matches(result.RC) {
-		result.Changed = true
-		result.Status = batch.StatusChanged
+	if task.ChangedWhen != nil && result.Status != batch.StatusFailed && result.Status != batch.StatusUnreachable && result.Status != batch.StatusSkipped {
+		changed := task.ChangedWhen.Matches(result.RC)
+		result.Changed = changed
+		result.WouldChange = changed && tc.Check
+		if result.WouldChange {
+			result.Status = batch.StatusWouldChange
+		} else if changed {
+			result.Status = batch.StatusChanged
+		} else {
+			result.Status = batch.StatusOK
+		}
 	}
 	if task.IgnoreErrors && (result.Status == batch.StatusFailed || result.Status == batch.StatusUnreachable) {
+		result.Ignored = true
 		result.Status = batch.StatusOK
 		result.Err = nil
 		result.Output += "（已忽略错误）"
@@ -677,6 +730,9 @@ func allTasksSkipped(state *hostState) bool {
 }
 
 func stageOf(result TaskResult) operation.FailureStage {
+	if result.Stage != "" {
+		return result.Stage
+	}
 	if result.Status == batch.StatusUnreachable {
 		return operation.StageNetwork
 	}

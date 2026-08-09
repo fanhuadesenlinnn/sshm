@@ -271,10 +271,11 @@ sshmd push web01 ./dist /opt/app --method rsync --yes`),
 	},
 	"pull": {
 		use:  "pull [选项] <别名|ID> <远程路径> <本地路径>",
-		long: "从单台主机拉取文件或目录。默认拒绝覆盖不同内容；需要覆盖时显式使用 --overwrite 或 --backup。",
+		long: "从单台主机拉取文件或目录。默认拒绝覆盖不同内容；需要覆盖时显式使用 --overwrite 或 --backup。目录源使用无尾斜杠的明确目标时会稳定写入该路径，尾斜杠表示目录容器；当前目录、用户主目录和 SSHMD_HOME 等受保护目录始终作为容器。",
 		example: strings.TrimSpace(`
 sshmd pull web01 /etc/nginx/nginx.conf ./nginx.web01.conf --yes
-sshmd pull web01 /var/log/app ./logs/web01 --backup --yes`),
+sshmd pull web01 /var/log/app ./logs/web01 --backup --yes
+sshmd pull web01 /var/log/app ./logs/ --yes`),
 	},
 	"push-tag": {
 		use:  "push-tag [批量选项] <标签|all> <本地路径> <远程路径>",
@@ -340,6 +341,13 @@ sshmd forget-pass --all --yes`),
 		example: strings.TrimSpace(`
 sshmd logs
 sshmd logs clean --yes`),
+	},
+	"export-ssh-config": {
+		use:  "export-ssh-config [--force] <输出文件>",
+		long: "导出 sshmd 主机为 OpenSSH 配置。默认拒绝覆盖已有文件；确认目标内容可替换时显式使用 --force。",
+		example: strings.TrimSpace(`
+sshmd export-ssh-config ./ssh-config
+sshmd export-ssh-config --force ./ssh-config`),
 	},
 	"completion": {
 		use:  "completion <bash|zsh|fish>",

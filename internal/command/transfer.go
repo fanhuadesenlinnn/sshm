@@ -369,7 +369,15 @@ func transferWithClients(
 	destination := options.localPath
 	var err error
 	if options.direction == "pull" && !options.destinationExact {
-		destination, err = singlePullDestination(options.remotePath, options.localPath)
+		remotePath, cleanErr := cleanTransferRemotePath(options.remotePath)
+		if cleanErr != nil {
+			return "sftp", "", false, cleanErr
+		}
+		remoteInfo, statErr := sftpClient.Lstat(remotePath)
+		if statErr != nil {
+			return "sftp", "", false, fmt.Errorf("读取远程源失败: %w", statErr)
+		}
+		destination, err = singlePullDestination(remotePath, options.localPath, remoteInfo.IsDir())
 		if err != nil {
 			return "sftp", "", false, err
 		}
@@ -538,16 +546,29 @@ func pullSFTP(client *sftp.Client, remotePath, destination string, options trans
 	return true, activateLocalTemp(temp, destination, exists, options.overwrite, options.backup)
 }
 
-func singlePullDestination(remotePath, localPath string) (string, error) {
+func singlePullDestination(remotePath, localPath string, remoteIsDir bool) (string, error) {
 	parts, err := safeRemotePathParts(remotePath, runtime.GOOS == "windows")
 	if err != nil {
 		return "", err
 	}
-	if info, err := os.Stat(localPath); err == nil && info.IsDir() {
-		return confinedJoin(localPath, parts[len(parts)-1])
-	}
+	// 目录源默认把 localPath 视为精确目标，这样首次创建后重跑不会
+	// 因“目标已经存在且是目录”而意外再嵌套一层。尾分隔符显式表示目录容器语义。
 	if strings.HasSuffix(localPath, string(os.PathSeparator)) || strings.HasSuffix(localPath, "/") {
 		return confinedJoin(localPath, parts[len(parts)-1])
+	}
+	if remoteIsDir {
+		container, protectErr := protectedLocalDirectory(localPath)
+		if protectErr != nil {
+			return "", protectErr
+		}
+		if container {
+			return confinedJoin(localPath, parts[len(parts)-1])
+		}
+	}
+	if !remoteIsDir {
+		if info, statErr := os.Stat(localPath); statErr == nil && info.IsDir() {
+			return confinedJoin(localPath, parts[len(parts)-1])
+		}
 	}
 	absolute, err := filepath.Abs(localPath)
 	if err != nil {
@@ -701,6 +722,13 @@ func activateRemoteTemp(client *sftp.Client, temp, destination string, exists, o
 func activateLocalTemp(temp, destination string, exists, overwrite, backup bool) error {
 	if !exists {
 		return os.Rename(temp, destination)
+	}
+	protected, err := protectedLocalDirectory(destination)
+	if err != nil {
+		return err
+	}
+	if protected {
+		return fmt.Errorf("拒绝替换受保护的本地目录 %s；请指定该目录下的明确目标", destination)
 	}
 	if backup {
 		backupPath := destination + ".bak." + time.Now().Format("20060102-150405")

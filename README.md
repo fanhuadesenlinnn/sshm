@@ -1,8 +1,8 @@
-# sshmd v6.2.3
+# sshmd v6.2.4
 
 sshmd 是一个本地优先、面向个人使用的 SSH 主机管理与轻量运维工具。它使用 Go 原生 SSH 能力管理主机、标签、凭据、批量命令、安全文件传输和 Deploy v3 编排。
 
-> 版本说明：产品发布版本是 `v6.2.3`，Go module 是 `github.com/fanhuadesenlinnn/sshmd/v6`，主配置 schema 为 `version: 2`，Deploy 配置 schema 为 `version: 3`。
+> 版本说明：产品发布版本是 `v6.2.4`，Go module 是 `github.com/fanhuadesenlinnn/sshmd/v6`，主配置 schema 为 `version: 2`，Deploy 配置 schema 为 `version: 3`。
 
 ## 安装
 
@@ -26,7 +26,7 @@ macOS/Linux 默认安装到 `/usr/local/bin`，权限不足时会请求 `sudo`�
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/fanhuadesenlinnn/sshmd/main/scripts/install.sh | \
-  sh -s -- --version v6.2.3 --install-dir "$HOME/.local/bin"
+  sh -s -- --version v6.2.4 --install-dir "$HOME/.local/bin"
 ```
 
 Windows 默认安装到 `%LOCALAPPDATA%\Programs\sshmd` 并加入用户 PATH。
@@ -201,6 +201,7 @@ sshmd pull-tag all /etc/hosts ./backup --flat --yes
 - 远端路径必须是明确路径，拒绝 `~`、根路径、空路径和上级目录组件。
 - 拒绝符号链接、设备文件、socket、FIFO 等特殊文件。
 - 多主机 pull 默认保存为 `local/host_alias/remote-path`。
+- 单主机拉取目录时，无尾斜杠的本地路径表示精确目标，尾斜杠表示目录容器；当前目录、用户主目录、`SSHMD_HOME` 及其祖先始终按容器处理，绝不会被整体替换。
 - `--flat` 会在执行前检查本次操作内部的目标冲突。
 - `auto` 可使用满足同等安全语义的 rsync；无法保证时回退 SFTP。显式 `--method rsync` 无法保证时直接失败。
 
@@ -251,6 +252,7 @@ Deploy 的 `copy`、`template`、`unarchive`、`fetch`、`include` 与 `vars_fil
 
 - `command` 的静态 `cmd` 按本地 argv 规则解析；含 `{{ }}` 的动态值必须使用 `argv: ["程序", "{{ value }}"]`，每个元素独立渲染并安全引用，变量中的空白不会变成额外参数。管道、重定向、变量、`;` 等 shell 语法只会作为普通参数，不会被执行。
 - 需要真正执行管道、重定向或变量展开时使用 `shell` 模块。
+- `command`/`shell` 实际执行成功默认报告 `changed`；`creates`/`removes` 命中跳过时报告 `ok`，可用 `changed_when` 显式覆盖。`check_safe` 在 check 模式中默认仍是只读 `ok`。
 - `--check` 模式默认跳过 command/shell（只读检查不执行命令）；确需在 check 下执行的只读命令（如 `nginx -t`、`systemctl status`）给任务加 `check_safe: true`。
 
 ### 变量插值
@@ -266,11 +268,13 @@ Deploy 的 `copy`、`template`、`unarchive`、`fetch`、`include` 与 `vars_fil
 - `--all` 不能与具体主机或 `--tag` 混用，避免意外扩大操作范围。
 - `passwd` 和 `forget-pass` 支持多个主机、`--tag` 与 `--all`；批量 `passwd` 会把同一个 SSH 密码保存到全部目标主机。
 - 删除保存密码、删除托管密钥、清理日志和设置 `host-key-policy insecure` 默认需要确认；非交互环境必须显式使用 `--yes`。
+- `key revoke` 只解除远端撤销成功主机的本地密钥绑定，并明确提示绑定仍存在于远端的替代凭据；失败主机保留原绑定。
 - 密码与托管私钥默认保存在 `sshmd.yaml` 的加密 vault 中；也支持在主机条目显式写 `password` 明文字段（与 `password_ref` 互斥，受 0600 权限保护，`sshmd doctor` 会给出提醒）。Deploy 编排文件始终禁止保存密码或私钥。
 - `add --password-stdin` 在终端隐藏输入，也可从管道读取，避免密码暴露到 argv；它仍按显式兼容模式写入明文 `password` 字段。危险的 `add --password` 已移除；需要加密时优先先添加主机，再运行 `sshmd passwd`。
 - 主密码只在当前进程内按需解锁，`lock` 或进程退出后失效。
 - host alias 采用跨平台安全字符规则，可直接用于多主机 pull 目录。
 - 主配置和 Deploy 配置均严格拒绝未知字段。
+- OpenSSH 导入支持 `Host *` 默认项和可映射的单级 `ProxyJump`；无法安全映射的跳板配置会明确警告。导出默认拒绝覆盖已有文件，确认后可用 `--force`。
 
 ## 日志
 

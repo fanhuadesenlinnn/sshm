@@ -1,6 +1,6 @@
-# sshmd v6.2.3 产品设计
+# sshmd v6.2.4 产品设计
 
-状态：v6.2.3 当前设计
+状态：v6.2.4 当前设计
 
 ## 产品定位
 
@@ -15,7 +15,7 @@ sshmd 是供个人开发者和个人运维使用者管理约 5 到 100 台 SSH �
 
 ## 当前产品事实
 
-- 产品版本为 `v6.2.3`，Go module 为 `/v6`。
+- 产品版本为 `v6.2.4`，Go module 为 `/v6`。
 - 主配置为严格 YAML schema `version: 2`；Deploy 配置为严格 YAML schema `version: 3`。
 - 默认数据目录只使用 `~/.sshmd`，仅支持 `SSHMD_HOME` 整体覆盖。
 - Cobra 提供 CLI 命令树，同时保留无参数工作台和 alias/ID 直连。

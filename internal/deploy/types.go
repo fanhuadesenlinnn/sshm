@@ -81,6 +81,7 @@ type Task struct {
 	// ProjectRoot is the directory of the top-level playbook. Included task
 	// files may change BaseDir, but local reads must remain below this root.
 	ProjectRoot string `yaml:"-" json:"-"`
+	promptKey   string
 }
 
 // UnmarshalYAML accepts arbitrary module names as mapping keys while decoding

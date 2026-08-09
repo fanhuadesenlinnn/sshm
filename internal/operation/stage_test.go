@@ -40,7 +40,7 @@ func TestIsConnectionFailureIncludesCredential(t *testing.T) {
 			t.Fatalf("%s should be a connection failure stage", stage)
 		}
 	}
-	for _, stage := range []FailureStage{StageExecute, StageTransfer, StageSession, StageTimeout, StageVault, StageConfig} {
+	for _, stage := range []FailureStage{StageExecute, StageTransfer, StageSession, StageTimeout, StageVault, StageConfig, StageConfirm} {
 		if IsConnectionFailure(stage) {
 			t.Fatalf("%s should not be a connection failure stage", stage)
 		}

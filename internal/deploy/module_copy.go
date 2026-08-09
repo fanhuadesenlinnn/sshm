@@ -16,12 +16,12 @@ import (
 )
 
 type copyArgs struct {
-	Src      string `yaml:"src,omitempty"`
-	Content  string `yaml:"content,omitempty"`
-	Dest     string `yaml:"dest"`
-	Backup   bool   `yaml:"backup,omitempty"`
-	Checksum *bool  `yaml:"checksum,omitempty"`
-	Mode     string `yaml:"mode,omitempty"`
+	Src      string  `yaml:"src,omitempty"`
+	Content  *string `yaml:"content,omitempty"`
+	Dest     string  `yaml:"dest"`
+	Backup   bool    `yaml:"backup,omitempty"`
+	Checksum *bool   `yaml:"checksum,omitempty"`
+	Mode     string  `yaml:"mode,omitempty"`
 }
 
 type copyModule struct{}
@@ -38,7 +38,7 @@ func (m *copyModule) DecodeArgs(node *yaml.Node) (any, error) {
 	if strings.TrimSpace(args.Dest) == "" {
 		return nil, fmt.Errorf("copy 需要 dest")
 	}
-	if (args.Src == "") == (args.Content == "") {
+	if (args.Src != "") == (args.Content != nil) {
 		return nil, fmt.Errorf("copy 必须且只能包含 src 或 content")
 	}
 	if args.Mode != "" {
@@ -51,7 +51,11 @@ func (m *copyModule) DecodeArgs(node *yaml.Node) (any, error) {
 
 func (m *copyModule) Run(tc TaskContext, raw any) ModuleResult {
 	args := raw.(*copyArgs)
-	return pushToRemote(tc, args.Src, args.Content, args.Dest, args.Backup, args.Checksum, args.Mode, tc.BaseDir)
+	content := ""
+	if args.Content != nil {
+		content = *args.Content
+	}
+	return pushToRemote(tc, args.Src, content, args.Dest, args.Backup, args.Checksum, args.Mode, tc.BaseDir)
 }
 
 // pushToRemote transfers either a local path or inline content and applies an
