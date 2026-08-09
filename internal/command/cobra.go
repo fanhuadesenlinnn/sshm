@@ -224,10 +224,11 @@ type commandHelp struct {
 var legacyHelp = map[string]commandHelp{
 	"add": {
 		use:  "add <别名> <用户@主机[:端口]> [选项]",
-		long: "添加一台主机。默认认证策略为 auto，可以之后用 passwd 保存密码，或用 key setup 绑定托管密钥。",
+		long: "添加一台主机。默认认证策略为 auto，可以之后用 passwd 加密保存密码，或用 key setup 绑定托管密钥。旧版 --password 已因 argv 泄露风险移除；兼容明文模式请改用终端隐藏输入的 --password-stdin。",
 		example: strings.TrimSpace(`
 sshmd add web01 root@10.0.0.11
 sshmd add web01 deploy@10.0.0.11:2222 --tags prod,web
+sshmd add web01 root@10.0.0.11 --password-stdin
 sshmd passwd web01`),
 	},
 	"connect": {

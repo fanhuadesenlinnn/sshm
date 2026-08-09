@@ -134,13 +134,16 @@ func (e *NativeExecutor) sessionManager() *sessionManager {
 
 func (e *NativeExecutor) Exec(ctx context.Context, host config.Host, options ExecOptions) Result {
 	start := time.Now()
-	session, err := e.sessionManager().acquire(ctx, host, options.ConnectTimeout)
+	manager := e.sessionManager()
+	session, release, err := manager.beginOperation(ctx, host, options.ConnectTimeout)
 	if err != nil {
+		err = contextError(ctx, "执行远程命令", err)
 		return newResult(host, "", "", "", err, operation.StageExecute, time.Since(start))
 	}
+	defer release()
 	output, err := sshx.ExecCommandOnClientWithStdin(ctx, session.client, options.Command, options.Stdin, options.Stdout, options.Stderr)
 	if err != nil && isBrokenConnection(err) {
-		e.sessionManager().markBroken(host.Alias)
+		manager.invalidate(host.Alias, session)
 	}
 	return newResult(host, output, "", "", err, operation.StageExecute, time.Since(start))
 }
@@ -149,9 +152,12 @@ func (e *NativeExecutor) Push(ctx context.Context, host config.Host, options Tra
 	if e.PushFunc == nil {
 		return newResult(host, "", "", "", operation.Wrap(operation.StageTransfer, errTransferUnavailable), operation.StageTransfer, 0)
 	}
+	if err := ctx.Err(); err != nil {
+		return canceledTransferResult(host, err)
+	}
 	result := e.PushFunc(ctx, host, options)
-	if isBrokenStage(result.Stage) {
-		e.sessionManager().markBroken(host.Alias)
+	if err := ctx.Err(); err != nil {
+		return markTransferCanceled(result, err)
 	}
 	return result
 }
@@ -160,9 +166,12 @@ func (e *NativeExecutor) Pull(ctx context.Context, host config.Host, options Tra
 	if e.PullFunc == nil {
 		return newResult(host, "", "", "", operation.Wrap(operation.StageTransfer, errTransferUnavailable), operation.StageTransfer, 0)
 	}
+	if err := ctx.Err(); err != nil {
+		return canceledTransferResult(host, err)
+	}
 	result := e.PullFunc(ctx, host, options)
-	if isBrokenStage(result.Stage) {
-		e.sessionManager().markBroken(host.Alias)
+	if err := ctx.Err(); err != nil {
+		return markTransferCanceled(result, err)
 	}
 	return result
 }
@@ -171,15 +180,23 @@ func (e *NativeExecutor) Pull(ctx context.Context, host config.Host, options Tra
 // session and its shared SFTP channel. A missing path yields an empty
 // RemoteFileInfo with nil error so modules can branch on existence.
 func (e *NativeExecutor) Stat(ctx context.Context, host config.Host, path string, connectTimeout time.Duration) (RemoteFileInfo, error) {
-	session, err := e.sessionManager().acquire(ctx, host, connectTimeout)
+	manager := e.sessionManager()
+	session, release, err := manager.beginOperation(ctx, host, connectTimeout)
 	if err != nil {
-		return RemoteFileInfo{}, err
+		return RemoteFileInfo{}, contextError(ctx, "获取远程文件状态", err)
 	}
-	client, err := e.sessionManager().sftpFor(session)
+	defer release()
+	stop := context.AfterFunc(ctx, func() { manager.invalidate(host.Alias, session) })
+	defer stop()
+	client, err := manager.sftpFor(ctx, host.Alias, session)
 	if err != nil {
-		return RemoteFileInfo{}, err
+		return RemoteFileInfo{}, contextError(ctx, "获取远程文件状态", err)
 	}
 	info, err := client.Lstat(path)
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		manager.invalidate(host.Alias, session)
+		return RemoteFileInfo{}, contextError(ctx, "获取远程文件状态", ctxErr)
+	}
 	if err != nil {
 		if isNoSuchFile(err) {
 			return RemoteFileInfo{}, nil
@@ -198,6 +215,10 @@ func (e *NativeExecutor) Stat(ctx context.Context, host config.Host, path string
 			out.Target = target
 		}
 	}
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		manager.invalidate(host.Alias, session)
+		return RemoteFileInfo{}, contextError(ctx, "获取远程文件状态", ctxErr)
+	}
 	return out, nil
 }
 
@@ -207,36 +228,57 @@ func (e *NativeExecutor) CloseSessions() {
 	e.sessionManager().closeAll()
 }
 
-// ReusableSession returns the cached SSH and SFTP clients for a host, opening
-// the SFTP channel lazily. Callers must not close the returned clients; they
-// are released by CloseSessions.
-func (e *NativeExecutor) ReusableSession(ctx context.Context, host config.Host, connectTimeout time.Duration) (*ssh.Client, *sftp.Client, error) {
-	session, err := e.sessionManager().acquire(ctx, host, connectTimeout)
+// ReusableSession returns cached SSH/SFTP clients with an exclusive per-host
+// operation lease. Callers must invoke release exactly once; passing true
+// invalidates this session generation after a failed transfer.
+func (e *NativeExecutor) ReusableSession(ctx context.Context, host config.Host, connectTimeout time.Duration) (*ssh.Client, *sftp.Client, func(bool), error) {
+	manager := e.sessionManager()
+	session, endOperation, err := manager.beginOperation(ctx, host, connectTimeout)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, contextError(ctx, "获取传输会话", err)
 	}
 	client, ok := session.client.(*ssh.Client)
 	if !ok {
-		return nil, nil, fmt.Errorf("会话不支持传输复用")
+		manager.invalidate(host.Alias, session)
+		endOperation()
+		return nil, nil, nil, fmt.Errorf("会话不支持传输复用")
 	}
-	conn, err := e.sessionManager().sftpFor(session)
+	conn, err := manager.sftpFor(ctx, host.Alias, session)
 	if err != nil {
-		return nil, nil, err
+		endOperation()
+		return nil, nil, nil, contextError(ctx, "打开 SFTP 会话", err)
 	}
 	sftpClient, ok := conn.(*sftp.Client)
 	if !ok {
-		return nil, nil, fmt.Errorf("会话不支持传输复用")
+		manager.invalidate(host.Alias, session)
+		endOperation()
+		return nil, nil, nil, fmt.Errorf("会话不支持传输复用")
 	}
-	return client, sftpClient, nil
+	stopCancellation := context.AfterFunc(ctx, func() { manager.invalidate(host.Alias, session) })
+	var releaseOnce sync.Once
+	release := func(invalidate bool) {
+		releaseOnce.Do(func() {
+			_ = stopCancellation()
+			if invalidate || ctx.Err() != nil {
+				manager.invalidate(host.Alias, session)
+			}
+			endOperation()
+		})
+	}
+	return client, sftpClient, release, nil
 }
 
 // DialTCP dials address from the target host's side through the cached SSH
 // session, so reachability checks work through jump hosts and private nets.
 func (e *NativeExecutor) DialTCP(ctx context.Context, host config.Host, address string, connectTimeout time.Duration) (net.Conn, error) {
-	session, err := e.sessionManager().acquire(ctx, host, connectTimeout)
+	manager := e.sessionManager()
+	session, release, err := manager.beginOperation(ctx, host, connectTimeout)
 	if err != nil {
-		return nil, err
+		return nil, contextError(ctx, "建立目标侧 TCP 连接", err)
 	}
+	defer release()
+	stop := context.AfterFunc(ctx, func() { manager.invalidate(host.Alias, session) })
+	defer stop()
 	type dialResult struct {
 		conn net.Conn
 		err  error
@@ -244,17 +286,48 @@ func (e *NativeExecutor) DialTCP(ctx context.Context, host config.Host, address 
 	done := make(chan dialResult, 1)
 	go func() {
 		conn, dialErr := session.client.Dial("tcp", address)
+		if ctx.Err() != nil && conn != nil {
+			_ = conn.Close()
+			conn = nil
+		}
 		done <- dialResult{conn: conn, err: dialErr}
 	}()
 	select {
 	case <-ctx.Done():
+		manager.invalidate(host.Alias, session)
 		return nil, ctx.Err()
 	case result := <-done:
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			if result.conn != nil {
+				_ = result.conn.Close()
+			}
+			manager.invalidate(host.Alias, session)
+			return nil, ctxErr
+		}
 		if result.err != nil && isBrokenConnection(result.err) {
-			e.sessionManager().markBroken(host.Alias)
+			manager.invalidate(host.Alias, session)
 		}
 		return result.conn, result.err
 	}
+}
+
+func contextError(ctx context.Context, action string, fallback error) error {
+	if err := ctx.Err(); err != nil {
+		return operation.Wrap(operation.StageTimeout, fmt.Errorf("%s超时或取消: %w", action, err))
+	}
+	return fallback
+}
+
+func canceledTransferResult(host config.Host, err error) Result {
+	wrapped := operation.Wrap(operation.StageTimeout, fmt.Errorf("文件传输超时或取消: %w", err))
+	return newResult(host, "", "", "", wrapped, operation.StageTimeout, 0)
+}
+
+func markTransferCanceled(result Result, err error) Result {
+	result.OK = false
+	result.Stage = operation.StageTimeout
+	result.Err = operation.Wrap(operation.StageTimeout, fmt.Errorf("文件传输超时或取消: %w", err))
+	return result
 }
 
 // isBrokenConnection reports whether an error means the cached SSH connection
@@ -262,10 +335,6 @@ func (e *NativeExecutor) DialTCP(ctx context.Context, host config.Host, address 
 // re-dialed for the next operation.
 func isBrokenConnection(err error) bool {
 	stage := operation.StageOf(err, operation.StageUnknown)
-	return stage == operation.StageNetwork || stage == operation.StageSession
-}
-
-func isBrokenStage(stage operation.FailureStage) bool {
 	return stage == operation.StageNetwork || stage == operation.StageSession
 }
 

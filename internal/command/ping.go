@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/batch"
 	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
 	"github.com/fanhuadesenlinnn/sshmd/v6/internal/operation"
 	"github.com/fanhuadesenlinnn/sshmd/v6/internal/secret"
@@ -15,10 +16,18 @@ import (
 func (app *App) cmdPing(args []string) error {
 	yes, args := removeFlag(args, "--yes")
 	quiet, args := removeFlag(args, "--quiet")
+	if len(args) > 1 {
+		return fmt.Errorf("用法: sshmd ping [别名|ID] [--yes] [--quiet]")
+	}
 	hf, err := app.Store.Load()
 	if err != nil {
 		return err
 	}
+	doc, err := app.Store.Repository().Load()
+	if err != nil {
+		return err
+	}
+	connectTimeout := doc.Defaults.Batch.ConnectTimeout.Duration
 
 	if len(args) > 0 {
 		// Ping specific host
@@ -26,12 +35,18 @@ func (app *App) cmdPing(args []string) error {
 		if err != nil {
 			return err
 		}
+		if err := app.unlockVaultForHosts([]config.Host{*h}); err != nil {
+			return &ExitError{Code: 4, Err: err}
+		}
 		fs := app.getSecretStoreForHost(h)
 		start := time.Now()
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		baseCtx, stop := signalContext()
+		defer stop()
+		ctx, cancel := context.WithTimeout(baseCtx, connectTimeout)
 		output, pingErr := sshx.CheckPingContext(ctx, *h, fs)
 		cancel()
-		result := newOperationResult(*h, output, pingErr, operation.StageExecute, fmt.Sprintf("sshmd ping %s", h.Alias), time.Since(start))
+		stage := operation.StageOf(pingErr, operation.StageExecute)
+		result := newOperationResult(*h, output, pingErr, stage, fmt.Sprintf("sshmd ping %s", h.Alias), time.Since(start))
 		if pingErr == nil {
 			ui.PrintSuccess("%s (%s@%s:%d) 连接成功", h.Alias, h.User, h.Host, h.Port)
 		} else {
@@ -69,35 +84,36 @@ func (app *App) cmdPing(args []string) error {
 		ui.PrintHeader("测试所有主机连接")
 		fmt.Println()
 
-		// Pre-load secret store if any host has password
-		fs := app.getSecretStoreForPing(hf.Hosts)
-
-		failed := 0
-		results := make([]operation.Result, 0, len(hf.Hosts))
-		for _, h := range hf.Hosts {
-			fmt.Printf("  %-18s ", h.Alias)
-			start := time.Now()
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			output, pingErr := sshx.CheckPingContext(ctx, h, fs)
-			cancel()
-			result := newOperationResult(h, output, pingErr, operation.StageExecute, fmt.Sprintf("sshmd ping %s", h.Alias), time.Since(start))
-			results = append(results, result)
-			if pingErr == nil {
-				fmt.Println(ui.Success("ok"))
-			} else {
-				failed++
-				fmt.Println(ui.ErrorMsg("fail"))
-				if !quiet {
-					printOperationFailure(result)
-				}
-			}
+		if err := app.unlockVaultForHosts(hf.Hosts); err != nil {
+			return &ExitError{Code: 4, Err: err}
 		}
+		// Pre-load secret store if any host has password or a managed key.
+		fs := app.getSecretStoreForPing(hf.Hosts)
+		ctx, stop := signalContext()
+		defer stop()
+		runResult, runErr := runPingBatch(ctx, hf.Hosts, doc.Defaults.Batch.Parallel, connectTimeout, fs, sshx.CheckPingContext, func(result operation.Result) {
+			fmt.Printf("  %-18s ", result.Host.Alias)
+			if result.Err == nil {
+				fmt.Println(ui.Success("ok"))
+				return
+			}
+			fmt.Println(ui.ErrorMsg("fail"))
+			if !quiet {
+				printOperationFailure(result)
+			}
+		})
+		if runErr != nil {
+			return runErr
+		}
+		results := pingOperationResults(runResult)
+		failed := runResult.Summary.Failed + runResult.Summary.Unreachable
 		fmt.Println()
-		fmt.Printf("连接测试完成：成功 %d，失败 %d\n", len(hf.Hosts)-failed, failed)
+		fmt.Printf("连接测试完成：成功 %d，失败 %d，跳过 %d\n", runResult.Summary.OK, failed, runResult.Summary.Skipped)
 		if err := writeOperationLog("ping-batch", "连接测试", results); err != nil {
 			return err
 		}
-		if failed > 0 {
+		code := batch.ExitCode(runResult)
+		if code != 0 {
 			if quiet {
 				for _, result := range results {
 					if result.Err != nil {
@@ -105,19 +121,60 @@ func (app *App) cmdPing(args []string) error {
 					}
 				}
 			}
-			code := 2
-			for _, result := range results {
-				if !operation.IsConnectionFailure(result.Stage) {
-					if result.Err != nil {
-						code = 1
-					}
-				}
-			}
-			return &ExitError{Code: code, Err: fmt.Errorf("有 %d 台主机连接失败", failed)}
+			return &ExitError{Code: code, Err: fmt.Errorf("连接测试未完全成功：失败 %d，跳过 %d", failed, runResult.Summary.Skipped)}
 		}
 	}
 
 	return nil
+}
+
+type pingCheckFunc func(context.Context, config.Host, *secret.FileStore) (string, error)
+
+func runPingBatch(
+	ctx context.Context,
+	hosts []config.Host,
+	parallel int,
+	timeout time.Duration,
+	store *secret.FileStore,
+	check pingCheckFunc,
+	progress func(operation.Result),
+) (batch.RunResult, error) {
+	runner := batch.Runner{Options: batch.Options{Parallel: parallel}}
+	if progress != nil {
+		runner.Progress = func(_, _ int, item batch.Result) {
+			if result, ok := item.Value.(operation.Result); ok {
+				progress(result)
+			}
+		}
+	}
+	return runner.Run(ctx, hosts, func(ctx context.Context, host config.Host) batch.Result {
+		started := time.Now()
+		taskCtx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+		output, err := check(taskCtx, host, store)
+		stage := operation.StageOf(err, operation.StageExecute)
+		result := newOperationResult(host, output, err, stage, fmt.Sprintf("sshmd ping %s", host.Alias), time.Since(started))
+		status := batch.StatusOK
+		if err != nil {
+			status = batch.StatusFailed
+			if operation.IsConnectionFailure(stage) {
+				status = batch.StatusUnreachable
+			}
+		}
+		return batch.Result{Status: status, Err: err, Detail: output, Value: result}
+	})
+}
+
+func pingOperationResults(runResult batch.RunResult) []operation.Result {
+	results := make([]operation.Result, 0, len(runResult.Results))
+	for _, item := range runResult.Results {
+		if result, ok := item.Value.(operation.Result); ok {
+			results = append(results, result)
+		} else if item.Status == batch.StatusSkipped {
+			results = append(results, skippedOperationResult(item.Host, item.SkippedReason))
+		}
+	}
+	return results
 }
 
 // getSecretStoreForHost returns a secret store if the host has a password.

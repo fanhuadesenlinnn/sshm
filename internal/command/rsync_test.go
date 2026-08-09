@@ -32,6 +32,20 @@ func TestRsyncRemoteKeepsSpecialPathForProtectArgs(t *testing.T) {
 	}
 }
 
+func TestBoundedTailBufferCapsRsyncOutput(t *testing.T) {
+	buffer := newBoundedTailBuffer(8)
+	if _, err := buffer.Write([]byte("012345")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := buffer.Write([]byte("6789ABC")); err != nil {
+		t.Fatal(err)
+	}
+	got := buffer.String()
+	if !strings.Contains(got, "输出已截断") || !strings.HasSuffix(got, "56789ABC") {
+		t.Fatalf("bounded tail = %q", got)
+	}
+}
+
 func commandTestHost() config.Host {
 	return config.Host{User: "user", Host: "example.test"}
 }
@@ -59,21 +73,21 @@ func TestRsyncAvailableRejectsUnsupportedInputsBeforeExternalProbe(t *testing.T)
 	host := commandTestHost()
 	host.Identity = config.ManagedIdentity("personal")
 	options := transferOptions{localPath: "local", remotePath: "remote"}
-	if _, _, ok := rsyncAvailable(nil, host, nil, options); ok {
+	if _, _, ok := rsyncAvailable(context.Background(), nil, host, nil, options); ok {
 		t.Fatal("rsync should require an unlocked managed-key store")
 	}
 	host.JumpHost = "jump"
-	if _, _, ok := rsyncAvailable(nil, host, vault, options); ok {
+	if _, _, ok := rsyncAvailable(context.Background(), nil, host, vault, options); ok {
 		t.Fatal("rsync should reject jump-host transfers")
 	}
 	host.JumpHost = ""
 	host.Host = "example test"
-	if _, _, ok := rsyncAvailable(nil, host, vault, options); ok {
+	if _, _, ok := rsyncAvailable(context.Background(), nil, host, vault, options); ok {
 		t.Fatal("rsync should reject unsafe endpoint syntax")
 	}
 	host.Host = "example.test"
 	options.remotePath = "remote\npath"
-	if _, _, ok := rsyncAvailable(nil, host, vault, options); ok {
+	if _, _, ok := rsyncAvailable(context.Background(), nil, host, vault, options); ok {
 		t.Fatal("rsync should reject unsafe remote paths before probing")
 	}
 }

@@ -27,6 +27,9 @@ func runRemote(tc TaskContext, command string) ModuleResult {
 	if len(tc.Env) > 0 {
 		parts := make([]string, 0, len(tc.Env))
 		for key, value := range tc.Env {
+			if !validEnvName(key) {
+				return failedModule(fmt.Errorf("env 变量名无效: %q", key), operation.StageConfig)
+			}
 			parts = append(parts, key+"="+shellquote.Single(value))
 		}
 		command = strings.Join(parts, " ") + " " + command
@@ -63,6 +66,20 @@ func runRemote(tc TaskContext, command string) ModuleResult {
 		return failed
 	}
 	return ModuleResult{Status: batch.StatusOK, Output: result.Output, RC: rc}
+}
+
+func validEnvName(name string) bool {
+	if name == "" {
+		return false
+	}
+	for index := 0; index < len(name); index++ {
+		ch := name[index]
+		if (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') || ch == '_' || (index > 0 && ch >= '0' && ch <= '9') {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func firstUsefulLine(output string) string {

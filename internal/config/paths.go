@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/safefile"
 )
 
 // Paths contains every persistent path owned by sshmd.
@@ -41,6 +43,9 @@ func ResolvePaths() (Paths, error) {
 		}
 	}
 	home = filepath.Clean(home)
+	if filepath.Dir(home) == home {
+		return Paths{}, fmt.Errorf("SSHMD_HOME 不能是文件系统根目录: %s", home)
+	}
 	return Paths{
 		Home:      home,
 		Config:    filepath.Join(home, "sshmd.yaml"),
@@ -127,7 +132,7 @@ func EnsureDirs() error {
 		if err := os.MkdirAll(d.path, d.perm); err != nil {
 			return fmt.Errorf("创建目录 %s 失败: %w", d.path, err)
 		}
-		if err := os.Chmod(d.path, d.perm); err != nil {
+		if err := safefile.Restrict(d.path, d.perm); err != nil {
 			return fmt.Errorf("设置目录权限 %s 失败: %w", d.path, err)
 		}
 	}

@@ -180,7 +180,8 @@ func TestDeployRunnerExecutesCopyThenExecOverSharedExecutor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	source := filepath.Join(t.TempDir(), "package.txt")
+	sourceDir := t.TempDir()
+	source := filepath.Join(sourceDir, "package.txt")
 	if err := os.WriteFile(source, []byte("payload"), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -191,7 +192,7 @@ func TestDeployRunnerExecutesCopyThenExecOverSharedExecutor(t *testing.T) {
 		ConnectTimeout: config.Duration{Duration: 5 * time.Second},
 		Timeout:        config.Duration{Duration: 5 * time.Second},
 		Tasks: []deploy.Task{
-			{Name: "copy", Module: "copy", Args: integrationArgsNode(map[string]any{"src": source, "dest": "deployed/package.txt"})},
+			{Name: "copy", Module: "copy", BaseDir: sourceDir, ProjectRoot: sourceDir, Args: integrationArgsNode(map[string]any{"src": filepath.Base(source), "dest": "deployed/package.txt"})},
 			{Name: "exec", Module: "command", Args: integrationArgsNode(map[string]any{"cmd": "verify package"})},
 		},
 	}
@@ -200,7 +201,7 @@ func TestDeployRunnerExecutesCopyThenExecOverSharedExecutor(t *testing.T) {
 		t.Fatalf("deploy result = %+v", result)
 	}
 	assertCommandTestFile(t, filepath.Join(remoteRoot, "deployed", "package.txt"), "payload")
-	if got := result.Hosts[0].Tasks[1].Output; got != "executed: verify package\n" {
+	if got := result.Hosts[0].Tasks[1].Output; got != "executed: 'verify' 'package'\n" {
 		t.Fatalf("exec output = %q", got)
 	}
 }

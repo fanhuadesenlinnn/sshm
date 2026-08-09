@@ -4,7 +4,7 @@ sshmd 是一个本地优先、面向个人使用的 SSH 主机管理与轻量运
 
 ## 版本边界
 
-- 产品发布版本：`v6.2.2`
+- 产品发布版本：`v6.2.3`
 - Go module：`github.com/fanhuadesenlinnn/sshmd/v6`
 - 主配置 schema：`version: 2`
 - Deploy schema：`version: 3`
@@ -71,7 +71,7 @@ task 的结果（changed/rc/output）注册到主机状态，供后续 task 的 
 任务片段与 vars_files 的引用机制；在 validate/plan 阶段展开，带循环检测，相对路径按片段文件自身目录解析。
 
 **执行计划**
-Deploy Profile 静态解析出的来源文件、目标主机、steps、handlers 和批量参数。计划生成不连接远端。
+一个 v3 Play 静态解析出的来源文件、目标主机、tasks 和批量参数。计划生成不连接远端。
 
 ## 核心关系
 
@@ -81,8 +81,7 @@ Deploy Profile 静态解析出的来源文件、目标主机、steps、handlers 
 - 一台主机要么引用加密 vault 凭据（`password_ref`），要么显式写明文 `password` 字段，两者互斥。
 - 一个目标集合包含一个或多个稳定有序主机。
 - 一个批量操作为目标集合中的每台主机产生一个逐主机结果。
-- 一个 Deploy Profile 解析为一个执行计划，并通过共享 BatchRunner 运行。
-- 一个普通 step 结果为 `changed` 时可以通知一个或多个 handler；同一 handler 每台主机只执行一次。
+- 一个 v3 Play 解析为一个执行计划，并通过共享 BatchRunner 运行。
 - 一个 v3 Playbook 包含多个 plays；一个 play 解析为一个 v3 执行计划。
 - 一个 v3 task 通过模块产生结果；register 的结果供后续 task 的 when 使用。
 - v3 任务按任务遍历主机（linear）或按主机遍历任务（free），两者都复用共享 BatchRunner。

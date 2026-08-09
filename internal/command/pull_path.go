@@ -94,7 +94,49 @@ func confinedJoin(root string, components ...string) (string, error) {
 	if relative == ".." || strings.HasPrefix(relative, ".."+string(os.PathSeparator)) {
 		return "", fmt.Errorf("目标路径逃逸根目录: %s", target)
 	}
+	if err := rejectSymlinkComponents(root, target); err != nil {
+		return "", err
+	}
 	return target, nil
+}
+
+// rejectSymlinkComponents prevents a lexically confined download path from
+// escaping through a pre-existing symlink below the selected local root.
+// Ancestors above root remain user-controlled and are intentionally allowed.
+func rejectSymlinkComponents(root, target string) error {
+	root, err := filepath.Abs(root)
+	if err != nil {
+		return err
+	}
+	target, err = filepath.Abs(target)
+	if err != nil {
+		return err
+	}
+	relative, err := filepath.Rel(root, target)
+	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(os.PathSeparator)) {
+		return fmt.Errorf("目标路径逃逸根目录: %s", target)
+	}
+	current := root
+	parts := []string{}
+	if relative != "." {
+		parts = strings.Split(relative, string(os.PathSeparator))
+	}
+	for index := -1; index < len(parts); index++ {
+		if index >= 0 {
+			current = filepath.Join(current, parts[index])
+		}
+		info, statErr := os.Lstat(current)
+		if os.IsNotExist(statErr) {
+			return nil
+		}
+		if statErr != nil {
+			return fmt.Errorf("检查本地目标路径失败: %w", statErr)
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("本地目标路径包含符号链接，拒绝写入: %s", current)
+		}
+	}
+	return nil
 }
 
 func ensureUniqueDestinations(destinations []string, caseInsensitive bool) error {

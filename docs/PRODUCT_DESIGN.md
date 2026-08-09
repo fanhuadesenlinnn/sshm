@@ -1,6 +1,6 @@
-# sshmd v6.2.2 产品设计
+# sshmd v6.2.3 产品设计
 
-状态：v6.2.2 当前设计
+状态：v6.2.3 当前设计
 
 ## 产品定位
 
@@ -10,12 +10,12 @@ sshmd 是供个人开发者和个人运维使用者管理约 5 到 100 台 SSH �
 
 - 团队空间、权限审批、集中审计和共享凭据。
 - 后台调度、守护进程和持续部署服务。
-- 完整 Ansible 兼容层、roles、facts、循环或期望状态收敛。
+- 完整 Ansible 兼容层、roles、完整 facts 生态、复杂循环控制或期望状态收敛。
 - 任意 OpenSSH 参数透传。
 
 ## 当前产品事实
 
-- 产品版本为 `v6.2.2`，Go module 为 `/v6`。
+- 产品版本为 `v6.2.3`，Go module 为 `/v6`。
 - 主配置为严格 YAML schema `version: 2`；Deploy 配置为严格 YAML schema `version: 3`。
 - 默认数据目录只使用 `~/.sshmd`，仅支持 `SSHMD_HOME` 整体覆盖。
 - Cobra 提供 CLI 命令树，同时保留无参数工作台和 alias/ID 直连。
@@ -74,7 +74,7 @@ Deploy v3 是声明式模块模型，借鉴 Ansible 的执行语义但不引入�
 - task 调用一个模块（command/shell、file、copy、template、service、wait_for、sleep、unarchive、fetch、pause、fail、debug），模块内置幂等与 check/diff 语义。
 - register + when 取代 handlers 表达条件执行；v3 明确移除 notify/handlers。
 - block/rescue/always 提供同主机失败回滚结构。
-- become 支持密码提权：sudo 需要密码时，密码可来自任务级 `become_password`、环境变量 `SSHMD_BECOME_PASSWORD`，或自动复用该主机 vault 中的 SSH 密码；密码始终经 stdin 传入 `sudo -S`，不出现在命令行或日志中。
+- become 支持密码提权：sudo 需要密码时，密码只可来自环境变量 `SSHMD_BECOME_PASSWORD`，或自动复用该主机 vault 中的 SSH 密码；密码始终经 stdin 传入 `sudo -S`，不出现在命令行或日志中。Deploy 文件内的 `become_password` 会被严格拒绝。
 - `confirm` 字段提供 linear 策略下的 serial 批次人工门禁；`sleep` 提供 check 模式自动跳过的定时延时。
 - 变量支持文件级、play 级、vars_files 与 CLI `--extra-var` 覆盖；`{{ }}` 插值用于参数与模板。
 - include 支持任务片段与 vars_files 的静态展开，带循环检测。
@@ -86,11 +86,11 @@ Deploy v3 是声明式模块模型，借鉴 Ansible 的执行语义但不引入�
 
 1. 默认严格，便捷选项必须显式。
 2. 凭据默认进加密 vault；主配置明文密码是显式支持的可选方式，依赖 0600 文件权限并由使用者承担风险，Deploy 文件始终禁止凭据。
-2. 失败不能静默降低 host trust、凭据保护、覆盖策略或路径安全。
-3. 批量写入和命令执行默认展示具体目标并确认。
-4. 配置、传输和 Deploy 在执行前尽可能完成静态校验。
-5. 原文件或最终目标在失败时保持可用。
-6. 日志权限仅限当前用户，且 Deploy diff 默认不进入日志。
+3. 失败不能静默降低 host trust、凭据保护、覆盖策略或路径安全。
+4. 批量写入和命令执行默认展示具体目标并确认。
+5. 配置、传输和 Deploy 在执行前尽可能完成静态校验。
+6. 原文件或最终目标在失败时保持可用。
+7. 日志权限仅限当前用户，且 Deploy diff 默认不进入日志。
 
 ## 配置与路径
 

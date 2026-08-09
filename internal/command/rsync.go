@@ -1,7 +1,6 @@
 package command
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -12,9 +11,11 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/safefile"
 	"github.com/fanhuadesenlinnn/sshmd/v6/internal/secret"
 	"github.com/fanhuadesenlinnn/sshmd/v6/internal/shellquote"
 	"github.com/fanhuadesenlinnn/sshmd/v6/internal/sshx"
@@ -26,7 +27,7 @@ import (
 var rsyncEndpointPart = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 
 func tryRsyncTransfer(ctx context.Context, client *ssh.Client, sftpClient *sftp.Client, host config.Host, store *secret.FileStore, options transferOptions) (string, bool, bool, error) {
-	rsyncPath, sshPath, ok := rsyncAvailable(client, host, store, options)
+	rsyncPath, sshPath, ok := rsyncAvailable(ctx, client, host, store, options)
 	if !ok {
 		if options.method == "rsync" {
 			return "", false, true, fmt.Errorf("显式 rsync 不可用或无法保证 v6 安全语义")
@@ -56,7 +57,7 @@ func tryRsyncTransfer(ctx context.Context, client *ssh.Client, sftpClient *sftp.
 	return destination, changed, true, err
 }
 
-func rsyncAvailable(client *ssh.Client, host config.Host, store *secret.FileStore, options transferOptions) (string, string, bool) {
+func rsyncAvailable(ctx context.Context, client *ssh.Client, host config.Host, store *secret.FileStore, options transferOptions) (string, string, bool) {
 	if host.JumpHost != "" || store == nil || options.localPath == "" || options.remotePath == "" {
 		return "", "", false
 	}
@@ -77,12 +78,7 @@ func rsyncAvailable(client *ssh.Client, host config.Host, store *secret.FileStor
 	if err != nil {
 		return "", "", false
 	}
-	session, err := client.NewSession()
-	if err != nil {
-		return "", "", false
-	}
-	defer session.Close()
-	if err := session.Run("rsync --version >/dev/null 2>&1"); err != nil {
+	if _, err := sshx.ExecCommandOnClient(ctx, client, "rsync --version >/dev/null 2>&1", nil, nil); err != nil {
 		return "", "", false
 	}
 	return rsyncPath, sshPath, true
@@ -102,8 +98,12 @@ func prepareRsyncTransportWithTimeout(host config.Host, store *secret.FileStore,
 		return "", nil, err
 	}
 	cleanup := func() { _ = os.RemoveAll(tempDir) }
+	if err := safefile.Restrict(tempDir, 0700); err != nil {
+		cleanup()
+		return "", nil, fmt.Errorf("保护 rsync 临时目录失败: %w", err)
+	}
 	keyPath := filepath.Join(tempDir, "identity")
-	if err := os.WriteFile(keyPath, privateKey, 0600); err != nil {
+	if err := safefile.Write(keyPath, privateKey, 0600); err != nil {
 		cleanup()
 		return "", nil, err
 	}
@@ -155,7 +155,7 @@ func prepareRsyncTransportWithTimeout(host config.Host, store *secret.FileStore,
 	}
 	address := knownhosts.Normalize(net.JoinHostPort(host.Host, fmt.Sprintf("%d", host.Port)))
 	knownHostsPath := filepath.Join(tempDir, "known_hosts")
-	if err := os.WriteFile(knownHostsPath, []byte(knownhosts.Line([]string{address}, publicKey)+"\n"), 0600); err != nil {
+	if err := safefile.Write(knownHostsPath, []byte(knownhosts.Line([]string{address}, publicKey)+"\n"), 0600); err != nil {
 		cleanup()
 		return "", nil, err
 	}
@@ -321,9 +321,9 @@ func runRsync(ctx context.Context, rsyncPath, sshCommand, source, destination st
 		source,
 		destination,
 	)
-	var output bytes.Buffer
-	command.Stdout = &output
-	command.Stderr = &output
+	output := newBoundedTailBuffer(64 * 1024)
+	command.Stdout = output
+	command.Stderr = output
 	if err := command.Run(); err != nil {
 		message := strings.TrimSpace(output.String())
 		if len(message) > 4096 {
@@ -335,6 +335,47 @@ func runRsync(ctx context.Context, rsyncPath, sshCommand, source, destination st
 		return err
 	}
 	return nil
+}
+
+type boundedTailBuffer struct {
+	mu        sync.Mutex
+	data      []byte
+	limit     int
+	truncated bool
+}
+
+func newBoundedTailBuffer(limit int) *boundedTailBuffer {
+	if limit < 1 {
+		limit = 1
+	}
+	return &boundedTailBuffer{limit: limit}
+}
+
+func (b *boundedTailBuffer) Write(data []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	written := len(data)
+	if len(data) >= b.limit {
+		b.data = append(b.data[:0], data[len(data)-b.limit:]...)
+		b.truncated = true
+		return written, nil
+	}
+	if overflow := len(b.data) + len(data) - b.limit; overflow > 0 {
+		copy(b.data, b.data[overflow:])
+		b.data = b.data[:len(b.data)-overflow]
+		b.truncated = true
+	}
+	b.data = append(b.data, data...)
+	return written, nil
+}
+
+func (b *boundedTailBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.truncated {
+		return "[rsync 输出已截断，仅保留末尾]\n" + string(b.data)
+	}
+	return string(b.data)
 }
 
 func rsyncRemote(host config.Host, remotePath string) string {

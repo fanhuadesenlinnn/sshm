@@ -110,7 +110,10 @@ func printKeyCenterHelp() {
 	fmt.Println()
 }
 
-func (app *App) cmdKeyList(_ []string) error {
+func (app *App) cmdKeyList(args []string) error {
+	if len(args) != 0 {
+		return fmt.Errorf("用法: sshmd key list")
+	}
 	kf, err := app.keyStore().Load()
 	if err != nil {
 		return err
@@ -255,6 +258,9 @@ func (app *App) saveManagedKey(name string, privateKey []byte, publicKey string,
 }
 
 func (app *App) cmdKeyDefault(args []string) error {
+	if len(args) > 1 {
+		return fmt.Errorf("用法: sshmd key default [名称|-]")
+	}
 	if len(args) == 0 {
 		kf, err := app.keyStore().Load()
 		if err != nil {
@@ -317,6 +323,9 @@ func (app *App) cmdKeyDeleteUnused(args []string) error {
 }
 
 func (app *App) cmdKeyShow(args []string) error {
+	if len(args) > 1 {
+		return fmt.Errorf("用法: sshmd key show [名称|default]")
+	}
 	name := "default"
 	if len(args) > 0 {
 		name = args[0]

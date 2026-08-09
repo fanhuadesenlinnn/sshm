@@ -78,7 +78,12 @@ func writeFileDiff(writer io.Writer, client *sftp.Client, localFile, remoteFile 
 }
 
 func readLocalDiffFile(file string) ([]byte, bool, error) {
-	data, err := os.ReadFile(file)
+	reader, err := os.Open(file)
+	if err != nil {
+		return nil, false, fmt.Errorf("读取本地 diff 文件失败: %w", err)
+	}
+	defer reader.Close()
+	data, err := io.ReadAll(io.LimitReader(reader, maxDiffFileSize+1))
 	if err != nil {
 		return nil, false, fmt.Errorf("读取本地 diff 文件失败: %w", err)
 	}

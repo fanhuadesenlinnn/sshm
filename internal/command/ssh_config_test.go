@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
@@ -51,6 +52,47 @@ func TestParseSSHConfigSkipsWildcardAndNoise(t *testing.T) {
 		if host.Alias == "db*" {
 			t.Fatalf("通配符 Host 不应导入: %+v", hosts)
 		}
+	}
+}
+
+func TestImportSSHConfigKeepsHostWithIdentityAndPrintsManagedKeyFollowup(t *testing.T) {
+	dir := t.TempDir()
+	store := config.NewStoreWithPath(filepath.Join(dir, "sshmd.yaml"))
+	initCommandTestStore(t, store)
+	sshConfig := filepath.Join(dir, "config")
+	body := "Host web01\n  HostName 10.0.0.11\n  User deploy\n  Port 2222\n  IdentityFile ~/.ssh/id_ed25519\n"
+	if err := os.WriteFile(sshConfig, []byte(body), 0600); err != nil {
+		t.Fatal(err)
+	}
+	app := &App{Store: store, ConfigPath: store.Path()}
+	var importErr error
+	output := captureStdout(t, func() {
+		importErr = app.cmdImportSSHConfig([]string{sshConfig})
+	})
+	if importErr != nil {
+		t.Fatal(importErr)
+	}
+	host, _, _, err := store.FindHost("web01")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if host.Host != "10.0.0.11" || host.User != "deploy" || host.Port != 2222 {
+		t.Fatalf("host metadata was not imported: %+v", host)
+	}
+	if host.Identity != "" {
+		t.Fatalf("unmanaged identity should be cleared: %+v", host)
+	}
+	for _, want := range []string{"identity 已清空", "sshmd key import", "~/.ssh/id_ed25519", "sshmd key use", "web01"} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("follow-up output missing %q: %q", want, output)
+		}
+	}
+}
+
+func TestImportSSHConfigRejectsExtraArgumentsBeforeReading(t *testing.T) {
+	app := &App{}
+	if err := app.cmdImportSSHConfig([]string{"one", "two"}); err == nil || !strings.Contains(err.Error(), "用法") {
+		t.Fatalf("extra argument should fail: %v", err)
 	}
 }
 

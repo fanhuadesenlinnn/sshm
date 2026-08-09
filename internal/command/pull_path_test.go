@@ -1,6 +1,7 @@
 package command
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -15,6 +16,17 @@ func TestMultiPullDestinationUsesFetchLayout(t *testing.T) {
 	want := filepath.Join(root, "web01", "etc", "nginx", "nginx.conf")
 	if got != want {
 		t.Fatalf("destination = %q, want %q", got, want)
+	}
+}
+
+func TestConfinedJoinRejectsSymlinkBelowDownloadRoot(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(root, "web01")); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	if _, err := multiPullDestination(root, "web01", "/etc/hosts", false); err == nil || !strings.Contains(err.Error(), "符号链接") {
+		t.Fatalf("multiPullDestination() error = %v, want symlink rejection", err)
 	}
 }
 

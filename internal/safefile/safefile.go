@@ -1,23 +1,15 @@
 package safefile
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"time"
 )
 
-const (
-	defaultLockTimeout = 30 * time.Second
-	defaultStaleAfter  = 2 * time.Minute
-)
+const defaultLockTimeout = 30 * time.Second
 
-var (
-	lockTimeout    = defaultLockTimeout
-	staleAfter     = defaultStaleAfter
-	heartbeatEvery = 30 * time.Second
-)
+var lockTimeout = defaultLockTimeout
 
 // WithLock serializes a complete read-modify-write transaction across processes.
 func WithLock(path string, fn func() error) error {
@@ -25,76 +17,35 @@ func WithLock(path string, fn func() error) error {
 	if err := os.MkdirAll(filepath.Dir(lockPath), 0700); err != nil {
 		return fmt.Errorf("创建锁目录失败: %w", err)
 	}
+	lock, err := os.OpenFile(lockPath, os.O_RDWR|os.O_CREATE, 0600)
+	if err != nil {
+		return fmt.Errorf("打开文件锁失败: %w", err)
+	}
+	defer lock.Close()
 
 	deadline := time.Now().Add(lockTimeout)
 	for {
-		lock, err := os.OpenFile(lockPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-		if err == nil {
-			_, _ = fmt.Fprintf(lock, "%d\n", os.Getpid())
-			_ = lock.Close()
-			stopHeartbeat := startLockHeartbeat(lockPath)
-			defer stopHeartbeat()
-			defer os.Remove(lockPath)
-			return fn()
+		acquired, err := tryFileLock(lock)
+		if err != nil {
+			return fmt.Errorf("获取文件锁失败: %w", err)
 		}
-		if !errors.Is(err, os.ErrExist) {
-			return fmt.Errorf("创建文件锁失败: %w", err)
-		}
-
-		if lockIsStale(lockPath) {
-			_ = os.Remove(lockPath)
-			continue
+		if acquired {
+			break
 		}
 		if time.Now().After(deadline) {
 			return fmt.Errorf("等待文件锁超时: %s", lockPath)
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-}
-
-func startLockHeartbeat(lockPath string) func() {
-	interval := heartbeatEvery
-	if interval <= 0 || interval >= staleAfter {
-		interval = staleAfter / 4
+	defer unlockFile(lock)
+	if err := Restrict(lockPath, 0600); err != nil {
+		return fmt.Errorf("设置文件锁权限失败: %w", err)
 	}
-	if interval <= 0 {
-		interval = 50 * time.Millisecond
+	if err := lock.Truncate(0); err == nil {
+		_, _ = lock.Seek(0, 0)
+		_, _ = fmt.Fprintf(lock, "%d\n", os.Getpid())
 	}
-	done := make(chan struct{})
-	stopped := make(chan struct{})
-	go func() {
-		defer close(stopped)
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-done:
-				return
-			case now := <-ticker.C:
-				_ = os.Chtimes(lockPath, now, now)
-			}
-		}
-	}()
-	return func() {
-		close(done)
-		<-stopped
-	}
-}
-
-func lockIsStale(lockPath string) bool {
-	info, err := os.Stat(lockPath)
-	if err != nil || time.Since(info.ModTime()) <= staleAfter {
-		return false
-	}
-	data, err := os.ReadFile(lockPath)
-	if err != nil {
-		return true
-	}
-	var pid int
-	if _, err := fmt.Sscanf(string(data), "%d", &pid); err != nil {
-		return true
-	}
-	return !processAlive(pid)
+	return fn()
 }
 
 // Write atomically replaces a file without creating backup copies.
@@ -123,7 +74,7 @@ func writeAtomic(path string, data []byte, perm os.FileMode) error {
 		return writeErr
 	}
 
-	if err := tmp.Chmod(perm); err != nil {
+	if err := Restrict(tmpPath, perm); err != nil {
 		return closeWithError(fmt.Errorf("设置临时文件权限失败: %w", err))
 	}
 	if _, err := tmp.Write(data); err != nil {
@@ -138,7 +89,9 @@ func writeAtomic(path string, data []byte, perm os.FileMode) error {
 	if err := os.Rename(tmpPath, path); err != nil {
 		return fmt.Errorf("原子替换文件失败: %w", err)
 	}
-	_ = os.Chmod(path, perm)
+	if err := Restrict(path, perm); err != nil {
+		return fmt.Errorf("设置目标文件权限失败: %w", err)
+	}
 
 	if d, err := os.Open(dir); err == nil {
 		_ = d.Sync()

@@ -27,7 +27,7 @@ sshmd 是一个本地优先、面向个人使用的 SSH 主机管理与轻量运
 
     sshmd add web01 root@10.0.0.11                  # 添加主机（默认 root/22）
     sshmd add web01 root@10.0.0.11 --tags prod,web   # 添加并打标签
-    sshmd add web01 root@10.0.0.11 --password xxx    # 添加并写入明文密码
+    sshmd add web01 root@10.0.0.11 --password-stdin  # 终端隐藏输入；不会暴露到 argv
     sshmd add-batch "web01=root@10.0.0.11" "db01=root@10.0.0.12"
     sshmd list                                       # 列出主机（ls/l 亦可）
     sshmd search prod                                # 按关键词搜索
@@ -46,6 +46,8 @@ sshmd 是一个本地优先、面向个人使用的 SSH 主机管理与轻量运
 
 - 加密 vault（推荐）：主密码保护，写入 sshmd.yaml 的加密区。
 - 明文 password 字段（便捷）：直接写在主机条目里，受 0600 权限保护；sshmd doctor 会提醒。可用 sshmd passwd 一键升级为 vault 加密并清掉明文字段。
+
+add 的 --password-stdin 会在终端隐藏输入，也支持从管道读取；它只避免密码进入进程参数，仍按兼容模式写入明文 password 字段。需要加密保存时优先先 add，再运行 sshmd passwd。
 
     sshmd passwd web01                  # 加密保存密码（对明文主机自动升级）
     sshmd passwd --tag prod             # 批量保存
@@ -99,11 +101,11 @@ Deploy 是 v3 模块化 playbook：plays（工作流）包含 hosts、strategy�
     sshmd deploy run update-app --yes                 # 真正执行
     sshmd deploy run update-app --output ndjson --yes # 事件流输出
 
-模块（13 个）：command（不经过 shell，cmd 不能含管道/重定向/$/;/&/反引号）、shell、file（directory/file/link/absent + mode/owner）、copy（src 或 content + backup）、template（{{ }} 插值渲染）、service（systemctl 状态机）、wait_for（path/port，connect_from: controller|target）、sleep（定时延时，check 自动跳过）、unarchive（安全解压 tar.gz/tgz/zip）、fetch（远端拉取到本地）、pause（人工暂停）、fail（安全闸门）、debug。
+模块（13 个）：command（静态 cmd 按字面 argv 解析；模板值使用 argv 列表逐元素安全引用）、shell、file（directory/file/link/absent + mode/owner）、copy（src 或 content + backup）、template（{{ }} 插值渲染）、service（systemctl 状态机）、wait_for（path/port，connect_from: controller|target）、sleep（定时延时，check 自动跳过）、unarchive（拒绝路径穿越、链接、特殊文件和解压炸弹）、fetch（远端拉取到本地）、pause（人工暂停）、fail（安全闸门）、debug。
 
-任务特性：register/when（is defined、in、not in）、loop、run_once、become/become_user/become_password、ignore_errors、failed_when/changed_when、check_safe、confirm（linear 策略每个 serial 批次前确认）、env、block/rescue/always、include（静态片段）、vars_files、strategy linear|free、gather_facts。
+任务特性：register/when（is defined、in、not in）、loop、run_once、become/become_user、ignore_errors、failed_when/changed_when、check_safe、confirm（linear 策略每个 serial 批次前确认）、env、block/rescue/always、include（静态片段）、vars_files、strategy linear|free、gather_facts。
 
-become 提权无需免密 sudo：密码可来自任务级 become_password、环境变量 SSHMD_BECOME_PASSWORD，或自动复用该主机 vault 中的 SSH 密码；密码经 stdin 传给 sudo -S，不落日志。
+become 提权无需免密 sudo：密码只可来自环境变量 SSHMD_BECOME_PASSWORD，或自动复用该主机 vault 中的 SSH 密码；密码经 stdin 传给 sudo -S，不落日志。Deploy 文件中的 become_password 会被严格拒绝。
 
 一个最小 play 示例（放在 deploy.yaml 的 plays 下）：
 

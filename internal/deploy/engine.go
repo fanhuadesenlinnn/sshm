@@ -382,6 +382,9 @@ func (r Runner) executeTask(tc TaskContext, task Task) ModuleResult {
 	if task.BaseDir != "" {
 		tc.BaseDir = task.BaseDir
 	}
+	if task.ProjectRoot != "" {
+		tc.ProjectRoot = task.ProjectRoot
+	}
 	if task.When != "" && len(task.Loop) == 0 {
 		env := taskEnv(tc)
 		matched, err := EvalWhen(task.When, env)
@@ -432,6 +435,9 @@ func (r Runner) executeOnce(tc TaskContext, task Task, module Module, loopItem a
 		vars["item"] = loopItem
 		vars["loop_index"] = loopIndex
 	}
+	if err := validateCommandTemplateBoundary(task.Module, task.Args); err != nil {
+		return failedModule(err, operation.StageConfig)
+	}
 	args, err := renderArgs(task.Args, vars)
 	if err != nil {
 		return failedModule(err, operation.StageConfig)
@@ -455,14 +461,6 @@ func (r Runner) executeOnce(tc TaskContext, task Task, module Module, loopItem a
 	if task.Become {
 		runCtx.Become = true
 		runCtx.BecomeUser = task.BecomeUser
-	}
-	if task.BecomePassword != "" {
-		rendered, err := RenderString(task.BecomePassword, vars)
-		if err != nil {
-			return failedModule(err, operation.StageConfig)
-		}
-		runCtx.BecomePassword = rendered
-		runCtx.HasBecomePassword = true
 	}
 	if len(task.Env) > 0 {
 		runCtx.Env = task.Env

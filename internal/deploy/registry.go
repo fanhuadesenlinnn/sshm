@@ -37,6 +37,7 @@ type TaskContext struct {
 	Timeout           time.Duration
 	ConnectTimeout    time.Duration
 	BaseDir           string
+	ProjectRoot       string
 	LoopItem          any
 	LoopIndex         int
 	Executor          ops.Executor
@@ -47,6 +48,7 @@ type TaskContext struct {
 // PlayState carries mutable state shared by all hosts of one play.
 type PlayState struct {
 	mu       sync.Mutex
+	promptMu sync.Mutex
 	prompted map[string]bool
 }
 
@@ -71,6 +73,8 @@ func (p *PlayState) ConfirmOnce(message string, confirm func(string) error) erro
 	if confirm == nil {
 		return fmt.Errorf("deploy confirm 需要交互终端: %s", message)
 	}
+	p.promptMu.Lock()
+	defer p.promptMu.Unlock()
 	p.mu.Lock()
 	if p.prompted[message] {
 		p.mu.Unlock()

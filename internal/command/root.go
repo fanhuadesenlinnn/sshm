@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"runtime/debug"
+	"strings"
 
 	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
 	"github.com/fanhuadesenlinnn/sshmd/v6/internal/secret"
@@ -259,6 +260,9 @@ func (app *App) lockSecretStore() {
 
 // resolveHost finds a host by alias or ID from args, or prompts interactively.
 func (app *App) resolveHost(args []string, promptMsg string) (*config.Host, int, *config.HostsFile, error) {
+	if len(args) > 1 {
+		return nil, -1, nil, fmt.Errorf("只接受一个主机目标；多余参数: %s", strings.Join(args[1:], " "))
+	}
 	if len(args) > 0 {
 		return app.findHost(args[0])
 	}

@@ -42,7 +42,14 @@ func (m *templateModule) DecodeArgs(node *yaml.Node) (any, error) {
 
 func (m *templateModule) Run(tc TaskContext, raw any) ModuleResult {
 	args := raw.(*templateArgs)
-	localPath := resolveRelative(tc.BaseDir, args.Src)
+	projectRoot := tc.ProjectRoot
+	if projectRoot == "" {
+		projectRoot = tc.BaseDir
+	}
+	localPath, pathErr := resolveProjectPath(projectRoot, tc.BaseDir, args.Src)
+	if pathErr != nil {
+		return failedModule(fmt.Errorf("template src 路径无效: %w", pathErr), operation.StageConfig)
+	}
 	data, err := os.ReadFile(localPath)
 	if err != nil {
 		return failedModule(fmt.Errorf("读取模板 %s 失败: %w", localPath, err), operation.StageConfig)

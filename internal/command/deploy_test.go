@@ -122,12 +122,20 @@ func TestDeployInitDirScaffoldsCompleteDemo(t *testing.T) {
 		t.Fatal(err)
 	}
 	app := &App{Store: store, ConfigPath: store.Path()}
-	if err := app.deployInitDir(dir, false); err != nil {
-		t.Fatal(err)
+	var initErr error
+	output := captureStdout(t, func() {
+		initErr = app.deployInitDir(dir, false)
+	})
+	if initErr != nil {
+		t.Fatal(initErr)
+	}
+	addAt := strings.Index(output, "sshmd add web01")
+	validateAt := strings.Index(output, "sshmd deploy validate")
+	if addAt < 0 || validateAt < 0 || addAt > validateAt {
+		t.Fatalf("没有 prod 主机时应先提示添加主机: %q", output)
 	}
 	want := []string{
 		"deploy.yaml",
-		"templates/app.conf.tmpl",
 		"tasks/prepare.yaml",
 		"vars/versions.yaml",
 		"README.md",
@@ -139,6 +147,14 @@ func TestDeployInitDirScaffoldsCompleteDemo(t *testing.T) {
 	}
 	if err := app.deployValidate([]string{"-f", filepath.Join(dir, "deploy.yaml")}); err != nil {
 		t.Fatalf("生成 demo 应通过 validate: %v", err)
+	}
+	host := config.DefaultHost()
+	host.Alias, host.User, host.Host, host.Tags = "web01", "root", "127.0.0.1", []string{"prod"}
+	if err := store.Add(host); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.deployPlan([]string{"update-app", "-f", filepath.Join(dir, "deploy.yaml")}, false); err != nil {
+		t.Fatalf("生成 demo 的 update-app 应可直接 plan: %v", err)
 	}
 }
 

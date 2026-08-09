@@ -28,6 +28,10 @@ func (app *App) cmdExec(args []string) error {
 	if err != nil {
 		return err
 	}
+	doc, err := app.Store.Repository().Load()
+	if err != nil {
+		return err
+	}
 
 	if !yes {
 		if !ui.IsTerminal() {
@@ -39,22 +43,38 @@ func (app *App) cmdExec(args []string) error {
 			return nil
 		}
 	}
+	if err := app.unlockVaultForHosts([]config.Host{*h}); err != nil {
+		return &ExitError{Code: 4, Err: err}
+	}
 
 	executor := app.operationExecutor()
 	defer executor.CloseSessions()
+	ctx, stop := signalContext()
+	defer stop()
+	taskCtx, cancel := context.WithTimeout(ctx, doc.Defaults.Exec.Timeout.Duration)
+	defer cancel()
 	var stdout, stderr io.Writer
 	if !quiet {
 		stdout = os.Stdout
 		stderr = os.Stderr
 	}
-	opResult := executor.Exec(context.Background(), *h, ops.ExecOptions{Command: command, Stdout: stdout, Stderr: stderr})
+	opResult := executor.Exec(taskCtx, *h, ops.ExecOptions{
+		Command:        command,
+		ConnectTimeout: doc.Defaults.Batch.ConnectTimeout.Duration,
+		Stdout:         stdout,
+		Stderr:         stderr,
+	})
 	err = opResult.Err
-	result := newOperationResult(*h, opResult.Output, err, operation.StageExecute,
+	stage := opResult.Stage
+	if stage == "" {
+		stage = operation.StageExecute
+	}
+	result := newOperationResult(*h, opResult.Output, err, stage,
 		fmt.Sprintf("sshmd exec --yes %s %s", shellquote.Single(h.Alias), shellquote.Single(command)), opResult.Duration)
 	if err != nil {
 		printOperationFailure(result)
 	}
-	if !noLog {
+	if doc.Defaults.Logs.Enabled && !noLog {
 		if logErr := writeOperationLog("exec", command, []operation.Result{result}); logErr != nil {
 			return logErr
 		}

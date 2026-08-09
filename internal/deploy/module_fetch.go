@@ -39,7 +39,11 @@ func (m *fetchModule) DecodeArgs(node *yaml.Node) (any, error) {
 
 func (m *fetchModule) Run(tc TaskContext, raw any) ModuleResult {
 	args := raw.(*fetchArgs)
-	destination, err := pullDestination(tc.BaseDir, tc.Host.Alias, args.Dest, args.Src, args.Flat)
+	projectRoot := tc.ProjectRoot
+	if projectRoot == "" {
+		projectRoot = tc.BaseDir
+	}
+	destination, err := pullDestination(projectRoot, tc.BaseDir, tc.Host.Alias, args.Dest, args.Src, args.Flat)
 	if err != nil {
 		return failedModule(err, operation.StageConfig)
 	}
@@ -63,11 +67,10 @@ func (m *fetchModule) Run(tc TaskContext, raw any) ModuleResult {
 	return ModuleResult{Status: batch.StatusOK, Output: result.Output, Destination: result.Destination}
 }
 
-func pullDestination(root, alias, dest, remote string, flat bool) (string, error) {
-	resolvedDest := resolveRelative(root, dest)
-	absoluteRoot, err := filepath.Abs(resolvedDest)
+func pullDestination(projectRoot, baseDir, alias, dest, remote string, flat bool) (string, error) {
+	absoluteRoot, err := resolveProjectPath(projectRoot, baseDir, dest)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("fetch dest 路径无效: %w", err)
 	}
 	remote = strings.TrimPrefix(remote, "/")
 	name := filepath.Base(remote)
@@ -85,5 +88,33 @@ func pullDestination(root, alias, dest, remote string, flat bool) (string, error
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
 		return "", fmt.Errorf("fetch 目标路径逃逸: %s", target)
 	}
+	if err := rejectFetchSymlinks(absoluteRoot, absoluteTarget); err != nil {
+		return "", err
+	}
 	return target, nil
+}
+
+func rejectFetchSymlinks(base, target string) error {
+	relative, err := filepath.Rel(base, target)
+	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(os.PathSeparator)) {
+		return fmt.Errorf("fetch 目标路径逃逸: %s", target)
+	}
+	current := base
+	if relative == "." {
+		return nil
+	}
+	for _, component := range strings.Split(relative, string(os.PathSeparator)) {
+		current = filepath.Join(current, component)
+		info, statErr := os.Lstat(current)
+		if os.IsNotExist(statErr) {
+			return nil
+		}
+		if statErr != nil {
+			return fmt.Errorf("检查 fetch 目标失败: %w", statErr)
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("fetch 目标路径包含符号链接，拒绝写入: %s", current)
+		}
+	}
+	return nil
 }

@@ -1,6 +1,8 @@
 package command
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -67,6 +69,32 @@ func TestUnifiedDiff(t *testing.T) {
 				t.Fatalf("unifiedDiff =\n%q\nwant\n%q", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestReadLocalDiffFileCapsLargeInput(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "large.txt")
+	data := strings.Repeat("x", maxDiffFileSize+1024)
+	if err := os.WriteFile(file, []byte(data), 0600); err != nil {
+		t.Fatal(err)
+	}
+	got, text, err := readLocalDiffFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text || len(got) != maxDiffFileSize {
+		t.Fatalf("large diff classification: text=%t bytes=%d", text, len(got))
+	}
+}
+
+func TestBoundedCaptureCapsAggregateOutput(t *testing.T) {
+	capture := newBoundedCapture(8)
+	if written, err := capture.Write([]byte("1234567890")); err != nil || written != 10 {
+		t.Fatalf("Write() = %d, %v", written, err)
+	}
+	got := capture.String()
+	if !strings.HasPrefix(got, "12345678") || !strings.Contains(got, "输出已截断") {
+		t.Fatalf("bounded capture output = %q", got)
 	}
 }
 

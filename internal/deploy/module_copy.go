@@ -68,7 +68,15 @@ func pushToRemote(tc TaskContext, src, content, dest string, backup bool, checks
 		localPath = tempPath
 		defer os.Remove(tempPath)
 	} else {
-		localPath = resolveRelative(baseDir, src)
+		projectRoot := tc.ProjectRoot
+		if projectRoot == "" {
+			projectRoot = baseDir
+		}
+		var err error
+		localPath, err = resolveProjectPath(projectRoot, baseDir, src)
+		if err != nil {
+			return failedModule(fmt.Errorf("copy src 路径无效: %w", err), operation.StageConfig)
+		}
 		if _, err := os.Stat(localPath); err != nil {
 			return failedModule(fmt.Errorf("本地文件不存在: %s", localPath), operation.StageConfig)
 		}
@@ -89,6 +97,9 @@ func pushToRemote(tc TaskContext, src, content, dest string, backup bool, checks
 		info, statErr := statResult(tc, dest)
 		if statErr != nil {
 			return failedModule(statErr, operation.StageTransfer)
+		}
+		if info.Exists && info.IsLink {
+			return failedModule(fmt.Errorf("拒绝修改符号链接目标的权限: %s", dest), operation.StageExecute)
 		}
 		if !info.Exists || info.Mode.Perm() != os.FileMode(parseMode(mode)) {
 			if tc.Check {

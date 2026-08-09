@@ -12,14 +12,16 @@ import (
 )
 
 type commandArgs struct {
-	Cmd     string `yaml:"cmd"`
-	Chdir   string `yaml:"chdir,omitempty"`
-	Creates string `yaml:"creates,omitempty"`
-	Removes string `yaml:"removes,omitempty"`
+	Cmd     string   `yaml:"cmd"`
+	Argv    []string `yaml:"argv,omitempty"`
+	Chdir   string   `yaml:"chdir,omitempty"`
+	Creates string   `yaml:"creates,omitempty"`
+	Removes string   `yaml:"removes,omitempty"`
 }
 
-// commandModule implements both command and shell; both run through the remote
-// shell, keeping sshmd's existing exec semantics.
+// commandModule implements both command and shell. command is parsed into
+// literal argv values and every value is quoted before it reaches the remote
+// shell; shell intentionally keeps its full shell grammar.
 type commandModule struct {
 	name string
 }
@@ -33,18 +35,67 @@ func (m commandModule) DecodeArgs(node *yaml.Node) (any, error) {
 	if err := decodeStrict(node, &args); err != nil {
 		return nil, err
 	}
-	if strings.TrimSpace(args.Cmd) == "" {
-		return nil, fmt.Errorf("%s 需要 cmd", m.name)
-	}
 	if m.name == "command" {
-		if marker := shellMeta(args.Cmd); marker != "" {
-			return nil, fmt.Errorf("command 模块不经过 shell，cmd 不能包含 %q；如需管道/重定向/变量展开请改用 shell 模块", marker)
+		hasCmd := strings.TrimSpace(args.Cmd) != ""
+		hasArgv := args.Argv != nil
+		if hasCmd == hasArgv {
+			return nil, fmt.Errorf("command 必须且只能设置 cmd 或 argv")
+		}
+		argv := args.Argv
+		if hasCmd {
+			var err error
+			argv, err = shellquote.Split(args.Cmd)
+			if err != nil {
+				return nil, fmt.Errorf("command cmd 解析失败: %w", err)
+			}
+		}
+		if len(argv) == 0 || argv[0] == "" {
+			return nil, fmt.Errorf("command 需要至少一个参数")
+		}
+		for _, value := range argv {
+			if strings.ContainsRune(value, '\x00') {
+				return nil, fmt.Errorf("command 参数不能包含 NUL")
+			}
+		}
+		args.Cmd = shellquote.Command(argv)
+	} else {
+		if args.Argv != nil {
+			return nil, fmt.Errorf("shell 只接受 cmd；结构化参数请使用 command.argv")
+		}
+		if strings.TrimSpace(args.Cmd) == "" {
+			return nil, fmt.Errorf("shell 需要 cmd")
+		}
+		if strings.ContainsRune(args.Cmd, '\x00') {
+			return nil, fmt.Errorf("shell cmd 不能包含 NUL")
 		}
 	}
 	if args.Creates != "" && args.Removes != "" {
 		return nil, fmt.Errorf("creates 与 removes 不能同时使用")
 	}
 	return &args, nil
+}
+
+// validateCommandTemplateBoundary keeps variable expansion from changing the
+// number of command arguments. A literal cmd remains supported for concise
+// static commands; templated values must be separate argv elements so each is
+// rendered and quoted independently.
+func validateCommandTemplateBoundary(moduleName string, node *yaml.Node) error {
+	if moduleName != "command" || node == nil {
+		return nil
+	}
+	mapping := node
+	if mapping.Kind == yaml.DocumentNode && len(mapping.Content) == 1 {
+		mapping = mapping.Content[0]
+	}
+	if mapping.Kind != yaml.MappingNode {
+		return nil
+	}
+	for index := 0; index+1 < len(mapping.Content); index += 2 {
+		if mapping.Content[index].Value == "cmd" && strings.Contains(mapping.Content[index+1].Value, "{{") {
+			return fmt.Errorf("command 的模板变量必须使用 argv 列表逐参数传递；cmd 仅支持不含模板的字面命令")
+		}
+	}
+	return nil
 }
 
 func (m commandModule) Run(tc TaskContext, raw any) ModuleResult {
@@ -79,16 +130,4 @@ func (m commandModule) Run(tc TaskContext, raw any) ModuleResult {
 		command = "cd " + shellquote.Single(args.Chdir) + " && " + command
 	}
 	return runRemote(tc, command)
-}
-
-var shellMetaChars = []string{";", "|", ">", "<", "&", "$", "`", "\n"}
-
-// shellMeta returns the first shell metacharacter found in cmd, or "".
-func shellMeta(cmd string) string {
-	for _, marker := range shellMetaChars {
-		if strings.Contains(cmd, marker) {
-			return marker
-		}
-	}
-	return ""
 }

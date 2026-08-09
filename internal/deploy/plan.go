@@ -282,6 +282,9 @@ func validateTask(task Task, vars Vars) error {
 		if !ok {
 			return fmt.Errorf("未知模块 %q（可用: %s）", task.Module, strings.Join(ModuleNames(), ", "))
 		}
+		if err := validateCommandTemplateBoundary(task.Module, task.Args); err != nil {
+			return err
+		}
 		if len(task.Loop) > 0 {
 			for _, item := range task.Loop {
 				itemVars := cloneVars(vars)
@@ -321,7 +324,10 @@ func resolveVars(play Play, catalog *Catalog, overrides Overrides) (Vars, error)
 	}
 	vars := MergeVars(fileVars)
 	for _, path := range play.VarsFiles {
-		resolved := resolveRelative(play.BaseDir, path)
+		resolved, err := resolveProjectPath(play.BaseDir, play.BaseDir, path)
+		if err != nil {
+			return nil, fmt.Errorf("vars_files 路径无效: %w", err)
+		}
 		loaded, err := loadVarsFile(resolved)
 		if err != nil {
 			return nil, err
@@ -350,6 +356,10 @@ func loadVarsFile(path string) (Vars, error) {
 // expandIncludes splices include tasks recursively. Each resulting task keeps
 // the BaseDir of the file that defined it.
 func expandIncludes(tasks []Task, baseDir string, stack []string, depth int) ([]Task, error) {
+	return expandIncludesWithin(tasks, baseDir, baseDir, stack, depth)
+}
+
+func expandIncludesWithin(tasks []Task, baseDir, projectRoot string, stack []string, depth int) ([]Task, error) {
 	if depth > maxIncludeDepth {
 		return nil, fmt.Errorf("include 嵌套超过 %d 层", maxIncludeDepth)
 	}
@@ -358,11 +368,13 @@ func expandIncludes(tasks []Task, baseDir string, stack []string, depth int) ([]
 		if task.BaseDir == "" {
 			task.BaseDir = baseDir
 		}
+		if task.ProjectRoot == "" {
+			task.ProjectRoot = projectRoot
+		}
 		if task.Include != "" {
-			path := resolveRelative(task.BaseDir, task.Include)
-			absolute, err := filepath.Abs(path)
+			absolute, err := resolveProjectPath(task.ProjectRoot, task.BaseDir, task.Include)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("include 路径无效: %w", err)
 			}
 			for _, seen := range stack {
 				if seen == absolute {
@@ -373,7 +385,7 @@ func expandIncludes(tasks []Task, baseDir string, stack []string, depth int) ([]
 			if err != nil {
 				return nil, err
 			}
-			nested, err := expandIncludes(expanded, filepath.Dir(absolute), append(stack, absolute), depth+1)
+			nested, err := expandIncludesWithin(expanded, filepath.Dir(absolute), task.ProjectRoot, append(stack, absolute), depth+1)
 			if err != nil {
 				return nil, err
 			}
@@ -384,16 +396,19 @@ func expandIncludes(tasks []Task, baseDir string, stack []string, depth int) ([]
 			if task.Block[index].BaseDir == "" {
 				task.Block[index].BaseDir = task.BaseDir
 			}
+			task.Block[index].ProjectRoot = task.ProjectRoot
 		}
 		for index := range task.Rescue {
 			if task.Rescue[index].BaseDir == "" {
 				task.Rescue[index].BaseDir = task.BaseDir
 			}
+			task.Rescue[index].ProjectRoot = task.ProjectRoot
 		}
 		for index := range task.Always {
 			if task.Always[index].BaseDir == "" {
 				task.Always[index].BaseDir = task.BaseDir
 			}
+			task.Always[index].ProjectRoot = task.ProjectRoot
 		}
 		out = append(out, task)
 	}
@@ -422,9 +437,44 @@ func loadTaskFragment(path string) ([]Task, error) {
 	return tasks, nil
 }
 
-func resolveRelative(baseDir, path string) string {
-	if filepath.IsAbs(path) {
-		return path
+func resolveProjectPath(projectRoot, baseDir, input string) (string, error) {
+	if input == "" || strings.ContainsRune(input, '\x00') {
+		return "", fmt.Errorf("本地路径不能为空或包含 NUL")
 	}
-	return filepath.Join(baseDir, path)
+	if filepath.IsAbs(input) {
+		return "", fmt.Errorf("本地路径必须相对 playbook: %s", input)
+	}
+	root, err := filepath.Abs(projectRoot)
+	if err != nil {
+		return "", err
+	}
+	base, err := filepath.Abs(baseDir)
+	if err != nil {
+		return "", err
+	}
+	target, err := filepath.Abs(filepath.Join(base, input))
+	if err != nil {
+		return "", err
+	}
+	relative, err := filepath.Rel(root, target)
+	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(os.PathSeparator)) {
+		return "", fmt.Errorf("本地路径逃逸 playbook 目录: %s", input)
+	}
+	current := root
+	if relative != "." {
+		for _, component := range strings.Split(relative, string(os.PathSeparator)) {
+			current = filepath.Join(current, component)
+			info, statErr := os.Lstat(current)
+			if os.IsNotExist(statErr) {
+				break
+			}
+			if statErr != nil {
+				return "", fmt.Errorf("检查本地项目路径失败: %w", statErr)
+			}
+			if info.Mode()&os.ModeSymlink != 0 {
+				return "", fmt.Errorf("本地项目路径包含符号链接，拒绝访问: %s", current)
+			}
+		}
+	}
+	return target, nil
 }

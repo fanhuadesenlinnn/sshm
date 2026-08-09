@@ -3,6 +3,7 @@ package deploy
 import (
 	"fmt"
 	"os"
+	"path"
 	"strconv"
 	"strings"
 
@@ -44,6 +45,12 @@ func (m *fileModule) DecodeArgs(node *yaml.Node) (any, error) {
 	}
 	if args.State == "link" && args.Src == "" {
 		return nil, fmt.Errorf("file state=link 需要 src")
+	}
+	if args.State == "absent" {
+		clean := path.Clean(args.Path)
+		if clean == "/" || clean == "." || clean == ".." || args.Path == "~" || strings.HasPrefix(args.Path, "~/") {
+			return nil, fmt.Errorf("file state=absent 拒绝删除根目录、当前目录或模糊的 ~ 路径")
+		}
 	}
 	if args.Mode != "" {
 		if _, err := strconv.ParseUint(args.Mode, 8, 12); err != nil {
@@ -129,8 +136,8 @@ func (m *fileModule) directory(tc TaskContext, args *fileArgs, info ops.RemoteFi
 }
 
 func (m *fileModule) regularFile(tc TaskContext, args *fileArgs, info ops.RemoteFileInfo) ModuleResult {
-	if info.Exists && info.IsDir {
-		return failedModule(fmt.Errorf("%s 已存在但是目录", args.Path), operation.StageExecute)
+	if info.Exists && (info.IsDir || info.IsLink) {
+		return failedModule(fmt.Errorf("%s 已存在但不是普通文件", args.Path), operation.StageExecute)
 	}
 	changed := false
 	if !info.Exists {

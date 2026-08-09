@@ -6,7 +6,10 @@ import (
 	"github.com/fanhuadesenlinnn/sshmd/v6/internal/ui"
 )
 
-func (app *App) cmdPick(_ []string) error {
+func (app *App) cmdPick(args []string) error {
+	if len(args) != 0 {
+		return fmt.Errorf("用法: sshmd find-con")
+	}
 	hf, err := app.Store.Load()
 	if err != nil {
 		return err

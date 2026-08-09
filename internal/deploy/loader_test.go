@@ -127,3 +127,38 @@ func TestExpandIncludesNestedAndDetectsCycles(t *testing.T) {
 		t.Fatalf("include 循环应被检测: %v", err)
 	}
 }
+
+func TestResolveProjectPathConfinesSourcesToPlaybook(t *testing.T) {
+	root := t.TempDir()
+	tasksDir := filepath.Join(root, "tasks")
+	if err := os.MkdirAll(tasksDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	wanted := filepath.Join(root, "payload.txt")
+	if err := os.WriteFile(wanted, []byte("payload"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	resolved, err := resolveProjectPath(root, tasksDir, "../payload.txt")
+	if err != nil {
+		t.Fatalf("path that remains inside the project should resolve: %v", err)
+	}
+	if resolved != wanted {
+		t.Fatalf("resolved path = %q, want %q", resolved, wanted)
+	}
+
+	outside := filepath.Join(t.TempDir(), "outside.txt")
+	for _, input := range []string{outside, "../../outside.txt"} {
+		if _, err := resolveProjectPath(root, tasksDir, input); err == nil {
+			t.Fatalf("project escape %q should be rejected", input)
+		}
+	}
+
+	link := filepath.Join(root, "linked")
+	if err := os.Symlink(filepath.Dir(outside), link); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	if _, err := resolveProjectPath(root, root, "linked/outside.txt"); err == nil || !strings.Contains(err.Error(), "符号链接") {
+		t.Fatalf("symlinked source should be rejected: %v", err)
+	}
+}

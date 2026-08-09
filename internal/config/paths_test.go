@@ -55,6 +55,17 @@ func TestResolvePathsUsesSSHMDHomeForAllOwnedPaths(t *testing.T) {
 	}
 }
 
+func TestResolvePathsRejectsFilesystemRoot(t *testing.T) {
+	root := string(os.PathSeparator)
+	if volume := filepath.VolumeName(t.TempDir()); volume != "" {
+		root = volume + string(os.PathSeparator)
+	}
+	t.Setenv("SSHMD_HOME", root)
+	if _, err := ResolvePaths(); err == nil || !strings.Contains(err.Error(), "根目录") {
+		t.Fatalf("ResolvePaths() error = %v, want root rejection", err)
+	}
+}
+
 func TestInitializeCreatesChineseV2ConfigAndForceBackup(t *testing.T) {
 	home := filepath.Join(t.TempDir(), "home")
 	t.Setenv("SSHMD_HOME", home)

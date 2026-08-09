@@ -15,7 +15,10 @@ import (
 
 const DocumentVersion = 2
 
-var ErrNotInitialized = errors.New("sshmd 尚未初始化；请先运行 sshmd init")
+var (
+	ErrNotInitialized = errors.New("sshmd 尚未初始化；请先运行 sshmd init")
+	ErrConfigChanged  = errors.New("配置在编辑期间已被其他进程更新")
+)
 
 // Defaults contains global operation defaults.
 type Defaults struct {
@@ -185,6 +188,22 @@ func (r *Repository) Update(mutate func(*Document) error) error {
 
 func (r *Repository) Replace(doc *Document) error {
 	return safefile.WithLock(r.path, func() error {
+		return r.saveUnlocked(doc)
+	})
+}
+
+// ReplaceIfUnchanged saves an edited snapshot only when the authoritative
+// file still matches the bytes that were originally opened in the editor.
+// This prevents a long-running editor from overwriting concurrent CLI updates.
+func (r *Repository) ReplaceIfUnchanged(expected []byte, doc *Document) error {
+	return safefile.WithLock(r.path, func() error {
+		current, err := os.ReadFile(r.path)
+		if err != nil {
+			return fmt.Errorf("读取当前配置失败: %w", err)
+		}
+		if !bytes.Equal(current, expected) {
+			return ErrConfigChanged
+		}
 		return r.saveUnlocked(doc)
 	})
 }

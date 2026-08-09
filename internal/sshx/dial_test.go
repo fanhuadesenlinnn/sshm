@@ -203,6 +203,63 @@ func TestDialContextUsesSingleJumpHost(t *testing.T) {
 	}
 }
 
+func TestDialContextWithTimeoutCoversJumpAndTargetHandshake(t *testing.T) {
+	targetListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer targetListener.Close()
+	accepted := make(chan net.Conn, 1)
+	go func() {
+		conn, acceptErr := targetListener.Accept()
+		if acceptErr == nil {
+			accepted <- conn
+		}
+	}()
+	targetHost, targetPort := splitTestAddress(t, targetListener.Addr().String())
+	jumpAddr, closeJump := startTestSSHServer(t, "jump-pass", true)
+	defer closeJump()
+	jumpHost, jumpPort := splitTestAddress(t, jumpAddr)
+
+	path := filepath.Join(t.TempDir(), "sshmd.yaml")
+	store := config.NewStoreWithPath(path)
+	initSSHXTestStore(t, store)
+	jump := config.DefaultHost()
+	jump.Alias, jump.User, jump.Host, jump.Port = "jump", "test", jumpHost, jumpPort
+	jump.Password, jump.HostKeyPolicy = "jump-pass", config.HostKeyPolicyInsecure
+	target := config.DefaultHost()
+	target.Alias, target.User, target.Host, target.Port = "target", "test", targetHost, targetPort
+	target.Password, target.HostKeyPolicy, target.JumpHost = "target-pass", config.HostKeyPolicyInsecure, jump.Alias
+	if err := store.Add(jump); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Add(target); err != nil {
+		t.Fatal(err)
+	}
+	loaded, _, _, err := store.FindHost(target.Alias)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	start := time.Now()
+	_, _, err = DialContextWithTimeout(context.Background(), *loaded, nil, 125*time.Millisecond)
+	if err == nil {
+		t.Fatal("目标握手停滞时应命中整条跳板连接超时")
+	}
+	if stage := operation.StageOf(err, operation.StageUnknown); stage != operation.StageTimeout {
+		t.Fatalf("跳板目标握手超时阶段 = %q, error=%v", stage, err)
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Fatalf("跳板连接没有遵守统一 connect timeout: %s", elapsed)
+	}
+	select {
+	case conn := <-accepted:
+		_ = conn.Close()
+	case <-time.After(time.Second):
+		t.Fatal("跳板机未连接到目标测试端口")
+	}
+}
+
 func TestDialContextClassifiesDNSFailure(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sshmd.yaml")
 	store := config.NewStoreWithPath(path)
@@ -267,7 +324,78 @@ func TestDialContextCancelsStalledHandshake(t *testing.T) {
 	}
 }
 
+func TestDialContextWithTimeoutBoundsStalledHandshake(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	accepted := make(chan net.Conn, 1)
+	go func() {
+		conn, acceptErr := listener.Accept()
+		if acceptErr == nil {
+			accepted <- conn
+		}
+	}()
+	hostName, port := splitTestAddress(t, listener.Addr().String())
+	host := config.Host{
+		Alias: "stalled", User: "test", Host: hostName, Port: port,
+		Password: "secret", HostKeyPolicy: config.HostKeyPolicyInsecure,
+	}
+	start := time.Now()
+	_, _, err = DialContextWithTimeout(context.Background(), host, nil, 75*time.Millisecond)
+	if err == nil {
+		t.Fatal("connect timeout 应覆盖 SSH 握手")
+	}
+	if stage := operation.StageOf(err, operation.StageUnknown); stage != operation.StageTimeout {
+		t.Fatalf("握手超时阶段 = %q, error=%v", stage, err)
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Fatalf("connect timeout 未及时结束握手: %s", elapsed)
+	}
+	select {
+	case conn := <-accepted:
+		_ = conn.Close()
+	case <-time.After(time.Second):
+		t.Fatal("测试服务端未接受连接")
+	}
+}
+
+func TestCheckPingContextCancelsRunningCommand(t *testing.T) {
+	release := make(chan struct{})
+	defer close(release)
+	addr, closeServer := startTestSSHServerWithExec(t, "secret", false, func(channel ssh.Channel, command string) bool {
+		if command != "echo ok" {
+			return false
+		}
+		<-release
+		return true
+	})
+	defer closeServer()
+	hostName, port := splitTestAddress(t, addr)
+	host := config.Host{
+		Alias: "slow-ping", User: "test", Host: hostName, Port: port,
+		Password: "secret", HostKeyPolicy: config.HostKeyPolicyInsecure,
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 75*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	_, err := CheckPingContext(ctx, host, nil)
+	if stage := operation.StageOf(err, operation.StageUnknown); stage != operation.StageTimeout {
+		t.Fatalf("ping 取消阶段 = %q, error=%v", stage, err)
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Fatalf("ping 取消未及时中断远程命令: %s", elapsed)
+	}
+}
+
 func startTestSSHServer(t *testing.T, password string, forward bool) (string, func()) {
+	return startTestSSHServerWithExec(t, password, forward, nil)
+}
+
+type testExecHandler func(ssh.Channel, string) bool
+
+func startTestSSHServerWithExec(t *testing.T, password string, forward bool, handler testExecHandler) (string, func()) {
 	t.Helper()
 	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
@@ -296,13 +424,13 @@ func startTestSSHServer(t *testing.T, password string, forward bool) (string, fu
 			if err != nil {
 				return
 			}
-			go serveTestSSHConnection(conn, serverConfig, forward)
+			go serveTestSSHConnection(conn, serverConfig, forward, handler)
 		}
 	}()
 	return listener.Addr().String(), func() { _ = listener.Close() }
 }
 
-func serveTestSSHConnection(conn net.Conn, serverConfig *ssh.ServerConfig, forward bool) {
+func serveTestSSHConnection(conn net.Conn, serverConfig *ssh.ServerConfig, forward bool, handler testExecHandler) {
 	serverConn, channels, requests, err := ssh.NewServerConn(conn, serverConfig)
 	if err != nil {
 		_ = conn.Close()
@@ -325,6 +453,9 @@ func serveTestSSHConnection(conn net.Conn, serverConfig *ssh.ServerConfig, forwa
 							_ = req.Reply(true, nil)
 							var payload struct{ Command string }
 							_ = ssh.Unmarshal(req.Payload, &payload)
+							if handler != nil && handler(ch, payload.Command) {
+								return
+							}
 							status := uint32(0)
 							if payload.Command == "exit 127" {
 								status = 127

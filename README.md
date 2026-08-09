@@ -1,8 +1,8 @@
-# sshmd v6.2.2
+# sshmd v6.2.3
 
 sshmd 是一个本地优先、面向个人使用的 SSH 主机管理与轻量运维工具。它使用 Go 原生 SSH 能力管理主机、标签、凭据、批量命令、安全文件传输和 Deploy v3 编排。
 
-> 版本说明：产品发布版本是 `v6.2.2`，Go module 是 `github.com/fanhuadesenlinnn/sshmd/v6`，主配置 schema 为 `version: 2`，Deploy 配置 schema 为 `version: 3`。
+> 版本说明：产品发布版本是 `v6.2.3`，Go module 是 `github.com/fanhuadesenlinnn/sshmd/v6`，主配置 schema 为 `version: 2`，Deploy 配置 schema 为 `version: 3`。
 
 ## 安装
 
@@ -26,7 +26,7 @@ macOS/Linux 默认安装到 `/usr/local/bin`，权限不足时会请求 `sudo`�
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/fanhuadesenlinnn/sshmd/main/scripts/install.sh | \
-  sh -s -- --version v6.2.2 --install-dir "$HOME/.local/bin"
+  sh -s -- --version v6.2.3 --install-dir "$HOME/.local/bin"
 ```
 
 Windows 默认安装到 `%LOCALAPPDATA%\Programs\sshmd` 并加入用户 PATH。
@@ -98,6 +98,7 @@ sshmd                         # 打开轻量工作台
 sshmd web01                   # 按别名或 ID 直连
 sshmd list
 sshmd add web01 root@10.0.0.11
+sshmd add web01 root@10.0.0.11 --password-stdin
 sshmd edit web01
 sshmd tag
 sshmd ping web01
@@ -224,6 +225,8 @@ sshmd deploy run update-app --check --diff --yes
 
 支持 13 个幂等模块：`command`/`shell`、`file`、`copy`、`template`、`service`、`wait_for`、`sleep`、`unarchive`、`fetch`、`pause`、`fail`、`debug`。每个模块内置 check/diff 与 changed 判定，另支持 `register`/`when`、`loop`、`run_once`、`ignore_errors`、`failed_when`/`changed_when`、`become`、`confirm`（linear 策略下每个 serial 批次开始前的人工门禁）、`block`/`rescue`/`always`、静态 `include`、`strategy: linear|free` 与 `gather_facts`。
 
+Deploy 的 `copy`、`template`、`unarchive`、`fetch`、`include` 与 `vars_files` 本地路径必须相对顶层 playbook，并始终留在该项目目录内；绝对路径、目录逃逸和已有符号链接会在执行前被拒绝。`unarchive` 还会拒绝链接、特殊文件、setuid/setgid、加密 zip 与超额压缩包，并以完整目录切换避免旧文件残留。
+
 ### when 条件语法
 
 `when` 使用小型的布尔表达式语言，支持：
@@ -246,8 +249,8 @@ sshmd deploy run update-app --check --diff --yes
 
 ### command 与 shell 模块
 
-- `command` 不经过远程 shell：`cmd` 不能包含管道、重定向、`$`、`;`、`&`、反引号等 shell 元字符，参数按字面传递。
-- 需要管道/重定向/变量展开时使用 `shell` 模块。
+- `command` 的静态 `cmd` 按本地 argv 规则解析；含 `{{ }}` 的动态值必须使用 `argv: ["程序", "{{ value }}"]`，每个元素独立渲染并安全引用，变量中的空白不会变成额外参数。管道、重定向、变量、`;` 等 shell 语法只会作为普通参数，不会被执行。
+- 需要真正执行管道、重定向或变量展开时使用 `shell` 模块。
 - `--check` 模式默认跳过 command/shell（只读检查不执行命令）；确需在 check 下执行的只读命令（如 `nginx -t`、`systemctl status`）给任务加 `check_safe: true`。
 
 ### 变量插值
@@ -264,6 +267,7 @@ sshmd deploy run update-app --check --diff --yes
 - `passwd` 和 `forget-pass` 支持多个主机、`--tag` 与 `--all`；批量 `passwd` 会把同一个 SSH 密码保存到全部目标主机。
 - 删除保存密码、删除托管密钥、清理日志和设置 `host-key-policy insecure` 默认需要确认；非交互环境必须显式使用 `--yes`。
 - 密码与托管私钥默认保存在 `sshmd.yaml` 的加密 vault 中；也支持在主机条目显式写 `password` 明文字段（与 `password_ref` 互斥，受 0600 权限保护，`sshmd doctor` 会给出提醒）。Deploy 编排文件始终禁止保存密码或私钥。
+- `add --password-stdin` 在终端隐藏输入，也可从管道读取，避免密码暴露到 argv；它仍按显式兼容模式写入明文 `password` 字段。危险的 `add --password` 已移除；需要加密时优先先添加主机，再运行 `sshmd passwd`。
 - 主密码只在当前进程内按需解锁，`lock` 或进程退出后失效。
 - host alias 采用跨平台安全字符规则，可直接用于多主机 pull 目录。
 - 主配置和 Deploy 配置均严格拒绝未知字段。

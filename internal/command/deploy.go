@@ -393,10 +393,10 @@ func (app *App) cmdDeployInit(args []string) error {
 	if len(options.files) == 1 {
 		fileArg = " -f " + shellquote.Single(path)
 	}
-	fmt.Printf("  sshmd deploy validate%s\n", fileArg)
 	if !app.hasHostWithAllTags("prod") {
 		fmt.Println("  sshmd add web01 root@10.0.0.11 --tags prod")
 	}
+	fmt.Printf("  sshmd deploy validate%s\n", fileArg)
 	fmt.Printf("  sshmd deploy plan update-app%s\n", fileArg)
 	return nil
 }
@@ -409,8 +409,7 @@ func (app *App) deployInitDir(dir string, overwrite bool) error {
 		path    string
 		content string
 	}{
-		{filepath.Join(root, "deploy.yaml"), config.SampleDeployV3},
-		{filepath.Join(root, "templates", "app.conf.tmpl"), config.ExampleTemplateFile},
+		{filepath.Join(root, "deploy.yaml"), config.DemoDeployV3},
 		{filepath.Join(root, "tasks", "prepare.yaml"), config.DemoTasksFile},
 		{filepath.Join(root, "vars", "versions.yaml"), config.DemoVarsFile},
 		{filepath.Join(root, "README.md"), config.DemoReadme},
@@ -442,6 +441,9 @@ func (app *App) deployInitDir(dir string, overwrite bool) error {
 	fmt.Println()
 	fmt.Println("下一步:")
 	fileArg := " -f " + shellquote.Single(filepath.Join(root, "deploy.yaml"))
+	if !app.hasHostWithAllTags("prod") {
+		fmt.Println("  sshmd add web01 root@10.0.0.11 --tags prod")
+	}
 	fmt.Printf("  sshmd deploy validate%s\n", fileArg)
 	fmt.Printf("  sshmd deploy plan update-app%s\n", fileArg)
 	fmt.Printf("  sshmd deploy run update-app --check --diff%s --yes\n", fileArg)

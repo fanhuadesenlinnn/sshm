@@ -54,15 +54,7 @@ func TestWithLockSerializesTransactions(t *testing.T) {
 	}
 }
 
-func TestWithLockHeartbeatPreventsLiveLockFromGoingStale(t *testing.T) {
-	oldTimeout, oldStaleAfter, oldHeartbeat := lockTimeout, staleAfter, heartbeatEvery
-	lockTimeout = 500 * time.Millisecond
-	staleAfter = 60 * time.Millisecond
-	heartbeatEvery = 10 * time.Millisecond
-	defer func() {
-		lockTimeout, staleAfter, heartbeatEvery = oldTimeout, oldStaleAfter, oldHeartbeat
-	}()
-
+func TestWithLockDoesNotStealLongRunningLiveLock(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "data")
 	entered := make(chan struct{})
 	release := make(chan struct{})
@@ -86,7 +78,6 @@ func TestWithLockHeartbeatPreventsLiveLockFromGoingStale(t *testing.T) {
 		})
 	}()
 	<-entered
-	time.Sleep(staleAfter + 20*time.Millisecond)
 	go func() {
 		done <- WithLock(path, func() error {
 			mu.Lock()
@@ -99,7 +90,7 @@ func TestWithLockHeartbeatPreventsLiveLockFromGoingStale(t *testing.T) {
 			return nil
 		})
 	}()
-	time.Sleep(staleAfter + 20*time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 	close(release)
 
 	for i := 0; i < 2; i++ {
@@ -112,24 +103,16 @@ func TestWithLockHeartbeatPreventsLiveLockFromGoingStale(t *testing.T) {
 	}
 }
 
-func TestWithLockRemovesDeadStaleLock(t *testing.T) {
-	oldTimeout, oldStaleAfter := lockTimeout, staleAfter
-	lockTimeout = 200 * time.Millisecond
-	staleAfter = 20 * time.Millisecond
-	defer func() {
-		lockTimeout, staleAfter = oldTimeout, oldStaleAfter
-	}()
-
+func TestWithLockReusesUnlockedSidecar(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "data")
 	lockPath := path + ".lock"
-	if err := os.WriteFile(lockPath, []byte("0\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	old := time.Now().Add(-time.Second)
-	if err := os.Chtimes(lockPath, old, old); err != nil {
+	if err := os.WriteFile(lockPath, []byte("legacy stale lock\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	if err := WithLock(path, func() error { return nil }); err != nil {
 		t.Fatalf("WithLock() error = %v", err)
+	}
+	if _, err := os.Stat(lockPath); err != nil {
+		t.Fatalf("advisory lock sidecar should remain stable: %v", err)
 	}
 }

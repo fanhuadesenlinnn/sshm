@@ -34,6 +34,9 @@ func (app *App) cmdPin(args []string, pinned bool) error {
 }
 
 func (app *App) cmdRecent(args []string) error {
+	if len(args) > 1 {
+		return fmt.Errorf("用法: sshmd recent [数量]")
+	}
 	limit := 10
 	if len(args) > 0 {
 		parsed, err := strconv.Atoi(args[0])

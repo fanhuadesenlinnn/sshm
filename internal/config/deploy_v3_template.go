@@ -75,9 +75,10 @@ plays: []
 #         service:
 #           name: app
 #           state: restarted          # started | stopped | restarted | enabled | disabled
-#         become: true                # 需要 root 时开启；sudo 需要密码时可用：
-#                                     #   become_password 字段 / 环境变量 SSHMD_BECOME_PASSWORD
+#         become: true                # 需要 root 时开启；sudo 密码只可来自：
+#                                     #   环境变量 SSHMD_BECOME_PASSWORD
 #                                     #   或自动复用该主机保存在 vault 中的 SSH 密码（推荐）
+#                                     #   playbook 中的 become_password 会被拒绝
 #       - name: 等待端口就绪
 #         wait_for:
 #           port: 8080
@@ -104,14 +105,14 @@ plays: []
 #           message: 确认发布到生产?
 #
 # ==================== 其他模块简注 ====================
-#   command：不经过 shell，cmd 不能含管道/重定向/$/;/&/反引号；shell：完整 shell 语法
+#   command：按字面 argv 解析，每个参数都会安全引用，不执行管道/重定向/变量展开；shell：完整 shell 语法
 #     command:
-#       cmd: "ls -la {{ base }}"
+#       argv: ["ls", "-la", "{{ base }}"]  # 模板值必须独占 argv 元素
 #       chdir: /opt/app        # 先切换目录
 #       creates: /opt/app/installed   # 路径存在则跳过（幂等钩子）
 #       removes: /opt/app/legacy      # 路径不存在则跳过
 #     check_safe: true        # 只读命令（如 nginx -t）可在 --check 下执行；默认跳过
-#   unarchive：上传并解压压缩包（.tar.gz/.tgz/.zip，内置路径穿越校验）
+#   unarchive：上传并解压压缩包（.tar.gz/.tgz/.zip）；拒绝路径穿越、链接和特殊文件，并限制条目数、解压大小与膨胀比
 #     unarchive:
 #       src: ./dist/bundle.tar.gz
 #       dest: "{{ base }}/bundle"

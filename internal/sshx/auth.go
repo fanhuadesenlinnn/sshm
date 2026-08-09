@@ -27,15 +27,19 @@ func DialContextWithTimeout(ctx context.Context, h config.Host, store *secret.Fi
 	if timeout <= 0 {
 		timeout = 10 * time.Second
 	}
+	connectCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 	targetConfig, label, err := clientConfigWithTimeout(h, store, timeout)
 	if err != nil {
 		return nil, "", operation.Wrap(operation.StageOf(err, operation.StageAuth), err)
 	}
-	return dialConfiguredContext(ctx, h, store, targetConfig, label, timeout)
+	return dialConfiguredContext(connectCtx, h, store, targetConfig, label, timeout)
 }
 
 // DialPasswordContext uses a temporary password for the target without saving it.
 func DialPasswordContext(ctx context.Context, h config.Host, store *secret.FileStore, password string) (*ssh.Client, string, error) {
+	connectCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
 	callback, err := createHostKeyCallback(h)
 	if err != nil {
 		return nil, "", operation.Wrap(operation.StageTrust, err)
@@ -44,7 +48,7 @@ func DialPasswordContext(ctx context.Context, h config.Host, store *secret.FileS
 		User: h.User, Auth: []ssh.AuthMethod{ssh.Password(password)},
 		HostKeyCallback: callback, Timeout: 10 * time.Second,
 	}
-	return dialConfiguredContext(ctx, h, store, targetConfig, "临时密码", 10*time.Second)
+	return dialConfiguredContext(connectCtx, h, store, targetConfig, "临时密码", 10*time.Second)
 }
 
 func ConnectTemporaryPassword(h config.Host, store *secret.FileStore, password string) error {
@@ -72,18 +76,18 @@ func dialConfiguredContext(ctx context.Context, h config.Host, store *secret.Fil
 	}
 	jumpClient, _, err := dialDirectContextWithTimeout(ctx, *jump, store, timeout)
 	if err != nil {
-		return nil, "", operation.Wrap(operation.StageJump, fmt.Errorf("跳板机 %s 连接失败: %w", jump.Alias, err))
+		return nil, "", operation.Wrap(connectionStage(ctx, operation.StageJump, err), fmt.Errorf("跳板机 %s 连接失败: %w", jump.Alias, err))
 	}
 	conn, err := dialThroughJumpContext(ctx, jumpClient, "tcp", fmt.Sprintf("%s:%d", h.Host, h.Port))
 	if err != nil {
 		_ = jumpClient.Close()
-		return nil, "", operation.Wrap(operation.StageJump, fmt.Errorf("通过跳板机连接目标失败: %w", err))
+		return nil, "", operation.Wrap(connectionStage(ctx, operation.StageJump, err), fmt.Errorf("通过跳板机连接目标失败: %w", err))
 	}
 	client, err := newSSHClientContext(ctx, conn, fmt.Sprintf("%s:%d", h.Host, h.Port), targetConfig)
 	if err != nil {
 		_ = conn.Close()
 		_ = jumpClient.Close()
-		return nil, "", operation.Wrap(operation.StageAuth, fmt.Errorf("目标 SSH 握手失败: %w", err))
+		return nil, "", operation.Wrap(connectionStage(ctx, operation.StageAuth, err), fmt.Errorf("目标 SSH 握手失败: %w", err))
 	}
 	go func() {
 		_ = client.Wait()
@@ -113,18 +117,26 @@ func dialDirectWithConfig(ctx context.Context, h config.Host, sshConfig *ssh.Cli
 		if errors.As(err, &dnsErr) {
 			stage = operation.StageResolve
 		}
+		stage = connectionStage(ctx, stage, err)
 		return nil, "", operation.Wrap(stage, fmt.Errorf("网络连接失败: %w", err))
 	}
 	client, err := newSSHClientContext(ctx, conn, addr, sshConfig)
 	if err != nil {
 		_ = conn.Close()
-		stage := operation.StageAuth
-		if operation.StageOf(err, stage) == operation.StageTrust {
+		stage := connectionStage(ctx, operation.StageAuth, err)
+		if stage != operation.StageTimeout && operation.StageOf(err, stage) == operation.StageTrust {
 			stage = operation.StageTrust
 		}
 		return nil, "", operation.Wrap(stage, fmt.Errorf("%s认证或握手失败: %w", label, err))
 	}
 	return client, label, nil
+}
+
+func connectionStage(ctx context.Context, fallback operation.FailureStage, err error) operation.FailureStage {
+	if ctx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return operation.StageTimeout
+	}
+	return operation.StageOf(err, fallback)
 }
 
 type netConnResult struct {
@@ -136,6 +148,10 @@ func dialThroughJumpContext(ctx context.Context, client *ssh.Client, network, ad
 	done := make(chan netConnResult, 1)
 	go func() {
 		conn, err := client.Dial(network, addr)
+		if ctx.Err() != nil && conn != nil {
+			_ = conn.Close()
+			conn = nil
+		}
 		done <- netConnResult{conn: conn, err: err}
 	}()
 	select {
@@ -143,6 +159,13 @@ func dialThroughJumpContext(ctx context.Context, client *ssh.Client, network, ad
 		_ = client.Close()
 		return nil, ctx.Err()
 	case result := <-done:
+		if err := ctx.Err(); err != nil {
+			if result.conn != nil {
+				_ = result.conn.Close()
+			}
+			_ = client.Close()
+			return nil, err
+		}
 		return result.conn, result.err
 	}
 }
@@ -318,19 +341,42 @@ func resolvePassword(h config.Host, store *secret.FileStore) (string, error) {
 }
 
 type synchronizedBuffer struct {
-	mu     sync.Mutex
-	buffer bytes.Buffer
+	mu        sync.Mutex
+	buffer    bytes.Buffer
+	truncated bool
 }
+
+const (
+	maxCapturedOutputBytes = 8 << 20
+	truncatedOutputMarker  = "\n[sshmd] 输出已截断（仅保留前 8 MiB）\n"
+)
 
 func (b *synchronizedBuffer) Write(data []byte) (int, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return b.buffer.Write(data)
+	written := len(data)
+	remaining := maxCapturedOutputBytes - b.buffer.Len()
+	if remaining > 0 {
+		keep := len(data)
+		if keep > remaining {
+			keep = remaining
+		}
+		_, _ = b.buffer.Write(data[:keep])
+	}
+	if len(data) > remaining {
+		b.truncated = true
+	}
+	// The bounded capture is one branch of an io.MultiWriter. Report the full
+	// input length so truncation never stops the caller's stdout/stderr stream.
+	return written, nil
 }
 
 func (b *synchronizedBuffer) String() string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	if b.truncated {
+		return b.buffer.String() + truncatedOutputMarker
+	}
 	return b.buffer.String()
 }
 
@@ -341,13 +387,7 @@ func CheckPingContext(ctx context.Context, h config.Host, store *secret.FileStor
 		return "", err
 	}
 	defer client.Close()
-	session, err := client.NewSession()
-	if err != nil {
-		return "", operation.Wrap(operation.StageSession, fmt.Errorf("创建会话失败: %w", err))
-	}
-	defer session.Close()
-	output, err := session.CombinedOutput("echo ok")
-	return string(output), operation.Wrap(operation.StageExecute, err)
+	return ExecCommandOnClient(ctx, client, "echo ok", nil, nil)
 }
 
 // isManagedIdentity reports whether the host uses an sshmd-managed key.

@@ -7,6 +7,7 @@ import (
 
 	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
 	"github.com/fanhuadesenlinnn/sshmd/v6/internal/safefile"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/shellquote"
 	"github.com/fanhuadesenlinnn/sshmd/v6/internal/ui"
 )
 
@@ -58,6 +59,9 @@ func (app *App) cmdExportSSHConfig(args []string) error {
 }
 
 func (app *App) cmdImportSSHConfig(args []string) error {
+	if len(args) > 1 {
+		return fmt.Errorf("用法: sshmd import-ssh-config [SSH 配置路径]")
+	}
 	srcPath := ""
 	if len(args) > 0 {
 		srcPath = args[0]
@@ -86,12 +90,23 @@ func (app *App) cmdImportSSHConfig(args []string) error {
 		return err
 	}
 
+	type identityFollowup struct {
+		path    string
+		keyName string
+		aliases []string
+	}
+	usedKeyNames := make(map[string]bool)
+	doc, err := app.Store.Repository().Load()
+	if err != nil {
+		return err
+	}
+	for _, key := range doc.ManagedKeys.Keys {
+		usedKeyNames[key.Name] = true
+	}
+	identityByPath := make(map[string]int)
+	var identityFollowups []identityFollowup
 	imported := 0
 	for _, h := range hosts {
-		if h.Identity != "" {
-			ui.PrintWarn("主机 %s 引用了 IdentityFile，跳过；请先使用 sshmd key import 明确导入私钥", h.Alias)
-			continue
-		}
 		// Check if alias already exists
 		exists := false
 		for _, existing := range hf.Hosts {
@@ -104,11 +119,24 @@ func (app *App) cmdImportSSHConfig(args []string) error {
 			ui.PrintWarn("别名 %s 已存在，跳过", h.Alias)
 			continue
 		}
+		identityPath := h.Identity
+		h.Identity = ""
 		if errs := h.Validate(); len(errs) > 0 {
 			ui.PrintWarn("主机 %s 配置无效，跳过: %s", h.Alias, strings.Join(errs, "; "))
 			continue
 		}
 		hf.Hosts = append(hf.Hosts, h)
+		if identityPath != "" {
+			if index, ok := identityByPath[identityPath]; ok {
+				identityFollowups[index].aliases = append(identityFollowups[index].aliases, h.Alias)
+			} else {
+				keyName := availableImportedKeyName(h.Alias, usedKeyNames)
+				identityByPath[identityPath] = len(identityFollowups)
+				identityFollowups = append(identityFollowups, identityFollowup{
+					path: identityPath, keyName: keyName, aliases: []string{h.Alias},
+				})
+			}
+		}
 		imported++
 	}
 
@@ -117,11 +145,37 @@ func (app *App) cmdImportSSHConfig(args []string) error {
 			return fmt.Errorf("保存配置失败: %w", err)
 		}
 		ui.PrintSuccess("已从 SSH 配置导入 %d 台主机", imported)
+		for _, followup := range identityFollowups {
+			ui.PrintWarn("主机 %s 的 IdentityFile 未直接写入 sshmd；主机元数据已导入，identity 已清空", strings.Join(followup.aliases, ", "))
+		}
+		if len(identityFollowups) > 0 {
+			fmt.Println()
+			fmt.Println("  继续导入并绑定私钥（可直接执行）:")
+			for _, followup := range identityFollowups {
+				fmt.Printf("    sshmd key import %s %s\n", shellquote.Single(followup.keyName), shellquote.Single(followup.path))
+				fmt.Printf("    sshmd key use %s", shellquote.Single(followup.keyName))
+				for _, alias := range followup.aliases {
+					fmt.Printf(" %s", shellquote.Single(alias))
+				}
+				fmt.Println()
+			}
+			fmt.Println()
+		}
 	} else {
 		ui.PrintWarn("没有新主机可导入")
 	}
 
 	return nil
+}
+
+func availableImportedKeyName(alias string, used map[string]bool) string {
+	base := alias + "-key"
+	name := base
+	for suffix := 2; used[name]; suffix++ {
+		name = fmt.Sprintf("%s-%d", base, suffix)
+	}
+	used[name] = true
+	return name
 }
 
 // parseSSHConfig parses an OpenSSH config file and returns Host entries.

@@ -75,6 +75,37 @@ func TestListViewFlagsAreMutuallyExclusive(t *testing.T) {
 	}
 }
 
+func TestSingleTargetAndZeroArgCommandsRejectTrailingArguments(t *testing.T) {
+	app := &App{}
+	tests := []struct {
+		name string
+		run  func() error
+	}{
+		{"resolve host", func() error {
+			_, _, _, err := app.resolveHost([]string{"one", "two"}, "")
+			return err
+		}},
+		{"ping", func() error { return app.cmdPing([]string{"one", "two"}) }},
+		{"doctor", func() error { return app.cmdDoctor([]string{"extra"}) }},
+		{"pick", func() error { return app.cmdPick([]string{"extra"}) }},
+		{"recent", func() error { return app.cmdRecent([]string{"5", "extra"}) }},
+		{"config edit", func() error { return app.cmdConfigEdit([]string{"extra"}) }},
+		{"config show", func() error { return app.cmdConfig([]string{"show", "extra"}) }},
+		{"config show flag", func() error { return app.cmdConfig([]string{"show", "--yes"}) }},
+		{"key list", func() error { return app.cmdKeyList([]string{"extra"}) }},
+		{"key default", func() error { return app.cmdKeyDefault([]string{"one", "two"}) }},
+		{"key show", func() error { return app.cmdKeyShow([]string{"one", "two"}) }},
+		{"key status", func() error { return app.cmdKeyStatus([]string{"one", "two"}) }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := tt.run(); err == nil {
+				t.Fatal("expected trailing argument error")
+			}
+		})
+	}
+}
+
 func TestUnknownOptionSuggestsClosestCommand(t *testing.T) {
 	err := unknownOptionError("--lis")
 	if err == nil || !strings.Contains(err.Error(), "--list") {
@@ -129,6 +160,81 @@ func TestCmdQuickAddPersistsDefaultsAndOptions(t *testing.T) {
 	}
 	if host.Auth != "auto" || !reflect.DeepEqual(host.Tags, []string{"web", "linux"}) {
 		t.Fatalf("unexpected options: %+v", host)
+	}
+}
+
+func TestQuickAddPasswordStdinReadsBoundedInputAndWarnsAboutStorage(t *testing.T) {
+	store := config.NewStoreWithPath(filepath.Join(t.TempDir(), "sshmd.yaml"))
+	initCommandTestStore(t, store)
+	stdinPath := filepath.Join(t.TempDir(), "password")
+	if err := os.WriteFile(stdinPath, []byte("secret value\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	stdin, err := os.Open(stdinPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stdin.Close()
+	oldStdin := os.Stdin
+	os.Stdin = stdin
+	defer func() { os.Stdin = oldStdin }()
+
+	app := &App{Store: store, ConfigPath: store.Path()}
+	var addErr error
+	output := captureStdout(t, func() {
+		addErr = app.cmdQuickAdd([]string{"prod", "root@example.com", "--password-stdin"})
+	})
+	if addErr != nil {
+		t.Fatal(addErr)
+	}
+	host, _, _, err := store.FindHost("prod")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if host.Password != "secret value" {
+		t.Fatalf("password = %q", host.Password)
+	}
+	if !strings.Contains(output, "不会出现在 argv") || !strings.Contains(output, "明文") {
+		t.Fatalf("missing password safety warning: %q", output)
+	}
+	if _, err := readQuickAddPasswordFrom(strings.NewReader(strings.Repeat("x", maxQuickAddPasswordBytes+1))); err == nil {
+		t.Fatal("oversized stdin password should fail")
+	}
+	if _, err := readQuickAddPasswordFrom(strings.NewReader("one\ntwo\n")); err == nil {
+		t.Fatal("multi-line stdin password should fail")
+	}
+	for _, args := range [][]string{
+		{"other", "root@example.com", "--password", "secret", "--password-stdin"},
+		{"other", "root@example.com", "--password-stdin", "--password", "secret"},
+	} {
+		if err := app.cmdQuickAdd(args); err == nil {
+			t.Fatalf("password input modes should be mutually exclusive: %v", args)
+		}
+	}
+}
+
+func TestQuickAddRejectsPasswordArgvAndReadmeUsesStdin(t *testing.T) {
+	store := config.NewStoreWithPath(filepath.Join(t.TempDir(), "sshmd.yaml"))
+	initCommandTestStore(t, store)
+	app := &App{Store: store, ConfigPath: store.Path()}
+	addErr := app.cmdQuickAdd([]string{"prod", "root@example.com", "--password", "secret"})
+	if addErr == nil || !strings.Contains(addErr.Error(), "已移除") || !strings.Contains(addErr.Error(), "--password-stdin") {
+		t.Fatalf("legacy --password should be rejected with a safe migration path: %v", addErr)
+	}
+	if strings.Contains(config.DefaultREADME, " --password xxx") || !strings.Contains(config.DefaultREADME, "--password-stdin") {
+		t.Fatal("generated README should demonstrate --password-stdin, not --password")
+	}
+}
+
+func TestAddedHostWithoutCredentialsPrintsPasswdBeforePingAndConnect(t *testing.T) {
+	host := config.DefaultHost()
+	host.Alias, host.User, host.Host = "prod", "root", "example.com"
+	output := captureStdout(t, func() { printAddedHost(host, false) })
+	passwdAt := strings.Index(output, "sshmd passwd prod")
+	pingAt := strings.Index(output, "sshmd ping prod")
+	connectAt := strings.Index(output, "sshmd prod")
+	if passwdAt < 0 || pingAt < 0 || connectAt < 0 || !(passwdAt < pingAt && pingAt < connectAt) {
+		t.Fatalf("next steps should be passwd -> ping -> connect: %q", output)
 	}
 }
 
@@ -265,6 +371,12 @@ func TestDeleteRequiresConfirmationUnlessYes(t *testing.T) {
 		t.Fatal(err)
 	}
 	app := &App{Store: store, ConfigPath: store.Path()}
+	if err := app.cmdDelete([]string{"prod", "other", "--yes"}); err == nil {
+		t.Fatal("delete should reject a second target")
+	}
+	if _, _, _, err := store.FindHost("prod"); err != nil {
+		t.Fatalf("trailing target error must not delete the first host: %v", err)
+	}
 	var err error
 	output := captureStdout(t, func() {
 		err = app.cmdDelete([]string{"prod"})

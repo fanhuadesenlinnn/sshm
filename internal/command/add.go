@@ -2,13 +2,17 @@ package command
 
 import (
 	"fmt"
+	"io"
 	"net"
+	"os"
 	"strconv"
 	"strings"
 
 	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
 	"github.com/fanhuadesenlinnn/sshmd/v6/internal/ui"
 )
+
+const maxQuickAddPasswordBytes = 64 * 1024
 
 func (app *App) cmdAdd(args []string) error {
 	if len(args) > 0 {
@@ -19,7 +23,7 @@ func (app *App) cmdAdd(args []string) error {
 
 func (app *App) cmdQuickAdd(args []string) error {
 	if len(args) < 2 {
-		return fmt.Errorf("用法: sshmd add <别名> <用户@主机[:端口]> [--identity 托管密钥] [--tags 标签] [--auth 策略] [--host-key-policy 策略] [--jump-host 别名]")
+		return fmt.Errorf("用法: sshmd add <别名> <用户@主机[:端口]> [--identity 托管密钥] [--tags 标签] [--password-stdin] [--auth 策略] [--host-key-policy 策略] [--jump-host 别名]")
 	}
 
 	h := config.DefaultHost()
@@ -30,30 +34,49 @@ func (app *App) cmdQuickAdd(args []string) error {
 		return err
 	}
 
+	passwordStdin := false
 	for i := 2; i < len(args); i++ {
-		if i+1 >= len(args) {
-			return fmt.Errorf("选项 %s 缺少值", args[i])
+		option := args[i]
+		if option == "--password" {
+			return fmt.Errorf("--password 已移除，因为密码会暴露在进程参数和 Shell 历史中；请改用 --password-stdin，或添加后运行 sshmd passwd %s", h.Alias)
+		}
+		if option == "--password-stdin" {
+			if passwordStdin {
+				return fmt.Errorf("选项 --password-stdin 不能重复")
+			}
+			passwordStdin = true
+			continue
+		}
+		if !quickAddOptionTakesValue(option) {
+			return unknownOptionError(option)
+		}
+		if i+1 >= len(args) || isQuickAddOption(args[i+1]) {
+			return fmt.Errorf("选项 %s 缺少值", option)
 		}
 		value := args[i+1]
-		switch args[i] {
+		switch option {
 		case "--identity", "-i":
 			h.Identity = normalizeManagedIdentity(value)
 		case "--tags":
 			h.Tags = config.ParseTags(value)
 		case "--note":
 			h.Note = value
-		case "--password":
-			h.Password = value
 		case "--auth":
 			h.Auth = value
 		case "--host-key-policy":
 			h.HostKeyPolicy = value
 		case "--jump-host":
 			h.JumpHost = value
-		default:
-			return unknownOptionError(args[i])
 		}
 		i++
+	}
+	if passwordStdin {
+		password, err := readQuickAddPassword()
+		if err != nil {
+			return err
+		}
+		h.Password = password
+		ui.PrintWarn("密码已从 stdin 安全读取，不会出现在 argv；兼容模式仍会将其明文写入主配置，建议随后运行 sshmd passwd %s 加密", h.Alias)
 	}
 
 	if err := validateHost(h); err != nil {
@@ -64,6 +87,52 @@ func (app *App) cmdQuickAdd(args []string) error {
 	}
 	printAddedHost(h, false)
 	return nil
+}
+
+func quickAddOptionTakesValue(option string) bool {
+	switch option {
+	case "--identity", "-i", "--tags", "--note", "--auth", "--host-key-policy", "--jump-host":
+		return true
+	default:
+		return false
+	}
+}
+
+func isQuickAddOption(option string) bool {
+	return option == "--password-stdin" || option == "--password" || quickAddOptionTakesValue(option)
+}
+
+func readQuickAddPassword() (string, error) {
+	if ui.IsTerminal() {
+		password, err := ui.ReadPassword("请输入 SSH 密码: ")
+		if err != nil {
+			return "", fmt.Errorf("读取 SSH 密码失败: %w", err)
+		}
+		if password == "" {
+			return "", fmt.Errorf("SSH 密码不能为空")
+		}
+		return password, nil
+	}
+	return readQuickAddPasswordFrom(os.Stdin)
+}
+
+func readQuickAddPasswordFrom(reader io.Reader) (string, error) {
+	data, err := io.ReadAll(io.LimitReader(reader, maxQuickAddPasswordBytes+1))
+	if err != nil {
+		return "", fmt.Errorf("从 stdin 读取 SSH 密码失败: %w", err)
+	}
+	if len(data) > maxQuickAddPasswordBytes {
+		return "", fmt.Errorf("stdin 中的 SSH 密码超过 %d 字节上限", maxQuickAddPasswordBytes)
+	}
+	password := strings.TrimSuffix(string(data), "\n")
+	password = strings.TrimSuffix(password, "\r")
+	if password == "" {
+		return "", fmt.Errorf("stdin 中的 SSH 密码为空")
+	}
+	if strings.ContainsAny(password, "\r\n") {
+		return "", fmt.Errorf("stdin 中的 SSH 密码必须是单行内容")
+	}
+	return password, nil
 }
 
 func parseSSHTarget(target string) (user, host string, port int, err error) {
@@ -175,10 +244,10 @@ func printAddedHost(h config.Host, savedPassword bool) {
 	}
 	fmt.Println()
 	fmt.Println("  下一步:")
-	fmt.Printf("    sshmd ping %s\n", h.Alias)
 	if !savedPassword && h.Identity == "" {
 		fmt.Printf("    sshmd passwd %s\n", h.Alias)
 	}
+	fmt.Printf("    sshmd ping %s\n", h.Alias)
 	fmt.Printf("    sshmd %s\n", h.Alias)
 	fmt.Println()
 }

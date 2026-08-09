@@ -17,6 +17,7 @@ import (
 	"github.com/fanhuadesenlinnn/sshmd/v6/internal/config"
 	"github.com/fanhuadesenlinnn/sshmd/v6/internal/operation"
 	"github.com/fanhuadesenlinnn/sshmd/v6/internal/ops"
+	"github.com/fanhuadesenlinnn/sshmd/v6/internal/shellquote"
 	"gopkg.in/yaml.v3"
 )
 
@@ -44,8 +45,16 @@ type fakeExecutor struct {
 }
 
 func (f *fakeExecutor) Exec(_ context.Context, host config.Host, options ops.ExecOptions) ops.Result {
+	command := options.Command
+	canonical := command
+	if argv, err := shellquote.Split(command); err == nil && len(argv) > 0 {
+		canonical = strings.Join(argv, " ")
+		if canonical != command {
+			command += " [argv: " + canonical + "]"
+		}
+	}
 	f.mu.Lock()
-	f.calls = append(f.calls, host.Alias+":exec:"+options.Command)
+	f.calls = append(f.calls, host.Alias+":exec:"+command)
 	if options.Stdin != nil {
 		data, _ := io.ReadAll(options.Stdin)
 		f.stdins = append(f.stdins, string(data))
@@ -56,8 +65,12 @@ func (f *fakeExecutor) Exec(_ context.Context, host config.Host, options ops.Exe
 	out := "ok"
 	if value, ok := f.execOut[options.Command]; ok {
 		out = value
+	} else if value, ok := f.execOut[canonical]; ok {
+		out = value
 	}
 	if err, ok := f.execFail[options.Command]; ok {
+		return ops.Result{Host: host, Stage: operation.StageExecute, Err: err, Output: out}
+	} else if err, ok := f.execFail[canonical]; ok {
 		return ops.Result{Host: host, Stage: operation.StageExecute, Err: err, Output: out}
 	}
 	return ops.Result{Host: host, OK: true, Output: out}
@@ -149,6 +162,13 @@ func commandTask(name, cmd string) Task {
 	return Task{
 		Name: name, Module: "command",
 		Args: argsNode(map[string]any{"cmd": cmd}),
+	}
+}
+
+func commandArgvTask(name string, argv ...string) Task {
+	return Task{
+		Name: name, Module: "command",
+		Args: argsNode(map[string]any{"argv": argv}),
 	}
 }
 
@@ -284,7 +304,7 @@ func TestRunOnceExecutesSingleHost(t *testing.T) {
 
 func TestLoopRendersItem(t *testing.T) {
 	executor := &fakeExecutor{}
-	task := commandTask("render", "echo {{ item }}")
+	task := commandArgvTask("render", "echo", "{{ item }}")
 	task.Loop = []string{"a", "b"}
 	plan := planFor(t, []Task{task}, testHosts())
 	(Runner{Executor: executor}).Run(context.Background(), plan)
@@ -304,7 +324,7 @@ func TestLoopRendersItem(t *testing.T) {
 
 func TestLoopWhenFiltersItems(t *testing.T) {
 	executor := &fakeExecutor{}
-	task := commandTask("render", "echo {{ item }}")
+	task := commandArgvTask("render", "echo", "{{ item }}")
 	task.Loop = []string{"a", "skip", "b"}
 	task.When = "item != 'skip'"
 	plan := planFor(t, []Task{task}, testHosts())
@@ -331,7 +351,7 @@ func TestLoopWhenFiltersItems(t *testing.T) {
 
 func TestLoopWhenAllSkippedMarksHostSkipped(t *testing.T) {
 	executor := &fakeExecutor{}
-	task := commandTask("render", "echo {{ item }}")
+	task := commandArgvTask("render", "echo", "{{ item }}")
 	task.Loop = []string{"a", "b"}
 	task.When = "item == 'never'"
 	plan := planFor(t, []Task{task}, testHosts())
@@ -346,7 +366,7 @@ func TestLoopWhenAllSkippedMarksHostSkipped(t *testing.T) {
 
 func TestLoopWhenRegisterOnlyMatchedItems(t *testing.T) {
 	executor := &fakeExecutor{}
-	task := commandTask("render", "echo {{ item }}")
+	task := commandArgvTask("render", "echo", "{{ item }}")
 	task.Loop = []string{"a", "skip", "b"}
 	task.When = "item != 'skip'"
 	task.Register = "results"
@@ -413,6 +433,57 @@ func TestCopyModeSkipsRedundantChmod(t *testing.T) {
 	for _, call := range executor.callLog() {
 		if strings.Contains(call, "chmod") {
 			t.Fatalf("内容变化且权限已匹配时不应 chmod: %v", executor.callLog())
+		}
+	}
+}
+
+func TestCopyModeRejectsRemoteSymlink(t *testing.T) {
+	executor := &fakeExecutor{
+		statInfo: map[string]ops.RemoteFileInfo{
+			"/tmp/app.conf": {Exists: true, IsLink: true, Mode: os.ModeSymlink | 0777},
+		},
+	}
+	task := Task{
+		Name: "copy", Module: "copy",
+		Args: argsNode(map[string]any{"content": "x", "dest": "/tmp/app.conf", "mode": "0600"}),
+	}
+	result := (Runner{Executor: executor}).Run(context.Background(), planFor(t, []Task{task}, testHosts()))
+	if result.Summary.Failed != 2 {
+		t.Fatalf("remote symlinks must be rejected before chmod: %+v", result.Summary)
+	}
+	for _, call := range executor.callLog() {
+		if strings.Contains(call, "chmod") {
+			t.Fatalf("chmod must not follow a remote symlink: %v", executor.callLog())
+		}
+	}
+}
+
+func TestFileStateFileRejectsRemoteSymlink(t *testing.T) {
+	executor := &fakeExecutor{
+		statInfo: map[string]ops.RemoteFileInfo{
+			"/tmp/app.conf": {Exists: true, IsLink: true, Mode: os.ModeSymlink | 0777},
+		},
+	}
+	task := Task{
+		Name: "file", Module: "file",
+		Args: argsNode(map[string]any{"path": "/tmp/app.conf", "state": "file", "owner": "root"}),
+	}
+	result := (Runner{Executor: executor}).Run(context.Background(), planFor(t, []Task{task}, testHosts()))
+	if result.Summary.Failed != 2 {
+		t.Fatalf("remote symlinks must be rejected before metadata changes: %+v", result.Summary)
+	}
+	for _, call := range executor.callLog() {
+		if strings.Contains(call, "chmod") || strings.Contains(call, "chown") {
+			t.Fatalf("metadata commands must not follow a remote symlink: %v", executor.callLog())
+		}
+	}
+}
+
+func TestFileAbsentRejectsBroadDestructivePaths(t *testing.T) {
+	module := &fileModule{}
+	for _, target := range []string{"/", ".", "..", "~", "~/"} {
+		if _, err := module.DecodeArgs(argsNode(map[string]any{"path": target, "state": "absent"})); err == nil {
+			t.Fatalf("file absent should reject broad target %q", target)
 		}
 	}
 }
@@ -729,6 +800,42 @@ func TestFreeStrategyConfirmDeduplicatesMessages(t *testing.T) {
 	}
 }
 
+func TestPlayStateSerializesDifferentConfirmPrompts(t *testing.T) {
+	state := NewPlayState()
+	entered := make(chan string, 2)
+	release := make(chan struct{})
+	done := make(chan error, 2)
+	confirm := func(message string) error {
+		entered <- message
+		<-release
+		return nil
+	}
+
+	go func() { done <- state.ConfirmOnce("确认 A?", confirm) }()
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("first confirmation did not start")
+	}
+	go func() { done <- state.ConfirmOnce("确认 B?", confirm) }()
+	select {
+	case message := <-entered:
+		t.Fatalf("confirm callbacks overlapped: %s", message)
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(release)
+	for range 2 {
+		if err := <-done; err != nil {
+			t.Fatal(err)
+		}
+	}
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("second confirmation did not run after the first completed")
+	}
+}
+
 func TestServiceUnmasksMaskedService(t *testing.T) {
 	command := "systemctl is-enabled -- 'svc'"
 	executor := &fakeExecutor{
@@ -797,19 +904,26 @@ func TestDebugVarLooksUpRegisters(t *testing.T) {
 	}
 }
 
-func TestCommandModuleRejectsShellMeta(t *testing.T) {
+func TestCommandModuleQuotesShellGrammarAsLiteralArguments(t *testing.T) {
 	command := &commandModule{name: "command"}
-	for _, cmd := range []string{"ls | wc -l", "echo $HOME", "a; b", "x > /tmp/y", "a & b", "a`b`"} {
-		if _, err := command.DecodeArgs(argsNode(map[string]any{"cmd": cmd})); err == nil {
-			t.Fatalf("command 模块应拒绝 shell 元字符 %q", cmd)
-		}
+	decoded, err := command.DecodeArgs(argsNode(map[string]any{"cmd": `echo "(id)" '$HOME;touch /tmp/pwn'`}))
+	if err != nil {
+		t.Fatal(err)
 	}
-	if _, err := command.DecodeArgs(argsNode(map[string]any{"cmd": "echo hello"})); err != nil {
-		t.Fatalf("普通命令应合法: %v", err)
+	got := decoded.(*commandArgs).Cmd
+	if got != `'echo' '(id)' '$HOME;touch /tmp/pwn'` {
+		t.Fatalf("command should quote every argv value: %q", got)
 	}
 	shell := &commandModule{name: "shell"}
 	if _, err := shell.DecodeArgs(argsNode(map[string]any{"cmd": "ls | wc -l"})); err != nil {
 		t.Fatalf("shell 模块应允许管道: %v", err)
+	}
+}
+
+func TestRunRemoteRejectsInvalidEnvironmentName(t *testing.T) {
+	result := runRemote(TaskContext{Env: map[string]string{"SAFE;id": "x"}}, "true")
+	if result.Err == nil || result.Stage != operation.StageConfig {
+		t.Fatalf("invalid env name result = %+v", result)
 	}
 }
 
@@ -908,9 +1022,13 @@ func TestBecomeWithPasswordUsesSudoS(t *testing.T) {
 	executor := &fakeExecutor{}
 	task := commandTask("become", "whoami")
 	task.Become = true
-	task.BecomePassword = "secret"
 	plan := planFor(t, []Task{task}, testHosts())
-	result := (Runner{Executor: executor}).Run(context.Background(), plan)
+	result := (Runner{
+		Executor: executor,
+		BecomePassword: func(host config.Host) (string, bool) {
+			return "secret", true
+		},
+	}).Run(context.Background(), plan)
 	if result.Summary.OK != 2 {
 		t.Fatalf("summary = %+v", result.Summary)
 	}
@@ -966,23 +1084,47 @@ func TestBecomePasswordFromRunnerResolver(t *testing.T) {
 	}
 }
 
-func TestTaskBecomePasswordOverridesResolver(t *testing.T) {
-	executor := &fakeExecutor{}
-	task := commandTask("become", "whoami")
-	task.Become = true
-	task.BecomePassword = "task-pwd"
-	plan := planFor(t, []Task{task}, testHosts())
-	runner := Runner{
-		Executor: executor,
-		BecomePassword: func(host config.Host) (string, bool) {
-			return "env-pwd", true
-		},
+func TestTaskRejectsBecomePasswordInPlaybook(t *testing.T) {
+	var task Task
+	err := yaml.Unmarshal([]byte(`name: privileged
+become: true
+become_password: plaintext-secret
+command:
+  cmd: whoami
+`), &task)
+	if err == nil || !strings.Contains(err.Error(), "禁止保存 become_password") {
+		t.Fatalf("become_password should be rejected, error = %v", err)
 	}
-	runner.Run(context.Background(), plan)
-	for _, stdin := range executor.stdinLog() {
-		if stdin != "task-pwd\n" {
-			t.Fatalf("任务级 become_password 应覆盖 resolver: %q", stdin)
-		}
+}
+
+func TestCommandTemplateRequiresStructuredArgv(t *testing.T) {
+	unsafe := commandTask("unsafe", "rm -- {{ target }}")
+	if err := validateTask(unsafe, Vars{"target": "safe /etc/critical"}); err == nil || !strings.Contains(err.Error(), "argv") {
+		t.Fatalf("templated cmd should require argv: %v", err)
+	}
+
+	safe := Task{
+		Name:   "safe",
+		Module: "command",
+		Args: argsNode(map[string]any{
+			"argv": []string{"rm", "--", "{{ target }}"},
+		}),
+	}
+	vars := Vars{"target": "safe /etc/critical"}
+	if err := validateTask(safe, vars); err != nil {
+		t.Fatalf("structured argv should validate: %v", err)
+	}
+	rendered, err := renderArgs(safe.Args, vars)
+	if err != nil {
+		t.Fatal(err)
+	}
+	module, _ := Lookup("command")
+	decoded, err := module.DecodeArgs(rendered)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := decoded.(*commandArgs).Cmd; got != "'rm' '--' 'safe /etc/critical'" {
+		t.Fatalf("rendered command = %q", got)
 	}
 }
 

@@ -104,11 +104,13 @@ func printPaths(paths config.Paths) {
 
 func (app *App) cmdConfig(args []string) error {
 	if len(args) > 0 && args[0] == "help" {
+		if len(args) != 1 {
+			return fmt.Errorf("用法: sshmd config help")
+		}
 		printConfigHelp()
 		return nil
 	}
-	yes, args := removeFlag(args, "--yes")
-	if len(args) == 0 || args[0] == "show" {
+	if len(args) == 0 || (len(args) == 1 && args[0] == "show") {
 		doc, err := app.Store.Repository().Load()
 		if err != nil {
 			return err
@@ -117,6 +119,7 @@ func (app *App) cmdConfig(args []string) error {
 		fmt.Printf("默认主机信任策略: %s\n", doc.Defaults.HostKeyPolicy)
 		return nil
 	}
+	yes, args := removeFlag(args, "--yes")
 	if len(args) == 2 && args[0] == "host-key-policy" {
 		if !config.ValidHostKeyPolicy(args[1]) {
 			return fmt.Errorf("策略必须是 strict、accept-new 或 insecure")

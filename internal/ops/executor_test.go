@@ -353,7 +353,7 @@ func TestReusableSessionRejectsNonSSHClient(t *testing.T) {
 			return &fakeSSHClient{}, nil
 		},
 	}
-	_, _, err := executor.ReusableSession(context.Background(), config.Host{Alias: "one"}, 0)
+	_, _, _, err := executor.ReusableSession(context.Background(), config.Host{Alias: "one"}, 0)
 	if err == nil || !strings.Contains(err.Error(), "传输复用") {
 		t.Fatalf("ReusableSession 应拒绝非 *ssh.Client: %v", err)
 	}

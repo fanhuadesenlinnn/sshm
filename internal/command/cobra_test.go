@@ -28,11 +28,13 @@ func TestCobraHelpWorksWithoutInitializationAndRemovedCommandsAreAbsent(t *testi
 	}
 }
 
-func TestDoctorWorksWithoutInitialization(t *testing.T) {
+func TestDoctorReportsUninitializedAsUnhealthy(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sshmd.yaml")
 	app := &App{Store: config.NewStoreWithPath(path), ConfigPath: path}
-	if err := app.cmdDoctor(nil); err != nil {
-		t.Fatal(err)
+	err := app.cmdDoctor(nil)
+	var exitErr *ExitError
+	if !errors.As(err, &exitErr) || exitErr.Code != 3 {
+		t.Fatalf("uninitialized doctor error = %v", err)
 	}
 }
 
@@ -43,7 +45,7 @@ func TestOnlyDocumentedCommandsRunWithoutInitialization(t *testing.T) {
 	if err := runCobra(app, nil); err != nil {
 		t.Fatalf("root command should show first-run guide without initialization: %v", err)
 	}
-	for _, args := range [][]string{{"init"}, {"config", "path"}, {"doctor"}} {
+	for _, args := range [][]string{{"init"}, {"config", "path"}} {
 		if err := runCobra(app, args); err != nil {
 			t.Fatalf("allowed command %v: %v", args, err)
 		}
@@ -52,6 +54,9 @@ func TestOnlyDocumentedCommandsRunWithoutInitialization(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
+	}
+	if err := runCobra(app, []string{"doctor"}); ExitCodeForError(err) != 3 {
+		t.Fatalf("doctor should run diagnostics and report an unhealthy uninitialized state: %v", err)
 	}
 	for _, args := range [][]string{{"list"}, {"deploy", "init", "--stdout"}} {
 		if err := runCobra(app, args); !errors.Is(err, config.ErrNotInitialized) {

@@ -1,6 +1,7 @@
 package command
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -140,7 +141,10 @@ func (app *App) cmdAddBatch(args []string) error {
 	return nil
 }
 
-func (app *App) cmdConfigEdit(_ []string) error {
+func (app *App) cmdConfigEdit(args []string) error {
+	if len(args) != 0 {
+		return fmt.Errorf("用法: sshmd config edit")
+	}
 	if _, err := app.Store.Repository().Load(); err != nil {
 		return fmt.Errorf("读取配置失败: %w", err)
 	}
@@ -202,7 +206,10 @@ func (app *App) cmdConfigEdit(_ []string) error {
 	if err != nil {
 		return fmt.Errorf("配置校验失败，原配置未修改: %w", err)
 	}
-	if err := app.Store.Repository().Replace(validated); err != nil {
+	if err := app.Store.Repository().ReplaceIfUnchanged(data, validated); err != nil {
+		if errors.Is(err, config.ErrConfigChanged) {
+			return fmt.Errorf("配置已被其他命令更新，本次编辑未覆盖；请重新运行 sshmd config edit")
+		}
 		return fmt.Errorf("保存配置失败: %w", err)
 	}
 	ui.PrintSuccess("配置已校验并更新：%s", app.Store.Path())

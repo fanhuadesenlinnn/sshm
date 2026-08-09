@@ -154,6 +154,9 @@ func removeFlag(args []string, flag string) (bool, []string) {
 }
 
 func (app *App) cmdKeyStatus(args []string) error {
+	if len(args) > 1 {
+		return fmt.Errorf("用法: sshmd key status [密钥]")
+	}
 	filter := ""
 	if len(args) > 0 {
 		key, err := app.keyStore().Find(args[0])

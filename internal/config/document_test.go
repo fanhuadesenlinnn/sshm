@@ -103,6 +103,40 @@ func TestRepositoryMutationFailureLeavesDocumentUnchanged(t *testing.T) {
 	}
 }
 
+func TestRepositoryReplaceIfUnchangedRejectsConcurrentUpdate(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sshmd.yaml")
+	repo := NewRepositoryWithPath(path)
+	if err := repo.Replace(DefaultDocument()); err != nil {
+		t.Fatal(err)
+	}
+	expected, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	edited, err := ValidateDocumentData(expected)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.Update(func(doc *Document) error {
+		doc.Hosts = append(doc.Hosts, Host{
+			ID: NewID(), Alias: "concurrent", User: "root", Host: "example.test", Port: 22, Auth: "auto",
+		})
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.ReplaceIfUnchanged(expected, edited); !errors.Is(err, ErrConfigChanged) {
+		t.Fatalf("ReplaceIfUnchanged() error = %v, want ErrConfigChanged", err)
+	}
+	doc, err := repo.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(doc.Hosts) != 1 || doc.Hosts[0].Alias != "concurrent" {
+		t.Fatalf("concurrent update was lost: %+v", doc.Hosts)
+	}
+}
+
 func TestRepositoryGeneratesAndPersistsMissingHostID(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sshmd.yaml")
 	data := []byte(`version: 2
