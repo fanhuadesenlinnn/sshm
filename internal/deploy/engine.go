@@ -701,10 +701,6 @@ func isTaskFailure(result TaskResult) bool {
 	return result.Status == batch.StatusFailed || result.Status == batch.StatusUnreachable
 }
 
-func isModuleFailure(result ModuleResult) bool {
-	return result.Status == batch.StatusFailed || result.Status == batch.StatusUnreachable
-}
-
 func aggregateHostStatus(current batch.Status, task batch.Status) batch.Status {
 	switch task {
 	case batch.StatusChanged:

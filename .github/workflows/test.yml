@@ -27,9 +27,15 @@ jobs:
 
       - name: Test Unix installer
         run: |
-          VERSION="$(git describe --tags --abbrev=0 2>/dev/null || echo latest)"
+          VERSION="$(gh release view --json tagName -q .tagName 2>/dev/null || true)"
+          if [ -z "$VERSION" ]; then
+            echo "No published release yet; skipping installer test"
+            exit 0
+          fi
           scripts/install.sh --version "$VERSION" --install-dir "$RUNNER_TEMP/sshmd-bin"
           "$RUNNER_TEMP/sshmd-bin/sshmd" --version | grep -Fx "sshmd $VERSION"
+        env:
+          GH_TOKEN: ${{ github.token }}
 
       - name: Setup Go
         uses: actions/setup-go@v6
@@ -126,11 +132,17 @@ jobs:
       - name: Test PowerShell installer
         shell: powershell
         run: |
-          $Version = git describe --tags --abbrev=0
+          $Version = gh release view --json tagName -q .tagName 2>$null
           if ($LASTEXITCODE -ne 0) { $Version = 'latest' }
+          if ($Version -eq 'latest') {
+            Write-Host 'No published release yet; skipping installer test'
+            exit 0
+          }
           $InstallDir = Join-Path $env:RUNNER_TEMP 'sshmd-bin'
           & .\scripts\install.ps1 -Version $Version -InstallDir $InstallDir -NoPathUpdate
           $Output = & (Join-Path $InstallDir 'sshmd.exe') --version
           if ($Output -ne "sshmd $Version") {
             throw "Unexpected version output: $Output"
           }
+        env:
+          GH_TOKEN: ${{ github.token }}
